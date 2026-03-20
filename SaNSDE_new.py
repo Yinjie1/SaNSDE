@@ -101,7 +101,7 @@ class Population:
         self.energies.append(None)
         self.forces.append(None)
 
-    def export(self, name: str | None = None, format: str = 'xyz'):
+    def export(self, name: str | None = None, format: str = 'xyz') -> str:
         """导出种群数据到文件系统.
 
         在当前目录'./Populations/'(如不存在则新建)下新建一个文件夹, 名称为name(缺省时为种群名称).
@@ -115,6 +115,11 @@ class Population:
             导出文件夹的名称. 默认使用种群的 symbol.
         format : str, optional
             导出文件格式 (e.g., 'xyz', 'vasp', 'cif', 'data'). Default 'xyz'.
+
+        Returns
+        -------
+        str
+            导出JSON文件的完整绝对路径.
         """
         if name is None:
             name = self.symbol if self.symbol else "Population"
@@ -213,6 +218,8 @@ class Population:
 
         with open(summary_path, 'w') as f:
             json.dump(summary_data, f, indent=4)
+
+        return os.path.abspath(summary_path)
 
     def import_population(self, filename: str, confirm: bool = False):
         """从JSON文件导入种群数据.

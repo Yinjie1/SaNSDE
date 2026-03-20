@@ -63,9 +63,13 @@ def test_workflow():
 
     print(f"Final Population Size: {pop.size}")
 
+    print("\n--- Step 3: Export to JSON (CIF format) ---")
+    json_path = pop.export(name="TestPop_CIF", format="cif")
+    print(f"Exported to: {json_path}")
+
     print("\n--- Step 4: Import from JSON ---")
     pop_new = Population()
-    json_path = "./Populations/TestPop_CIF/TestPop_CIF.json"
+    # json_path is now dynamically obtained from export return
     print(f"Importing from {json_path}")
     pop_new.import_population(filename=json_path)
     print(f"Imported Population Size: {pop_new.size}")
