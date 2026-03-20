@@ -33,11 +33,11 @@ class Population:
     >>> pop.addCluster(cluster)
 
     导出种群:
-    >>> pop.export(name="Gen_1")
+    >>> json_path = pop.export(name="Gen_1")
 
     导入种群:
     >>> pop_new = Population()
-    >>> pop_new.import_population(name="Gen_1")
+    >>> pop_new.import_population(filename=json_path)
     """
     def __init__(self, symbol: str | None = None):
         self._clusters: list[Atoms] = []
