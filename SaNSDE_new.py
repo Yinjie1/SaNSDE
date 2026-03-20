@@ -2,6 +2,7 @@
 python 3.13.12
 """
 import os
+import json
 import numpy as np
 from typing import Any
 from ase import Atoms
@@ -105,7 +106,8 @@ class Population:
 
         在当前目录'./Populations/'(如不存在则新建)下新建一个文件夹, 名称为name(缺省时为种群名称).
         在文件夹中分别输出所有团簇结构文件(symbol_i.format).
-        文件夹还包含一个说明文件(name.txt), 包含导出日期, symbol, size, min_energy等信息.
+        文件夹还包含一个说明文件(name.json), 包含导出日期, symbol, size, min_energy等信息,
+        以及详细的团簇信息(Atoms name, symbol, energies, positions, forces).
 
         Parameters
         ----------
@@ -172,8 +174,8 @@ class Population:
                  cluster.set_cell(original_cell)
                  cluster.set_pbc(original_pbc)
 
-        # Summary file
-        summary_path = os.path.join(target_dir, f"{name}.txt")
+        # Summary file (JSON)
+        summary_path = os.path.join(target_dir, f"{name}.json")
         
         min_e = None
         min_idx = None
@@ -182,14 +184,35 @@ class Population:
         if valid_energies:
             min_idx, min_e = min(valid_energies, key=lambda x: x[1])
 
+        clusters_info = []
+        for i, cluster in enumerate(self._clusters):
+            # 准备单个团簇的信息
+            force_data = self.forces[i]
+            if force_data is not None and isinstance(force_data, np.ndarray):
+                force_data = force_data.tolist()
+            elif force_data is None:
+                force_data = None
+
+            cluster_info = {
+                "name": f"{self.symbol}_{i}",
+                "symbol": cluster.get_chemical_formula(),
+                "energy": self.energies[i],
+                "positions": cluster.get_positions().tolist(),
+                "forces": force_data
+            }
+            clusters_info.append(cluster_info)
+
+        summary_data = {
+            "date": datetime.now().strftime('%Y%m%d%H%M%S'),
+            "symbol": self.symbol,
+            "size": self.size,
+            "min_energy": min_e,
+            "min_energy_index": min_idx,
+            "clusters": clusters_info
+        }
+
         with open(summary_path, 'w') as f:
-            date_str = datetime.now().strftime('%Y%m%d%H%M%S')
-            f.write(f"Date: {date_str}\n")
-            f.write(f"Symbol: {self.symbol}\n")
-            f.write(f"Size: {self.size}\n")
-            if min_e is not None:
-                f.write(f"Min Energy: {min_e}\n")
-                f.write(f"Argmin Energy Index: {min_idx}\n")
+            json.dump(summary_data, f, indent=4)
 
     def import_population(self, name: str, confirm: bool = False, format: str | None = None):
         """从文件系统导入种群数据.
