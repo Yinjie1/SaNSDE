@@ -214,25 +214,22 @@ class Population:
         with open(summary_path, 'w') as f:
             json.dump(summary_data, f, indent=4)
 
-    def import_population(self, name: str, confirm: bool = False):
+    def import_population(self, filename: str, confirm: bool = False):
         """从JSON文件导入种群数据.
 
-        读取'./Populations/name/name.json'文件.
+        直接读取指定的JSON文件.
         直接使用JSON文件中的数据重建Atoms对象, 能量和力.
         如果种群非空, 需要设置 confirm=True 才能覆盖现有数据.
 
         Parameters
         ----------
-        name : str
-            种群文件夹名称 (位于 ./Populations/ 下).
+        filename : str
+            JSON文件的完整路径.
         confirm : bool, optional
             是否确认覆盖当前种群数据. Default False.
         """
-        target_dir = os.path.join('./Populations', name)
-        json_path = os.path.join(target_dir, f"{name}.json")
-        
-        if not os.path.exists(json_path):
-             print(f"JSON file {json_path} not found.")
+        if not os.path.exists(filename):
+             print(f"JSON file {filename} not found.")
              return
 
         if self.size > 0:
@@ -246,7 +243,7 @@ class Population:
                 self._symbol = None
 
         try:
-            with open(json_path, 'r') as f:
+            with open(filename, 'r') as f:
                 data = json.load(f)
         except Exception as e:
             print(f"Failed to read JSON file: {e}")

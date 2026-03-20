@@ -65,7 +65,9 @@ def test_workflow():
 
     print("\n--- Step 4: Import from JSON ---")
     pop_new = Population()
-    pop_new.import_population(name="TestPop_CIF")
+    json_path = "./Populations/TestPop_CIF/TestPop_CIF.json"
+    print(f"Importing from {json_path}")
+    pop_new.import_population(filename=json_path)
     print(f"Imported Population Size: {pop_new.size}")
     if pop_new.size > 0:
         print(f"First Cluster Energy: {pop_new.energies[0]}")
