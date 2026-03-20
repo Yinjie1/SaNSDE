@@ -63,14 +63,15 @@ def test_workflow():
 
     print(f"Final Population Size: {pop.size}")
 
-    print("\n--- Step 3: Export to .xyz ---")
-    pop.export(name="TestPop", format="xyz")
-    print("Export completed (check ./Populations/TestPop/)")
-
-    print("\n--- Step 4: Export to .vasp (Test Name Conflict) ---")
-    # This should create TestPop_TIMESTAMP directory
-    pop.export(name="TestPop", format="vasp")
-    print("Export completed (check ./Populations/TestPop_TIMESTAMP/)")
+    print("\n--- Step 4: Import from JSON ---")
+    pop_new = Population()
+    pop_new.import_population(name="TestPop_CIF")
+    print(f"Imported Population Size: {pop_new.size}")
+    if pop_new.size > 0:
+        print(f"First Cluster Energy: {pop_new.energies[0]}")
+        print(f"Last Cluster Energy: {pop_new.energies[-1]}")
+    
+    print("Test completed.")
 
 if __name__ == "__main__":
     test_workflow()

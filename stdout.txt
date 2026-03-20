@@ -1,0 +1,15 @@
+--- Step 1: Read POSCAR and add to Population ---
+Read POSCAR: Atoms(symbols='Au13', pbc=True, cell=[15.0, 15.0, 15.0])
+Initial Energy (LJ): 2.7231 eV
+Population Size after Step 1: 1
+
+--- Step 2: Add 5 randomly generated clusters ---
+Added Cluster 1. Energy: -3.6636
+Added Cluster 2. Energy: -3.0948
+Added Cluster 3. Energy: -2.0780
+Added Cluster 4. Energy: -2.5901
+Added Cluster 5. Energy: -3.1353
+Final Population Size: 6
+
+--- Step 3: Export to .cif ---
+Export completed (check ./Populations/TestPop_CIF/)

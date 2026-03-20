@@ -214,12 +214,11 @@ class Population:
         with open(summary_path, 'w') as f:
             json.dump(summary_data, f, indent=4)
 
-    def import_population(self, name: str, confirm: bool = False, format: str | None = None):
-        """从文件系统导入种群数据.
+    def import_population(self, name: str, confirm: bool = False):
+        """从JSON文件导入种群数据.
 
-        读取'./Populations/name'目录下的所有结构文件.
-        自动识别文件夹中的文件格式(如.xyz, .vasp, .cif等).
-        如果提供了format参数, 则强制读取指定格式.
+        读取'./Populations/name/name.json'文件.
+        直接使用JSON文件中的数据重建Atoms对象, 能量和力.
         如果种群非空, 需要设置 confirm=True 才能覆盖现有数据.
 
         Parameters
@@ -228,12 +227,12 @@ class Population:
             种群文件夹名称 (位于 ./Populations/ 下).
         confirm : bool, optional
             是否确认覆盖当前种群数据. Default False.
-        format : str, optional
-            导入文件格式 (e.g., 'xyz', 'vasp'). 如果为None, 则自动检测.
         """
         target_dir = os.path.join('./Populations', name)
-        if not os.path.exists(target_dir):
-             print(f"Directory {target_dir} not found.")
+        json_path = os.path.join(target_dir, f"{name}.json")
+        
+        if not os.path.exists(json_path):
+             print(f"JSON file {json_path} not found.")
              return
 
         if self.size > 0:
@@ -246,65 +245,57 @@ class Population:
                 self.forces = []
                 self._symbol = None
 
-        all_files = os.listdir(target_dir)
-        supported_exts = ['xyz', 'vasp', 'cif', 'data', 'res', 'castep']
+        try:
+            with open(json_path, 'r') as f:
+                data = json.load(f)
+        except Exception as e:
+            print(f"Failed to read JSON file: {e}")
+            return
+            
+        # Set population attributes from JSON
+        if self._symbol is None:
+             self._symbol = data.get('symbol')
         
-        # Determine format if not provided
-        ext = format
-        ase_fmt = format
+        if self._symbol != data.get('symbol'):
+             print(f"Warning: JSON symbol ({data.get('symbol')}) does not match population symbol ({self._symbol})")
+             # Proceeding anyway, but this is a potential issue if user intends strict type checking
         
-        if ext is None:
-            # Simple heuristic: count occurrences of supported extensions
-            ext_counts = {}
-            for f in all_files:
-                for valid_ext in supported_exts:
-                    if f.endswith(f".{valid_ext}"):
-                        ext_counts[valid_ext] = ext_counts.get(valid_ext, 0) + 1
-            
-            if not ext_counts:
-                 print(f"No supported structure files found in {target_dir}")
-                 return
-            
-            # Pick the most common extension
-            # In case of tie or single list, max works fine
-            best_ext = max(ext_counts, key=ext_counts.get) # type: ignore
-            print(f"Auto-detected format: {best_ext}")
-            
-            ext = best_ext
-            ase_fmt = best_ext
-            
-            if best_ext == 'data':
-                 ase_fmt = 'lammps-data'
-
-        # Handle some common mappings if ASE format differs from extension
-        if ext == 'data' and ase_fmt == 'data': # If format was explicitly passed as 'data' or detected
-             ase_fmt = 'lammps-data'
-            
-        # Filter files ending with .ext
-        target_files = [f for f in all_files if f.endswith(f'.{ext}')]
+        clusters_data = data.get('clusters', [])
         
-        def get_index(f):
+        for c_data in clusters_data:
             try:
-                # Expecting format: symbol_index.ext
-                return int(f.split('_')[-1].split('.')[0])
-            except:
-                return 0
-        target_files.sort(key=get_index)
-
-        if not target_files:
-             print(f"No files with extension .{ext} found in {target_dir}")
-             return
-
-        for f in target_files:
-            filepath = os.path.join(target_dir, f)
-            try:
-                cluster = read(filepath, format=ase_fmt)
-                if isinstance(cluster, list):
-                    cluster = cluster[0]
-                if isinstance(cluster, Atoms):
-                    self.addCluster(cluster)
+                # Reconstruct Atoms object
+                symbol = c_data.get('symbol')
+                positions = c_data.get('positions')
+                
+                # Ensure positions is a list or numpy array
+                if positions is None:
+                    print(f"Skipping cluster {c_data.get('name')} due to missing positions.")
+                    continue
+                    
+                cluster = Atoms(symbol, positions=positions)
+                
+                # Add to population
+                # Note: self.addCluster appends None to energies/forces, so we overwrite them below
+                self._clusters.append(cluster)
+                
+                # Set energy and forces directly
+                energy = c_data.get('energy')
+                forces = c_data.get('forces')
+                
+                if forces is not None:
+                    forces = np.array(forces)
+                
+                self.energies.append(energy)
+                self.forces.append(forces)
+                
+                # Optional: Attach info to Atoms object for convenience
+                if energy is not None:
+                     cluster.info['energy'] = energy
+                
             except Exception as e:
-                print(f"Failed to read {f}: {e}")
+                print(f"Error loading cluster from JSON: {e}")
+
 
 
 def localOptimize(pop: Population | Atoms | list[Atoms], 
