@@ -6,7 +6,7 @@ import json
 import numpy as np
 from typing import Any
 from ase import Atoms
-from ase.io import read, write
+from ase.io import write
 from ase.optimize import BFGS, LBFGS, GPMin, FIRE
 from ase.calculators.calculator import Calculator
 from datetime import datetime
