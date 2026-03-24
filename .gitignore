@@ -3,4 +3,5 @@ Populations/
 Clusters/
 others/
 stdout/
+test/
 *.pyc
