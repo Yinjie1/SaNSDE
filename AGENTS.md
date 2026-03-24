@@ -78,3 +78,5 @@
 - 类和函数注释格式参照 `class Population`：简介、参数、返回、示例（有必要时）。
 - 类型注解使用 Python 新版本规范（例如 `list[float | None]`，避免 `List[Optional[float]]` 旧写法）。
 - 代码实现与类型写法以 Python 3.13 规范为准。
+- 进行程序测试时，必须新建独立 Python 脚本并 `import SaNSDE_new`，不得将测试脚本写入主程序。
+- 测试时将标准输出重定向到 `./stdout/`，文件命名格式：`YYYYMMddhhmmss-任务名.txt`。
