@@ -4,4 +4,5 @@ Clusters/
 others/
 stdout/
 test/
+workflow/11-SaNSDE-随机-13.py
 *.pyc
