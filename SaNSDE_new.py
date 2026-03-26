@@ -705,7 +705,6 @@ def select(
     # 先对两组候选做局域优化，再比较能量
     tempPop1 = relax(pop1)
     tempPop2 = relax(pop2)
-
     if not isinstance(tempPop1, Population) or not isinstance(tempPop2, Population):
         raise TypeError("relax must return Population when input is Population")
 
@@ -713,22 +712,37 @@ def select(
     deltaRec: list[float] = []
     ns1, ns2, nf1, nf2 = 0, 0, 0, 0
 
+    # 选择环节要求两组种群都具备完整能量信息
+    pop1Energies = tempPop1.energies
+    pop2Energies = tempPop2.energies
+    pop1EnergyValues: list[float] = []
+    pop2EnergyValues: list[float] = []
+
+    for i, energyValue in enumerate(pop1Energies):
+        if energyValue is None:
+            raise ValueError(f"pop1 is missing energy at index {i}")
+        pop1EnergyValues.append(float(energyValue))
+    for i, energyValue in enumerate(pop2Energies):
+        if energyValue is None:
+            raise ValueError(f"pop2 is missing energy at index {i}")
+        pop2EnergyValues.append(float(energyValue))
+
+    # 选择环节要求 pop2 含 mutTag 信息，否则无法更新 p 和 CRm
+    for i in range(len(tempPop2)):
+        if getattr(tempPop2[i], 'mut', None) is None:
+            raise ValueError(f"pop2 is missing mutTag at index {i}")
+
     for i in range(len(tempPop1)):
-        energy1 = tempPop1.energies[i]
-        energy2 = tempPop2.energies[i]
+        energy1 = pop1EnergyValues[i]
+        energy2 = pop2EnergyValues[i]
         mutTag = getattr(tempPop2[i], 'mut', None)
 
-        # 缺失能量时，优先保留有能量的一方
-        choosePop2 = False
-        if energy1 is None and energy2 is not None:
-            choosePop2 = True
-        elif energy1 is not None and energy2 is not None and energy2 < energy1:
-            choosePop2 = True
+        choosePop2 = energy2 < energy1
 
         if choosePop2:
             tempClusters.addCluster(tempPop2[i], deepcopy=True)
             currentCR = getattr(tempPop2[i], 'CR', None)
-            if currentCR is not None and energy1 is not None and energy2 is not None:
+            if currentCR is not None:
                 crRec.append(float(currentCR))
                 deltaRec.append(float(energy1 - energy2))
             if mutTag == 0:
