@@ -171,20 +171,19 @@ class Population:
             
         self._clusters.append(clusterToAdd)
 
-    def export(self, name: str | None = None, format: str = 'xyz') -> str:
+    def export(self, name: str | None = None, xyz: bool = False) -> str:
         """导出种群数据到文件系统.
 
-        在当前目录'./Populations/'(如不存在则新建)下新建一个文件夹, 名称为name(缺省时为种群名称).
-        在文件夹中分别输出所有团簇结构文件(symbol_i.format).
-        文件夹还包含一个说明文件(name.json), 包含导出日期, symbol, size, min_energy等信息,
-        以及详细的团簇信息(Atoms name, symbol, energies, positions, forces).
+        在当前目录'./Populations/'(如不存在则新建)下输出一个JSON文件.
+        JSON文件名为'name.json'(缺省时name为种群名称).
+        当 xyz=True 时, 会同时新建同名文件夹 name/, 其中输出团簇xyz文件.
 
         Parameters
         ----------
         name : str, optional
-            导出文件夹的名称. 默认使用种群的 symbol.
-        format : str, optional
-            导出文件格式 (e.g., 'xyz', 'vasp', 'cif', 'data'). Default 'xyz'.
+            导出名称. 默认使用种群的 symbol.
+        xyz : bool, optional
+            是否同时导出团簇xyz文件. Default False.
 
         Returns
         -------
@@ -201,56 +200,34 @@ class Population:
             
         target_dir = os.path.join(base_dir, name)
 
-        # Check for existing directory
-        if os.path.exists(target_dir):
+        # Check for duplicate JSON filename
+        summary_path = os.path.join(base_dir, f"{name}.json")
+        if os.path.exists(summary_path):
             timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
             name = f"{name}_{timestamp}"
             target_dir = os.path.join(base_dir, name)
-            print(f'Duplicate file found. New export directory: {name}!')
+            summary_path = os.path.join(base_dir, f"{name}.json")
+            print(f'Duplicate file found. New export name: {name}!')
 
-        if not os.path.exists(target_dir):
-            os.makedirs(target_dir)
+        # Optional xyz snapshot directory
+        if xyz:
+            target_dir = os.path.join(base_dir, name)
+            if not os.path.exists(target_dir):
+                os.makedirs(target_dir)
 
-        # Map format to extension and ASE format string if necessary
-        ext = format
-        ase_format = format
-        if format == 'data':
-            ase_format = 'lammps-data'
+            # Export clusters as .xyz files (extxyz content)
+            for i, cluster in enumerate(self._clusters):
+                fname = f"{self.symbol}_{i}.xyz"
+                fpath = os.path.join(target_dir, fname)
 
-        # Export clusters
-        for i, cluster in enumerate(self._clusters):
-            # filename: symbol_i.format
-            fname = f"{self.symbol}_{i}.{ext}"
-            fpath = os.path.join(target_dir, fname)
-            
-            # Write file
-            if self.energies[i] is not None:
-                setattr(cluster, 'energy', self.energies[i])
-            
-            # Check cell for formats that require it
-            original_cell = cluster.get_cell()
-            original_pbc = cluster.get_pbc()
-            temp_cell_set = False
+                exportCluster = cluster.copy()
+                if self.energies[i] is not None:
+                    setattr(exportCluster, 'energy', self.energies[i])
 
-            if ext in ['vasp', 'cif', 'res', 'castep'] and np.allclose(original_cell.lengths(), 0):
-                 # Set a large dummy cell for cluster output
-                 cluster.set_cell([30.0, 30.0, 30.0])
-                 cluster.center()
-                 cluster.set_pbc(True)
-                 temp_cell_set = True
-
-            try:
-                write(fpath, cluster, format=ase_format)
-            except Exception as e:
-                print(f"Warning: Failed to write {fname}: {e}")
-            
-            # Restore original cell if we changed it
-            if temp_cell_set:
-                 cluster.set_cell(original_cell)
-                 cluster.set_pbc(original_pbc)
-
-        # Summary file (JSON)
-        summary_path = os.path.join(target_dir, f"{name}.json")
+                try:
+                    write(fpath, exportCluster, format='extxyz', write_results=False)
+                except Exception as e:
+                    print(f"Warning: Failed to write {fname}: {e}")
         
         min_e = None
         min_idx = None
