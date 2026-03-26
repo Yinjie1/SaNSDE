@@ -31,7 +31,7 @@ class Population:
     symbol : str | None
         种群化学式. 仅允许在未设置时初始化一次.
     size : int
-        种群中团簇数量, 等价于 ``len(population)``.
+        种群中团簇数量, 等价于 ``len(population)``, 逐步弃用.
     num : int
         单个团簇的原子数. 当 symbol 未设置时为 0.
     fp : float
@@ -123,6 +123,8 @@ class Population:
         energies: list[float | None] = []
         for cluster in self:
             energyValue = getattr(cluster, 'energy', None)
+            if energyValue is not None:
+                energyValue = float(energyValue)
             energies.append(energyValue)
         return energies
 
@@ -365,7 +367,7 @@ class Population:
                 
                 # Optional: Attach attributes to Atoms object for convenience
                 if energy is not None:
-                     setattr(cluster, 'energy', energy)
+                     setattr(cluster, 'energy', float(energy))
                 if forces is not None:
                      setattr(cluster, 'forces', forces)
                 
@@ -374,15 +376,16 @@ class Population:
 
 
 
-def localOptimize(pop: Population | Atoms | list[Atoms], 
+def localOptimize(pop: Population | Atoms, 
                   cell: list[float] | np.ndarray = [15, 15, 15], 
                   potential: Calculator | None = None, 
                   optimizer: Any = None, 
                   fmax: float = 0.05, 
-                  steps: int = 100):
+                  steps: int = 100) -> Population | Atoms:
     """进行局域优化(结构弛豫)
     
-    对种群中的所有团簇或单个团簇进行结构优化.
+    对种群中的所有团簇或单个团簇进行结构优化, 返回优化后的新对象.
+    不会原地修改输入对象.
     会自动添加周期性元胞(cell)进行计算, 并在优化完成后清除元胞信息.
 
     Parameters
@@ -400,22 +403,28 @@ def localOptimize(pop: Population | Atoms | list[Atoms],
     steps : int, optional
         最大优化步数. Default 100.
         
+    Returns
+    -------
+    Population | Atoms
+        返回与输入类型一致的新对象.
+        输入为 Population 时返回优化后的新 Population.
+        输入为 Atoms 时返回优化后的新 Atoms.
+
     Examples
     --------
-    >>> localOptimize(pop, potential=calc, optimizer='LBFGS')
+    >>> popNew = localOptimize(pop, potential=calc, optimizer='LBFGS')
     """
-    targets = []
     if isinstance(pop, Population):
-        targets = pop.clusters
+        newClusters = copy.deepcopy(pop)
+        isSingle = False
     elif isinstance(pop, Atoms):
-        targets = [pop]
-    elif isinstance(pop, list):
-        targets = pop
+        newClusters = Population()
+        newClusters.addCluster(pop)
+        isSingle = True
     else:
-        # Fallback or error, assume it's iterable of Atoms
-        targets = pop
+        raise TypeError("pop must be a Population or an ase.Atoms object")
 
-    for atoms in targets:
+    for atoms in newClusters:
         # cell 自动添加到团簇对象上
         atoms.set_cell(cell)
         atoms.set_pbc(True)
@@ -457,7 +466,7 @@ def localOptimize(pop: Population | Atoms | list[Atoms],
         forceValue = None
         if atoms.calc is not None:
             try:
-                energyValue = atoms.get_potential_energy()
+                energyValue = float(atoms.get_potential_energy())
             except Exception:
                 energyValue = None
             try:
@@ -471,6 +480,10 @@ def localOptimize(pop: Population | Atoms | list[Atoms],
         # del atoms.cell # cell attribute deletion is not supported
         atoms.set_pbc(False)
         atoms.set_cell([0.0, 0.0, 0.0]) # Effectively clear cell dimensions
+
+    if isSingle:
+        return newClusters.clusters[0]
+    return newClusters
 
 
 def randomCluster(pop: Population, 
@@ -559,14 +572,15 @@ def randomCluster(pop: Population,
     cluster = Atoms(symbols=symbols, positions=positions)
     
     # localOptimize
-    localOptimize(cluster, cell=cell, potential=potential, optimizer=optimizer, fmax=fmax, steps=steps)
+    optimizedCluster = localOptimize(cluster, cell=cell, potential=potential, optimizer=optimizer, fmax=fmax, steps=steps)
+    if not isinstance(optimizedCluster, Atoms):
+        raise TypeError("localOptimize should return Atoms when input is Atoms")
     
     # Add to pop
-    pop.addCluster(cluster)
+    pop.addCluster(optimizedCluster)
     
     # Update energy and forces
-    if cluster.calc:
-        e = cluster.get_potential_energy()
-        f = cluster.get_forces().tolist()
-        setattr(pop.clusters[pop.size - 1], 'energy', e)
-        setattr(pop.clusters[pop.size - 1], 'forces', f)
+    energyValue = getattr(optimizedCluster, 'energy', None)
+    forceValue = getattr(optimizedCluster, 'forces', None)
+    setattr(pop.clusters[pop.size - 1], 'energy', energyValue)
+    setattr(pop.clusters[pop.size - 1], 'forces', forceValue)
