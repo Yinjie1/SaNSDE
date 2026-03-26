@@ -4,12 +4,14 @@ python 3.13.12
 import os
 import json
 import copy
+import functools
 import numpy as np
 from typing import Any
 from ase import Atoms
 from ase.io import write
 from ase.optimize import BFGS, LBFGS, GPMin, FIRE
 from ase.calculators.calculator import Calculator
+from ase.calculators.lj import LennardJones
 from datetime import datetime
 
 
@@ -578,3 +580,170 @@ def randomCluster(pop: Population,
     forceValue = getattr(optimizedCluster, 'forces', None)
     setattr(pop.clusters[len(pop) - 1], 'energy', energyValue)
     setattr(pop.clusters[len(pop) - 1], 'forces', forceValue)
+
+
+def mutate(pop: Population) -> Population:
+    """对种群执行突变，返回突变后的暂定种群。"""
+    if len(pop) < 4:
+        raise ValueError("Mutation requires at least 4 clusters in population")
+
+    tempClusters = copy.deepcopy(pop)
+
+    # 选取当前最优个体索引（最低能量）
+    energyPairs = [(i, e) for i, e in enumerate(pop.energies) if e is not None]
+    if not energyPairs:
+        raise ValueError("Population energies are required before mutation")
+    indexBest = min(energyPairs, key=lambda item: item[1])[0]
+
+    for i in range(len(pop)):
+        # 采样缩放因子 F：按 fp 在高斯/柯西分布之间切换
+        if np.random.uniform(0.0, 1.0) < tempClusters.fp:
+            scaleFactor = float(np.random.normal(0.5, 0.3))
+        else:
+            scaleFactor = float(np.random.standard_cauchy())
+
+        # 从除 i 外的个体中采样互异索引
+        candidateIndices = [idx for idx in range(len(pop)) if idx != i]
+        index1, index2, index3 = np.random.choice(candidateIndices, size=3, replace=False)
+
+        # 按 p 在两种突变策略之间切换
+        if np.random.uniform(0.0, 1.0) < tempClusters.p:
+            # DE/rand/1
+            newPositions = (
+                pop[index1].get_positions()
+                + scaleFactor * (pop[index2].get_positions() - pop[index3].get_positions())
+            )
+            mutTag = 0
+        else:
+            # DE/current-to-best/2
+            newPositions = (
+                pop[i].get_positions()
+                + scaleFactor * (pop[indexBest].get_positions() - pop[i].get_positions())
+                + scaleFactor * (pop[index1].get_positions() - pop[index2].get_positions())
+            )
+            mutTag = 1
+
+        tempClusters[i].set_positions(newPositions)
+        setattr(tempClusters[i], 'mut', mutTag)
+        setattr(tempClusters[i], 'energy', None)
+        setattr(tempClusters[i], 'forces', None)
+
+    return tempClusters
+
+
+def crossover(pop1: Population, pop2: Population) -> Population:
+    """对原种群与突变种群执行交叉，返回交叉后种群。"""
+    if pop1.symbol != pop2.symbol:
+        raise ValueError("Population symbols must match for crossover")
+    if len(pop1) != len(pop2):
+        raise ValueError("Population sizes must match for crossover")
+
+    tempClusters = Population(symbol=pop1.symbol)
+    tempClusters._fp = pop1.fp
+    tempClusters._p = pop1.p
+    tempClusters._CRm = pop1.CRm
+
+    for i in range(len(pop1)):
+        # 采样当前个体交叉率，并裁剪到 [0, 1]
+        crossRate = float(np.random.normal(pop1.CRm, 0.1))
+        crossRate = float(np.clip(crossRate, 0.0, 1.0))
+
+        # 至少保留一个原子来自突变种群
+        jrand = np.random.randint(0, pop1.num)
+
+        basePositions = pop1[i].get_positions().copy()
+        mutPositions = pop2[i].get_positions()
+        trialPositions = basePositions.copy()
+
+        # 逐原子交叉：按 CR 或 jrand 选择保留突变位姿
+        for j in range(pop1.num):
+            if np.random.uniform(0.0, 1.0) <= crossRate or j == jrand:
+                trialPositions[j] = mutPositions[j]
+
+        trialCluster = Atoms(
+            symbols=pop1[i].get_chemical_symbols(),
+            positions=trialPositions,
+        )
+        setattr(trialCluster, 'CR', crossRate)
+        setattr(trialCluster, 'mut', getattr(pop2[i], 'mut', None))
+
+        tempClusters.addCluster(trialCluster)
+
+    return tempClusters
+
+
+def select(
+    pop1: Population,
+    pop2: Population,
+) -> Population:
+    """对原种群和候选种群执行选择并更新自适应参数。"""
+    if pop1.symbol != pop2.symbol:
+        raise ValueError("Population symbols must match for selection")
+    if len(pop1) != len(pop2):
+        raise ValueError("Population sizes must match for selection")
+
+    tempClusters = Population(symbol=pop1.symbol)
+    tempClusters._fp = pop1.fp
+    tempClusters._p = pop1.p
+    tempClusters._CRm = pop1.CRm
+
+    # 局域优化偏函数：固定常用参数，便于在选择环节统一调用
+    relax = functools.partial(
+        localOptimize,
+        cell=[15, 15, 15],
+        potential=LennardJones(),
+        optimizer=BFGS,
+        fmax=0.05,
+        steps=100,
+    )
+
+    # 先对两组候选做局域优化，再比较能量
+    tempPop1 = relax(pop1)
+    tempPop2 = relax(pop2)
+
+    if not isinstance(tempPop1, Population) or not isinstance(tempPop2, Population):
+        raise TypeError("relax must return Population when input is Population")
+
+    crRec: list[float] = []
+    deltaRec: list[float] = []
+    ns1, ns2, nf1, nf2 = 0, 0, 0, 0
+
+    for i in range(len(tempPop1)):
+        energy1 = tempPop1.energies[i]
+        energy2 = tempPop2.energies[i]
+        mutTag = getattr(tempPop2[i], 'mut', None)
+
+        # 缺失能量时，优先保留有能量的一方
+        choosePop2 = False
+        if energy1 is None and energy2 is not None:
+            choosePop2 = True
+        elif energy1 is not None and energy2 is not None and energy2 < energy1:
+            choosePop2 = True
+
+        if choosePop2:
+            tempClusters.addCluster(tempPop2[i], deepcopy=True)
+            currentCR = getattr(tempPop2[i], 'CR', None)
+            if currentCR is not None and energy1 is not None and energy2 is not None:
+                crRec.append(float(currentCR))
+                deltaRec.append(float(energy1 - energy2))
+            if mutTag == 0:
+                ns1 += 1
+            elif mutTag == 1:
+                ns2 += 1
+        else:
+            tempClusters.addCluster(tempPop1[i], deepcopy=True)
+            if mutTag == 0:
+                nf1 += 1
+            elif mutTag == 1:
+                nf2 += 1
+
+    # 更新 CRm：使用加权平均（仅统计成功个体）
+    if crRec and sum(deltaRec) > 0:
+        tempClusters._CRm = float(np.average(crRec, weights=deltaRec))
+
+    # 更新 p：按成功/失败统计更新策略选择概率
+    denominator = ns2 * (ns1 + nf1) + ns1 * (ns2 + nf2)
+    if denominator > 0:
+        tempClusters._p = float((ns1 * (ns2 + nf2)) / denominator)
+
+    return tempClusters
