@@ -656,15 +656,17 @@ def crossover(pop1: Population, pop2: Population) -> Population:
     tempClusters._CRm = pop1.CRm
 
     for i in range(len(pop1)):
-        # 采样当前个体交叉率，并裁剪到 [0, 1]
-        crossRate = float(np.random.normal(pop1.CRm, 0.1))
-        crossRate = float(np.clip(crossRate, 0.0, 1.0))
+        # 采样当前个体交叉率，并裁剪到 [0, 1]。
+        # 裁剪是为了保证交叉概率合法，避免出现负值或大于 1。
+        crossRate = np.random.normal(pop1.CRm, 0.1)
+        crossRate = np.clip(crossRate, 0.0, 1.0)
 
         # 至少保留一个原子来自突变种群
         jrand = np.random.randint(0, pop1.num)
 
+        # 使用坐标拷贝进行交叉，保证不原地改动输入种群 pop1/pop2。
         basePositions = pop1[i].get_positions().copy()
-        mutPositions = pop2[i].get_positions()
+        mutPositions = pop2[i].get_positions().copy()
         trialPositions = basePositions.copy()
 
         # 逐原子交叉：按 CR 或 jrand 选择保留突变位姿
