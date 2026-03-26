@@ -46,6 +46,15 @@ class Population:
     forces : list[list[list[float]] | None]
         按需从每个团簇对象属性 ``cluster.forces`` 读取的力列表.
         若某团簇缺失该属性, 对应位置为 None.
+
+    Methods
+    -------
+    addCluster(cluster: Atoms, deepcopy: bool = True) -> None
+        添加团簇到种群.
+    export(name: str | None = None, xyz: bool = False) -> str
+        导出种群快照为 JSON, 并可选导出 xyz 结构文件.
+    import_population(filename: str, confirm: bool = False) -> None
+        从 JSON 文件导入种群.
         
     Examples
     --------
