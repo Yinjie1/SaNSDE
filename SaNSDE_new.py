@@ -6,7 +6,7 @@ import json
 import copy
 import functools
 import numpy as np
-from typing import Any
+from typing import Any, Callable
 from ase import Atoms
 from ase.io import write
 from ase.optimize import BFGS, LBFGS, GPMin, FIRE
@@ -482,6 +482,17 @@ def localOptimize(pop: Population | Atoms,
     return newClusters
 
 
+# 局域优化偏函数：固定常用参数，供 select 等流程直接复用
+relax = functools.partial(
+    localOptimize,
+    cell=[15, 15, 15],
+    potential=LennardJones(),
+    optimizer=BFGS,
+    fmax=0.05,
+    steps=100,
+)
+
+
 def randomCluster(pop: Population, 
                   a: float, 
                   delta: float, 
@@ -589,11 +600,12 @@ def mutate(pop: Population) -> Population:
 
     tempClusters = copy.deepcopy(pop)
 
-    # 选取当前最优个体索引（最低能量）
-    energyPairs = [(i, e) for i, e in enumerate(pop.energies) if e is not None]
-    if not energyPairs:
-        raise ValueError("Population energies are required before mutation")
-    indexBest = min(energyPairs, key=lambda item: item[1])[0]
+    # 选取当前最优个体索引（最低能量），要求所有个体能量都已就绪
+    energies = pop.energies
+    for i, energyValue in enumerate(energies):
+        if energyValue is None:
+            raise ValueError(f"All clusters must have energy before mutation. Missing index: {i}")
+    indexBest = int(np.argmin(np.array(energies, dtype=float)))
 
     for i in range(len(pop)):
         # 采样缩放因子 F：按 fp 在高斯/柯西分布之间切换
@@ -675,6 +687,7 @@ def crossover(pop1: Population, pop2: Population) -> Population:
 def select(
     pop1: Population,
     pop2: Population,
+    relax: Callable[[Population], Population | Atoms],
 ) -> Population:
     """对原种群和候选种群执行选择并更新自适应参数。"""
     if pop1.symbol != pop2.symbol:
@@ -686,16 +699,6 @@ def select(
     tempClusters._fp = pop1.fp
     tempClusters._p = pop1.p
     tempClusters._CRm = pop1.CRm
-
-    # 局域优化偏函数：固定常用参数，便于在选择环节统一调用
-    relax = functools.partial(
-        localOptimize,
-        cell=[15, 15, 15],
-        potential=LennardJones(),
-        optimizer=BFGS,
-        fmax=0.05,
-        steps=100,
-    )
 
     # 先对两组候选做局域优化，再比较能量
     tempPop1 = relax(pop1)
