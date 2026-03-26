@@ -3,6 +3,7 @@ python 3.13.12
 """
 import os
 import json
+import copy
 import numpy as np
 from typing import Any
 from ase import Atoms
@@ -22,6 +23,29 @@ class Population:
     ----------
     symbol : str | None = None
         团簇的化学式 (e.g., "Au13"). 如果未指定, 将在添加第一个团簇时自动设定.
+
+    Attributes
+    ----------
+    clusters : list[Atoms]
+        当前种群中的团簇列表.
+    symbol : str | None
+        种群化学式. 仅允许在未设置时初始化一次.
+    size : int
+        种群中团簇数量, 等价于 ``len(population)``.
+    num : int
+        单个团簇的原子数. 当 symbol 未设置时为 0.
+    fp : float
+        变异缩放因子采样分布的选择概率参数.
+    p : float
+        变异策略选择概率参数.
+    CRm : float
+        交叉率中心参数.
+    energies : list[float | None]
+        按需从每个团簇对象属性 ``cluster.energy`` 读取的能量列表.
+        若某团簇缺失该属性, 对应位置为 None.
+    forces : list[list[list[float]] | None]
+        按需从每个团簇对象属性 ``cluster.forces`` 读取的力列表.
+        若某团簇缺失该属性, 对应位置为 None.
         
     Examples
     --------
@@ -42,12 +66,25 @@ class Population:
     def __init__(self, symbol: str | None = None):
         self._clusters: list[Atoms] = []
         self._symbol: str | None = symbol
-        self.energies: list[float | None] = []
-        self.forces: list[np.ndarray | None] = []
+        self._fp: float = 0.5
+        self._p: float = 0.5
+        self._CRm: float = 0.5
 
     @property
     def clusters(self) -> list[Atoms]:
         return self._clusters
+
+    @property
+    def fp(self) -> float:
+        return self._fp
+
+    @property
+    def p(self) -> float:
+        return self._p
+
+    @property
+    def CRm(self) -> float:
+        return self._CRm
 
     @property
     def symbol(self) -> str | None:
@@ -61,6 +98,15 @@ class Population:
 
     @property
     def size(self) -> int:
+        return len(self)
+
+    def __iter__(self):
+        return iter(self._clusters)
+
+    def __getitem__(self, index: int) -> Atoms:
+        return self._clusters[index]
+
+    def __len__(self) -> int:
         return len(self._clusters)
 
     @property
@@ -71,35 +117,61 @@ class Population:
         temp = Atoms(self._symbol)
         return len(temp)
 
-    def addCluster(self, cluster: Atoms):
+    @property
+    def energies(self) -> list[float | None]:
+        """按需从团簇对象属性提取能量，缺失时返回 None。"""
+        energies: list[float | None] = []
+        for cluster in self:
+            energyValue = getattr(cluster, 'energy', None)
+            energies.append(energyValue)
+        return energies
+
+    @property
+    def forces(self) -> list[list[list[float]] | None]:
+        """按需从团簇对象属性提取力，缺失时返回 None。"""
+        forces: list[list[list[float]] | None] = []
+        for cluster in self:
+            forceValue = getattr(cluster, 'forces', None)
+            forces.append(forceValue)
+        return forces
+
+    def addCluster(self, cluster: Atoms, deepcopy: bool = True):
         """导入一个团簇对象(Atoms类型)到_clusters列表末尾.
 
-        必须确保种群中所有团簇化学式相同(symbol), 即每种元素的原子数分别相同.
-        团簇类型(symbol)可作为种群的一个属性, 可以在实例化种群时添加, 
-        如果为空, 则在种群添加了第一个团簇时, 设为该团簇的化学式.
+        必须确保种群中所有团簇化学式相同.
+        在添加前会将团簇质心平移到原点.
+        若种群 symbol 为空, 则在添加第一个团簇时自动设置.
 
         Parameters
         ----------
         cluster : Atoms
             ASE Atoms 对象, 代表一个团簇.
             其化学式必须与种群设定的 symbol 一致.
+        deepcopy : bool, optional
+            是否在添加时对 cluster 做深拷贝. Default True.
+
+        Returns
+        -------
+        None
+            该方法原地修改种群对象, 无返回值.
         """
         if not isinstance(cluster, Atoms):
             raise TypeError("Cluster must be an ase.Atoms object")
 
-        current_symbol = cluster.get_chemical_formula()
+        clusterToAdd = copy.deepcopy(cluster) if deepcopy else cluster
+        # 平移质心到原点
+        clusterToAdd.set_center_of_mass([0.0, 0.0, 0.0])
+
+        current_symbol = clusterToAdd.get_chemical_formula()
         
         if self._symbol is None:
             self.symbol = current_symbol 
         else:
             # 必须确保种群中所有团簇化学式相同
-            # Simple check based on atom count first
-            if len(cluster) != self.num:
-                 raise ValueError(f"Cluster size {len(cluster)} does not match population size {self.num}")
+            if current_symbol != self._symbol:
+                 raise ValueError(f"Cluster symbol {current_symbol} does not match population symbol {self._symbol}")
             
-        self._clusters.append(cluster)
-        self.energies.append(None)
-        self.forces.append(None)
+        self._clusters.append(clusterToAdd)
 
     def export(self, name: str | None = None, format: str = 'xyz') -> str:
         """导出种群数据到文件系统.
@@ -155,7 +227,7 @@ class Population:
             
             # Write file
             if self.energies[i] is not None:
-                cluster.info['energy'] = self.energies[i]
+                setattr(cluster, 'energy', self.energies[i])
             
             # Check cell for formats that require it
             original_cell = cluster.get_cell()
@@ -188,6 +260,8 @@ class Population:
         valid_energies = [(i, e) for i, e in enumerate(self.energies) if e is not None]
         if valid_energies:
             min_idx, min_e = min(valid_energies, key=lambda x: x[1])
+            if isinstance(min_e, np.generic):
+                min_e = min_e.item()
 
         clusters_info = []
         for i, cluster in enumerate(self._clusters):
@@ -198,10 +272,14 @@ class Population:
             elif force_data is None:
                 force_data = None
 
+            energyValue = self.energies[i]
+            if isinstance(energyValue, np.generic):
+                energyValue = energyValue.item()
+
             cluster_info = {
                 "name": f"{self.symbol}_{i}",
                 "symbol": cluster.get_chemical_formula(),
-                "energy": self.energies[i],
+                "energy": energyValue,
                 "positions": cluster.get_positions().tolist(),
                 "forces": force_data
             }
@@ -245,8 +323,6 @@ class Population:
                 return 
             else:
                 self._clusters = []
-                self.energies = []
-                self.forces = []
                 self._symbol = None
 
         try:
@@ -283,19 +359,15 @@ class Population:
                 # Note: self.addCluster appends None to energies/forces, so we overwrite them below
                 self._clusters.append(cluster)
                 
-                # Set energy and forces directly
+                # Set energy and forces on cluster object
                 energy = c_data.get('energy')
                 forces = c_data.get('forces')
                 
-                if forces is not None:
-                    forces = np.array(forces)
-                
-                self.energies.append(energy)
-                self.forces.append(forces)
-                
-                # Optional: Attach info to Atoms object for convenience
+                # Optional: Attach attributes to Atoms object for convenience
                 if energy is not None:
-                     cluster.info['energy'] = energy
+                     setattr(cluster, 'energy', energy)
+                if forces is not None:
+                     setattr(cluster, 'forces', forces)
                 
             except Exception as e:
                 print(f"Error loading cluster from JSON: {e}")
@@ -379,6 +451,21 @@ def localOptimize(pop: Population | Atoms | list[Atoms],
             dyn.run(fmax=fmax, steps=steps)
         except Exception as e:
             print(f"Optimization failed: {e}")
+
+        # 只同步到团簇对象属性，Population.energies/forces 按需读取这里。
+        energyValue = None
+        forceValue = None
+        if atoms.calc is not None:
+            try:
+                energyValue = atoms.get_potential_energy()
+            except Exception:
+                energyValue = None
+            try:
+                forceValue = atoms.get_forces().tolist()
+            except Exception:
+                forceValue = None
+        setattr(atoms, 'energy', energyValue)
+        setattr(atoms, 'forces', forceValue)
 
         # 计算后清除 cell
         # del atoms.cell # cell attribute deletion is not supported
@@ -480,6 +567,6 @@ def randomCluster(pop: Population,
     # Update energy and forces
     if cluster.calc:
         e = cluster.get_potential_energy()
-        f = cluster.get_forces()
-        pop.energies[pop.size - 1] = e
-        pop.forces[pop.size - 1] = f
+        f = cluster.get_forces().tolist()
+        setattr(pop.clusters[pop.size - 1], 'energy', e)
+        setattr(pop.clusters[pop.size - 1], 'forces', f)
