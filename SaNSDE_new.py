@@ -30,8 +30,6 @@ class Population:
         当前种群中的团簇列表.
     symbol : str | None
         种群化学式. 仅允许在未设置时初始化一次.
-    size : int
-        种群中团簇数量, 等价于 ``len(population)``, 逐步弃用.
     num : int
         单个团簇的原子数. 当 symbol 未设置时为 0.
     fp : float
@@ -95,10 +93,6 @@ class Population:
         if self._symbol is not None:
             raise ValueError("symbol已经被设置!")
         self._symbol = value
-
-    @property
-    def size(self) -> int:
-        return len(self)
 
     def __iter__(self):
         return iter(self._clusters)
@@ -290,7 +284,7 @@ class Population:
         summary_data = {
             "date": datetime.now().strftime('%Y%m%d%H%M%S'),
             "symbol": self.symbol,
-            "size": self.size,
+            "size": len(self),
             "min_energy": min_e,
             "min_energy_index": min_idx,
             "clusters": clusters_info
@@ -319,7 +313,7 @@ class Population:
              print(f"JSON file {filename} not found.")
              return
 
-        if self.size > 0:
+        if len(self) > 0:
             if not confirm:
                 print("Population is not empty. Set confirm=True to overwrite.")
                 return 
@@ -582,5 +576,5 @@ def randomCluster(pop: Population,
     # Update energy and forces
     energyValue = getattr(optimizedCluster, 'energy', None)
     forceValue = getattr(optimizedCluster, 'forces', None)
-    setattr(pop.clusters[pop.size - 1], 'energy', energyValue)
-    setattr(pop.clusters[pop.size - 1], 'forces', forceValue)
+    setattr(pop.clusters[len(pop) - 1], 'energy', energyValue)
+    setattr(pop.clusters[len(pop) - 1], 'forces', forceValue)
