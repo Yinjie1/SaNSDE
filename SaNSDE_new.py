@@ -685,6 +685,153 @@ def crossover(pop1: Population, pop2: Population) -> Population:
     return tempClusters
 
 
+def SphereCutSplice(
+    pop1: Population,
+    pop2: Population,
+    r: float = 0.8,
+    relax: Callable[[Population | Atoms], Population | Atoms] = relax,
+) -> Population:
+    """球切交叉：按球面划分并交换外层原子坐标，择优进入下一代。
+
+    Parameters
+    ----------
+    pop1 : Population
+        父代种群 1。
+    pop2 : Population
+        父代种群 2。
+    r : float, optional
+        半径缩放系数，取值范围 (0, 1]。
+        球面半径定义为 R = dmaxA * r。
+    relax : Callable, optional
+        局域优化函数（通常使用已定义的偏函数 relax）。
+
+    Returns
+    -------
+    Population
+        经过球切交叉与择优后的新种群。
+    """
+    if pop1.symbol != pop2.symbol:
+        raise ValueError("Population symbols must match for SphereCutSplice")
+    if len(pop1) != len(pop2):
+        raise ValueError("Population sizes must match for SphereCutSplice")
+    if len(pop1) < 2:
+        raise ValueError("SphereCutSplice requires at least 2 clusters per population")
+    if not (0.0 < r <= 1.0):
+        raise ValueError("r must be in (0, 1]")
+
+    tempClusters = Population(symbol=pop1.symbol)
+    tempClusters._fp = pop1.fp
+    tempClusters._p = pop1.p
+    tempClusters._CRm = pop1.CRm
+
+    def spliceOne(clusterA: Atoms, clusterB: Atoms) -> Atoms | None:
+        workA = clusterA.copy()
+        workB = clusterB.copy()
+
+        # 这里按需求使用质心（center of mass）移动到原点，不使用几何中心。
+        workA.set_center_of_mass([0.0, 0.0, 0.0])
+        workB.set_center_of_mass([0.0, 0.0, 0.0])
+
+        positionsA = workA.get_positions().copy()
+        positionsB = workB.get_positions().copy()
+        symbolsA = workA.get_chemical_symbols()
+        symbolsB = workB.get_chemical_symbols()
+
+        distA = np.linalg.norm(positionsA, axis=1)
+        distB = np.linalg.norm(positionsB, axis=1)
+
+        dmaxA = float(np.max(distA))
+        radius = dmaxA * r
+
+        symbolSet = sorted(set(symbolsA))
+        swapPairs: list[tuple[int, int]] = []
+
+        for symbol in symbolSet:
+            outerIndicesA = [
+                i for i, atomSymbol in enumerate(symbolsA)
+                if atomSymbol == symbol and distA[i] > radius
+            ]
+
+            countOuter = len(outerIndicesA)
+            if countOuter == 0:
+                continue
+
+            candidateIndicesB = [
+                i for i, atomSymbol in enumerate(symbolsB)
+                if atomSymbol == symbol
+            ]
+            candidateIndicesB.sort(key=lambda i: distB[i], reverse=True)
+            selectedIndicesB = candidateIndicesB[:countOuter]
+
+            if len(selectedIndicesB) < countOuter:
+                return None
+
+            # 若团簇2被选中交换的原子里出现 <= dmaxA*r/2，则本次交换失败并重选。
+            threshold = radius / 2.0
+            if any(distB[idx] <= threshold for idx in selectedIndicesB):
+                return None
+
+            outerIndicesA.sort(key=lambda i: distA[i], reverse=True)
+            selectedIndicesB.sort(key=lambda i: distB[i], reverse=True)
+            swapPairs.extend(zip(outerIndicesA, selectedIndicesB))
+
+        trialA = workA.copy()
+        trialB = workB.copy()
+        trialPosA = trialA.get_positions().copy()
+        trialPosB = trialB.get_positions().copy()
+
+        for indexA, indexB in swapPairs:
+            cache = trialPosA[indexA].copy()
+            trialPosA[indexA] = trialPosB[indexB]
+            trialPosB[indexB] = cache
+
+        trialA.set_positions(trialPosA)
+        trialB.set_positions(trialPosB)
+
+        relaxedA = relax(trialA)
+        relaxedB = relax(trialB)
+        if not isinstance(relaxedA, Atoms) or not isinstance(relaxedB, Atoms):
+            raise TypeError("relax must return Atoms when input is Atoms")
+
+        energyA = getattr(relaxedA, 'energy', None)
+        energyB = getattr(relaxedB, 'energy', None)
+        if energyA is None or energyB is None:
+            raise ValueError("relax result must contain energy for SphereCutSplice")
+
+        return relaxedA if float(energyA) <= float(energyB) else relaxedB
+
+    targetSize = len(pop1)
+    maxRetries = targetSize * 200
+    retryCount = 0
+
+    while len(tempClusters) < targetSize:
+        if retryCount >= maxRetries:
+            raise RuntimeError("SphereCutSplice failed to generate enough offspring after retries")
+        retryCount += 1
+
+        selected1 = np.random.choice(len(pop1), size=2, replace=False)
+        selected2 = np.random.choice(len(pop2), size=2, replace=False)
+
+        winners: list[Atoms] = []
+        roundFailed = False
+        for localIndex in range(2):
+            winner = spliceOne(pop1[int(selected1[localIndex])], pop2[int(selected2[localIndex])])
+            if winner is None:
+                roundFailed = True
+                break
+            winners.append(winner)
+
+        if roundFailed:
+            continue
+
+        for winner in winners:
+            if len(tempClusters) >= targetSize:
+                break
+            tempClusters.addCluster(winner, deepcopy=False)
+
+    return tempClusters
+
+
 def select(
     pop1: Population,
     pop2: Population,
