@@ -361,7 +361,7 @@ class Population:
 
 def localOptimize(pop: Population | Atoms, 
                   cell: list[float] | np.ndarray = [15, 15, 15], 
-                  potential: Calculator | None = None, 
+                  potential: Calculator = LennardJones(),
                   optimizer: type[Optimizer] = BFGS,
                   fmax: float = 0.05, 
                   steps: int = 100) -> Population | Atoms:
@@ -378,7 +378,7 @@ def localOptimize(pop: Population | Atoms,
     cell : list or np.ndarray, optional
         用于计算的模拟盒子大小, default [15, 15, 15].
     potential : Calculator, optional
-        ASE计算器对象(e.g., LJ, EMT, DeepMD等).
+        ASE计算器对象(e.g., LJ, EMT, DeepMD等). Default LennardJones().
     optimizer : type[Optimizer], optional
         ASE 优化器类(Optimizer 子类), 例如 BFGS/LBFGS/FIRE.
         Default BFGS.
@@ -415,8 +415,7 @@ def localOptimize(pop: Population | Atoms,
         atoms.center()
 
         # 计算器
-        if potential is not None:
-            atoms.calc = potential
+        atoms.calc = potential
 
         # Optimizer selection: 统一使用 ASE Optimizer 子类
         opt_class = optimizer
@@ -472,7 +471,7 @@ def randomCluster(pop: Population,
                   a: float, 
                   delta: float, 
                   cell: list[float] | np.ndarray, 
-                  potential: Calculator | None, 
+                  potential: Calculator,
                   optimizer: Any, 
                   fmax: float, 
                   steps: int):
