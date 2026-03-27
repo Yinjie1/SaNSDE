@@ -430,8 +430,7 @@ def localOptimize(pop: Population | Atoms,
     for atoms in newClusters:
         # cell 自动添加到团簇对象上
         atoms.set_cell(cell)
-        atoms.set_pbc(True)
-        atoms.center()
+        atoms.set_pbc(False)
 
         # 计算器
         atoms.calc = inheritedCalc if potential is None else potential
@@ -467,7 +466,6 @@ def localOptimize(pop: Population | Atoms,
 
         # 计算后清除 cell
         # del atoms.cell # cell attribute deletion is not supported
-        atoms.set_pbc(False)
         atoms.set_cell([0.0, 0.0, 0.0]) # Effectively clear cell dimensions
 
     if isSingle:
