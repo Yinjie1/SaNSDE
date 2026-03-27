@@ -689,7 +689,7 @@ def SphereCutSplice(
     pop1: Population,
     pop2: Population,
     r: float = 0.8,
-    relax: Callable[[Population | Atoms], Population | Atoms] = relax,
+    relax: Callable[[Population | Atoms], Population | Atoms] | None = None,
 ) -> Population:
     """球切交叉:按球面划分并交换外层原子坐标,择优进入下一代.
 
@@ -703,7 +703,8 @@ def SphereCutSplice(
         半径缩放系数,取值范围 (0, 1].
         球面半径定义为 R = dmaxA * r.
     relax : Callable, optional
-        局域优化函数(通常使用已定义的偏函数 relax).
+        局域优化函数. 可传入偏函数 relax() 或函数对象 localOptimize().
+        若使用默认值 None, 则直接报错.
 
     Returns
     -------
@@ -724,9 +725,12 @@ def SphereCutSplice(
     tempClusters._p = pop1.p
     tempClusters._CRm = pop1.CRm
 
+    if relax is None:
+        raise ValueError("SphereCutSplice requires explicit relax callable")
+
     def spliceOne(clusterA: Atoms, clusterB: Atoms) -> Atoms | None:
-        workA = clusterA.copy()
-        workB = clusterB.copy()
+        workA = copy.deepcopy(clusterA)
+        workB = copy.deepcopy(clusterB)
 
         # 这里按需求使用质心(center of mass)移动到原点,不使用几何中心.
         workA.set_center_of_mass([0.0, 0.0, 0.0])
@@ -775,8 +779,8 @@ def SphereCutSplice(
             selectedIndicesB.sort(key=lambda i: distB[i], reverse=True)
             swapPairs.extend(zip(outerIndicesA, selectedIndicesB))
 
-        trialA = workA.copy()
-        trialB = workB.copy()
+        trialA = copy.deepcopy(workA)
+        trialB = copy.deepcopy(workB)
         trialPosA = trialA.get_positions().copy()
         trialPosB = trialB.get_positions().copy()
 
