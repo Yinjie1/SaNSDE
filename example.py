@@ -1,0 +1,70 @@
+from __future__ import annotations
+
+import time
+import numpy as np
+from SaNSDE_new import *
+
+
+def bestEnergy(pop: Population) -> float:
+    values = [float(e) for e in pop.energies if e is not None]
+    if not values:
+        raise ValueError("Population has no available energy")
+    return min(values)
+
+
+def main() -> None:
+    np.random.seed(42)
+
+    # 1) 初始化种群: 先固定化学式, 再随机生成并添加 12 个 Au13 团簇.
+    pop = Population(symbol="Au13")
+    for _ in range(12):
+        randomCluster(
+            pop,
+            a=2.88,
+            delta=0.5,
+            cell=[15, 15, 15],
+            potential=LennardJones(),
+            optimizer=BFGS,
+            fmax=0.05,
+            steps=100,
+        )
+
+    prevBest: float | None = None
+    generations = 50
+
+    for gen in range(1, generations + 1):
+        tick = time.perf_counter()
+
+        # 2) 变异 + 交叉 + 球切交叉 + 局部变换.
+        popMut = mutate(pop)
+        popCross = crossover(pop, popMut)
+        popSplice = SphereCutSplice(pop, popCross, r=0.8, relax=relax)
+        popTrans = localTransformation(popSplice, r=0.25, relax=relax)
+
+        # 3) select 要求候选种群含 mutTag, 演示流程补默认标签.
+        for cluster in popTrans:
+            if getattr(cluster, "mut", None) is None:
+                setattr(cluster, "mut", 0)
+
+        # 4) 选择下一代并输出每代指标.
+        popNext = select(pop, popTrans, relax=relax)
+
+        currentBest = bestEnergy(popNext)
+        delta = "NA" if prevBest is None else f"{currentBest - prevBest:.8f}"
+        elapsed = time.perf_counter() - tick
+
+        print(
+            f"gen={gen:03d} best_energy={currentBest:.8f} "
+            f"delta_prev={delta} iter_time_s={elapsed:.4f}"
+        )
+
+        pop = popNext
+        prevBest = currentBest
+
+    # 5) 导出最终快照.
+    snapshotPath = pop.export(name="Au13_workflow_example_gen50", xyz=True)
+    print(f"final_snapshot={snapshotPath}")
+
+
+if __name__ == "__main__":
+    main()
