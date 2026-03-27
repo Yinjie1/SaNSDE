@@ -76,6 +76,7 @@
 - 若用户没有明确要求在主程序 `SaNSDE_new.py` 中新增或删除类/函数（例如仅要求修改某个方法），不得擅自新增或删除类/函数。
 - 自定义变量名优先使用驼峰命名法。
 - 类和函数注释格式参照 `class Population`：简介、参数、返回、示例（有必要时）。
+- 主程序中的注释和 docstring 标点统一使用 ASCII 英文标点符号。
 - 类型注解使用 Python 新版本规范（例如 `list[float | None]`，避免 `List[Optional[float]]` 旧写法）。
 - 代码实现与类型写法以 Python 3.13 规范为准。
 - 进行程序测试时，先备份主程序到`./test/`, 然后必须在 `./test/` 下新建独立 Python 脚本并 `import SaNSDE_new`，不得将测试脚本写入主程序。

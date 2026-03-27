@@ -125,7 +125,7 @@ class Population:
 
     @property
     def energies(self) -> list[float | None]:
-        """按需从团簇对象属性提取能量，缺失时返回 None。"""
+        """按需从团簇对象属性提取能量,缺失时返回 None."""
         energies: list[float | None] = []
         for cluster in self:
             energyValue = getattr(cluster, 'energy', None)
@@ -136,7 +136,7 @@ class Population:
 
     @property
     def forces(self) -> list[list[list[float]] | None]:
-        """按需从团簇对象属性提取力，缺失时返回 None。"""
+        """按需从团簇对象属性提取力,缺失时返回 None."""
         forces: list[list[list[float]] | None] = []
         for cluster in self:
             forceValue = getattr(cluster, 'forces', None)
@@ -381,9 +381,9 @@ def localOptimize(pop: Population | Atoms,
     potential : Calculator, optional
         ASE计算器对象(e.g., LJ, EMT, DeepMD等).
         当 potential=None 时:
-        - 对 Population: 遍历查找第一个已有 calc 的团簇，并将该 calc 应用于整个种群，打印 warning;
+        - 对 Population: 遍历查找第一个已有 calc 的团簇,并将该 calc 应用于整个种群,打印 warning;
           若未找到则报错.
-        - 对 Atoms: 要求 atoms.calc 已存在，否则报错.
+        - 对 Atoms: 要求 atoms.calc 已存在,否则报错.
     optimizer : type[Optimizer], optional
         ASE 优化器类(Optimizer 子类), 例如 BFGS/LBFGS/FIRE.
         Default BFGS.
@@ -449,7 +449,7 @@ def localOptimize(pop: Population | Atoms,
         except Exception as e:
             print(f"Optimization failed: {e}")
 
-        # 只同步到团簇对象属性，Population.energies/forces 按需读取这里。
+        # 只同步到团簇对象属性,Population.energies/forces 按需读取这里.
         energyValue = None
         forceValue = None
         if atoms.calc is not None:
@@ -473,7 +473,7 @@ def localOptimize(pop: Population | Atoms,
     return newClusters
 
 
-# 局域优化偏函数：固定常用参数，供 select 等流程直接复用
+# 局域优化偏函数:固定常用参数,供 select 等流程直接复用
 relax = functools.partial(
     localOptimize,
     cell=[15, 15, 15],
@@ -593,13 +593,13 @@ def randomCluster(pop: Population,
 
 
 def mutate(pop: Population) -> Population:
-    """对种群执行突变，返回突变后的暂定种群。"""
+    """对种群执行突变,返回突变后的暂定种群."""
     if len(pop) < 4:
         raise ValueError("Mutation requires at least 4 clusters in population")
 
     tempClusters = copy.deepcopy(pop)
 
-    # 选取当前最优个体索引（最低能量），要求所有个体能量都已就绪
+    # 选取当前最优个体索引(最低能量),要求所有个体能量都已就绪
     energies = pop.energies
     for i, energyValue in enumerate(energies):
         if energyValue is None:
@@ -607,7 +607,7 @@ def mutate(pop: Population) -> Population:
     indexBest = int(np.argmin(np.array(energies, dtype=float)))
 
     for i in range(len(pop)):
-        # 采样缩放因子 F：按 fp 在高斯/柯西分布之间切换
+        # 采样缩放因子 F:按 fp 在高斯/柯西分布之间切换
         if np.random.uniform(0.0, 1.0) < tempClusters.fp:
             scaleFactor = float(np.random.normal(0.5, 0.3))
         else:
@@ -643,7 +643,7 @@ def mutate(pop: Population) -> Population:
 
 
 def crossover(pop1: Population, pop2: Population) -> Population:
-    """对原种群与突变种群执行交叉，返回交叉后种群。"""
+    """对原种群与突变种群执行交叉,返回交叉后种群."""
     if pop1.symbol != pop2.symbol:
         raise ValueError("Population symbols must match for crossover")
     if len(pop1) != len(pop2):
@@ -655,20 +655,20 @@ def crossover(pop1: Population, pop2: Population) -> Population:
     tempClusters._CRm = pop1.CRm
 
     for i in range(len(pop1)):
-        # 采样当前个体交叉率，并裁剪到 [0, 1]。
-        # 裁剪是为了保证交叉概率合法，避免出现负值或大于 1。
+        # 采样当前个体交叉率,并裁剪到 [0, 1].
+        # 裁剪是为了保证交叉概率合法,避免出现负值或大于 1.
         crossRate = np.random.normal(pop1.CRm, 0.1)
         crossRate = np.clip(crossRate, 0.0, 1.0)
 
         # 至少保留一个原子来自突变种群
         jrand = np.random.randint(0, pop1.num)
 
-        # 使用坐标拷贝进行交叉，保证不原地改动输入种群 pop1/pop2。
+        # 使用坐标拷贝进行交叉,保证不原地改动输入种群 pop1/pop2.
         basePositions = pop1[i].get_positions().copy()
         mutPositions = pop2[i].get_positions().copy()
         trialPositions = basePositions.copy()
 
-        # 逐原子交叉：按 CR 或 jrand 选择保留突变位姿
+        # 逐原子交叉:按 CR 或 jrand 选择保留突变位姿
         for j in range(pop1.num):
             if np.random.uniform(0.0, 1.0) <= crossRate or j == jrand:
                 trialPositions[j] = mutPositions[j]
@@ -691,24 +691,24 @@ def SphereCutSplice(
     r: float = 0.8,
     relax: Callable[[Population | Atoms], Population | Atoms] = relax,
 ) -> Population:
-    """球切交叉：按球面划分并交换外层原子坐标，择优进入下一代。
+    """球切交叉:按球面划分并交换外层原子坐标,择优进入下一代.
 
     Parameters
     ----------
     pop1 : Population
-        父代种群 1。
+        父代种群 1.
     pop2 : Population
-        父代种群 2。
+        父代种群 2.
     r : float, optional
-        半径缩放系数，取值范围 (0, 1]。
-        球面半径定义为 R = dmaxA * r。
+        半径缩放系数,取值范围 (0, 1].
+        球面半径定义为 R = dmaxA * r.
     relax : Callable, optional
-        局域优化函数（通常使用已定义的偏函数 relax）。
+        局域优化函数(通常使用已定义的偏函数 relax).
 
     Returns
     -------
     Population
-        经过球切交叉与择优后的新种群。
+        经过球切交叉与择优后的新种群.
     """
     if pop1.symbol != pop2.symbol:
         raise ValueError("Population symbols must match for SphereCutSplice")
@@ -728,7 +728,7 @@ def SphereCutSplice(
         workA = clusterA.copy()
         workB = clusterB.copy()
 
-        # 这里按需求使用质心（center of mass）移动到原点，不使用几何中心。
+        # 这里按需求使用质心(center of mass)移动到原点,不使用几何中心.
         workA.set_center_of_mass([0.0, 0.0, 0.0])
         workB.set_center_of_mass([0.0, 0.0, 0.0])
 
@@ -766,7 +766,7 @@ def SphereCutSplice(
             if len(selectedIndicesB) < countOuter:
                 return None
 
-            # 若团簇2被选中交换的原子里出现 <= dmaxA*r/2，则本次交换失败并重选。
+            # 若团簇2被选中交换的原子里出现 <= dmaxA*r/2,则本次交换失败并重选.
             threshold = radius / 2.0
             if any(distB[idx] <= threshold for idx in selectedIndicesB):
                 return None
@@ -837,7 +837,7 @@ def select(
     pop2: Population,
     relax: Callable[[Population], Population | Atoms],
 ) -> Population:
-    """对原种群和候选种群执行选择并更新自适应参数。"""
+    """对原种群和候选种群执行选择并更新自适应参数."""
     if pop1.symbol != pop2.symbol:
         raise ValueError("Population symbols must match for selection")
     if len(pop1) != len(pop2):
@@ -848,7 +848,7 @@ def select(
     tempClusters._p = pop1.p
     tempClusters._CRm = pop1.CRm
 
-    # 先对两组候选做局域优化，再比较能量
+    # 先对两组候选做局域优化,再比较能量
     tempPop1 = relax(pop1)
     tempPop2 = relax(pop2)
     if not isinstance(tempPop1, Population) or not isinstance(tempPop2, Population):
@@ -873,7 +873,7 @@ def select(
             raise ValueError(f"pop2 is missing energy at index {i}")
         pop2EnergyValues.append(float(energyValue))
 
-    # 选择环节要求 pop2 含 mutTag 信息，否则无法更新 p 和 CRm
+    # 选择环节要求 pop2 含 mutTag 信息,否则无法更新 p 和 CRm
     for i in range(len(tempPop2)):
         if getattr(tempPop2[i], 'mut', None) is None:
             raise ValueError(f"pop2 is missing mutTag at index {i}")
@@ -902,11 +902,11 @@ def select(
             elif mutTag == 1:
                 nf2 += 1
 
-    # 更新 CRm：使用加权平均（仅统计成功个体）
+    # 更新 CRm:使用加权平均(仅统计成功个体)
     if crRec and sum(deltaRec) > 0:
         tempClusters._CRm = float(np.average(crRec, weights=deltaRec))
 
-    # 更新 p：按成功/失败统计更新策略选择概率
+    # 更新 p:按成功/失败统计更新策略选择概率
     denominator = ns2 * (ns1 + nf1) + ns1 * (ns2 + nf2)
     if denominator > 0:
         tempClusters._p = float((ns1 * (ns2 + nf2)) / denominator)
