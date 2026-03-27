@@ -10,6 +10,7 @@ from typing import Any, Callable
 from ase import Atoms
 from ase.io import write
 from ase.optimize import BFGS, LBFGS, GPMin, FIRE
+from ase.optimize.optimize import Optimizer
 from ase.calculators.calculator import Calculator
 from ase.calculators.lj import LennardJones
 from datetime import datetime
@@ -361,7 +362,7 @@ class Population:
 def localOptimize(pop: Population | Atoms, 
                   cell: list[float] | np.ndarray = [15, 15, 15], 
                   potential: Calculator | None = None, 
-                  optimizer: Any = None, 
+                  optimizer: type[Optimizer] = BFGS,
                   fmax: float = 0.05, 
                   steps: int = 100) -> Population | Atoms:
     """进行局域优化(结构弛豫)
@@ -378,8 +379,9 @@ def localOptimize(pop: Population | Atoms,
         用于计算的模拟盒子大小, default [15, 15, 15].
     potential : Calculator, optional
         ASE计算器对象(e.g., LJ, EMT, DeepMD等).
-    optimizer : str or Optimizer, optional
-        优化器类型. 支持字符串 'BFGS', 'LBFGS', 'CG', 'FIRE' 或 ASE优化器类. Default 'BFGS'.
+    optimizer : type[Optimizer], optional
+        ASE 优化器类(Optimizer 子类), 例如 BFGS/LBFGS/FIRE.
+        Default BFGS.
     fmax : float, optional
         收敛判据, 最大力阈值 (eV/Ang). Default 0.05.
     steps : int, optional
@@ -416,23 +418,10 @@ def localOptimize(pop: Population | Atoms,
         if potential is not None:
             atoms.calc = potential
 
-        # Optimizer selection
-        opt_class = BFGS 
-        if optimizer == 'CG':
-             # Dynamic import to bypass static analysis issues
-             import importlib
-             try:
-                 ase_opt = importlib.import_module('ase.optimize')
-                 opt_class = getattr(ase_opt, 'ConjugateGradient')
-             except (ImportError, AttributeError):
-                 print("ConjugateGradient not found, using BFGS.")
-                 opt_class = BFGS
-        elif optimizer == 'LBFGS':
-             opt_class = LBFGS
-        elif optimizer == 'FIRE':
-             opt_class = FIRE
-        elif optimizer is not None and not isinstance(optimizer, str):
-             opt_class = optimizer
+        # Optimizer selection: 统一使用 ASE Optimizer 子类
+        opt_class = optimizer
+        if not isinstance(opt_class, type) or not issubclass(opt_class, Optimizer):
+            raise TypeError("optimizer must be an ASE Optimizer subclass")
 
         if atoms.calc is None:
              continue
@@ -570,7 +559,7 @@ def randomCluster(pop: Population,
         raise TypeError("localOptimize should return Atoms when input is Atoms")
     
     # Add to pop
-    pop.addCluster(optimizedCluster)
+    pop.addCluster(optimizedCluster, deepcopy=False)
     
     # Update energy and forces
     energyValue = getattr(optimizedCluster, 'energy', None)
