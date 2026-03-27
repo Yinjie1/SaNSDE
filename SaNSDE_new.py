@@ -364,7 +364,8 @@ def localOptimize(pop: Population | Atoms,
                   potential: Calculator | None = None,
                   optimizer: type[Optimizer] = BFGS,
                   fmax: float = 0.05, 
-                  steps: int = 100) -> Population | Atoms:
+                  steps: int = 100,
+                  deepcopy: bool = True) -> Population | Atoms:
     """进行局域优化(结构弛豫)
     
     对种群中的所有团簇或单个团簇进行结构优化, 返回优化后的新对象.
@@ -390,6 +391,9 @@ def localOptimize(pop: Population | Atoms,
         收敛判据, 最大力阈值 (eV/Ang). Default 0.05.
     steps : int, optional
         最大优化步数. Default 100.
+    deepcopy : bool, optional
+        是否深拷贝输入对象后再优化. Default True.
+        为 False 时直接使用输入对象引用进行后续流程.
         
     Returns
     -------
@@ -403,11 +407,11 @@ def localOptimize(pop: Population | Atoms,
     >>> popNew = localOptimize(pop, potential=calc, optimizer='LBFGS')
     """
     if isinstance(pop, Population):
-        newClusters = copy.deepcopy(pop)
+        newClusters = copy.deepcopy(pop) if deepcopy else pop
         isSingle = False
     elif isinstance(pop, Atoms):
         newClusters = Population()
-        newClusters.addCluster(pop)
+        newClusters.addCluster(pop, deepcopy=deepcopy)
         isSingle = True
     else:
         raise TypeError("pop must be a Population or an ase.Atoms object")
