@@ -836,6 +836,85 @@ def SphereCutSplice(
     return tempClusters
 
 
+def localTransformation(
+    pop: Population,
+    r: float = 0.25,
+    relax: Callable[[Population | Atoms], Population | Atoms] | None = None,
+) -> Population:
+    """局部变换:随机扰动后择优保留更低能量个体.
+
+    对每个团簇原子坐标施加 [-r, r] 的均匀随机扰动.
+    分别对扰动前后团簇调用 relax, 选择能量较低者进入下一代.
+
+    Parameters
+    ----------
+    pop : Population
+        输入种群.
+    r : float, optional
+        扰动幅度, 每个坐标分量在 [-r, r] 取样. Default 0.25.
+    relax : Callable, optional
+        局域优化函数. 可传偏函数 relax() 或函数对象 localOptimize().
+
+    Returns
+    -------
+    Population
+        经过局部变换与选择后的新种群.
+    """
+    if relax is None:
+        raise ValueError("localTransformation requires explicit relax callable")
+    if r < 0:
+        raise ValueError("r must be >= 0")
+
+    sourcePop = pop
+    outputPop = Population(symbol=sourcePop.symbol)
+    outputPop._fp = sourcePop.fp
+    outputPop._p = sourcePop.p
+    outputPop._CRm = sourcePop.CRm
+
+    baseEnergyValues: list[float | None] = sourcePop.energies.copy()
+    baseCandidates: list[Atoms | None] = [None] * len(sourcePop)
+
+    for i, baseEnergy in enumerate(baseEnergyValues):
+        if baseEnergy is None:
+            baseCluster = copy.deepcopy(sourcePop[i])
+            relaxedBase = relax(baseCluster)
+            if not isinstance(relaxedBase, Atoms):
+                raise TypeError("relax must return Atoms when input is Atoms")
+            relaxedEnergy = getattr(relaxedBase, 'energy', None)
+            if relaxedEnergy is None:
+                raise ValueError("relax result must contain energy for localTransformation")
+            baseEnergyValues[i] = float(relaxedEnergy)
+            baseCandidates[i] = relaxedBase
+        else:
+            baseCandidate = copy.deepcopy(sourcePop[i])
+            setattr(baseCandidate, 'energy', float(baseEnergy))
+            baseCandidates[i] = baseCandidate
+
+    for i in range(len(sourcePop)):
+        baseEnergy = baseEnergyValues[i]
+        baseCandidate = baseCandidates[i]
+        if baseEnergy is None or baseCandidate is None:
+            raise ValueError("base energy completion failed in localTransformation")
+
+        perturbedCluster = copy.deepcopy(sourcePop[i])
+        positions = perturbedCluster.get_positions().copy()
+        noise = np.random.uniform(-r, r, size=positions.shape)
+        perturbedCluster.set_positions(positions + noise)
+
+        relaxedPerturbed = relax(perturbedCluster)
+        if not isinstance(relaxedPerturbed, Atoms):
+            raise TypeError("relax must return Atoms when input is Atoms")
+
+        energyPerturbed = getattr(relaxedPerturbed, 'energy', None)
+        if energyPerturbed is None:
+            raise ValueError("relax result must contain energy for localTransformation")
+
+        winner = relaxedPerturbed if float(energyPerturbed) < float(baseEnergy) else baseCandidate
+        outputPop.addCluster(winner, deepcopy=False)
+
+    return outputPop
+
+
 def select(
     pop1: Population,
     pop2: Population,
