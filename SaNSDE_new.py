@@ -572,7 +572,15 @@ def randomCluster(pop: Population,
     cluster = Atoms(symbols=symbols, positions=positions)
     
     # localOptimize
-    optimizedCluster = localOptimize(cluster, cell=cell, potential=potential, optimizer=optimizer, fmax=fmax, steps=steps)
+    optimizedCluster = localOptimize(
+        cluster,
+        cell=cell,
+        potential=potential,
+        optimizer=optimizer,
+        fmax=fmax,
+        steps=steps,
+        deepcopy=False,
+    )
     if not isinstance(optimizedCluster, Atoms):
         raise TypeError("localOptimize should return Atoms when input is Atoms")
     
