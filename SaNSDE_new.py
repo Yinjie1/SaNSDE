@@ -361,7 +361,7 @@ class Population:
 
 def localOptimize(pop: Population | Atoms, 
                   cell: list[float] | np.ndarray = [15, 15, 15], 
-                  potential: Calculator = LennardJones(),
+                  potential: Calculator | None = None,
                   optimizer: type[Optimizer] = BFGS,
                   fmax: float = 0.05, 
                   steps: int = 100) -> Population | Atoms:
@@ -378,7 +378,11 @@ def localOptimize(pop: Population | Atoms,
     cell : list or np.ndarray, optional
         用于计算的模拟盒子大小, default [15, 15, 15].
     potential : Calculator, optional
-        ASE计算器对象(e.g., LJ, EMT, DeepMD等). Default LennardJones().
+        ASE计算器对象(e.g., LJ, EMT, DeepMD等).
+        当 potential=None 时:
+        - 对 Population: 遍历查找第一个已有 calc 的团簇，并将该 calc 应用于整个种群，打印 warning;
+          若未找到则报错.
+        - 对 Atoms: 要求 atoms.calc 已存在，否则报错.
     optimizer : type[Optimizer], optional
         ASE 优化器类(Optimizer 子类), 例如 BFGS/LBFGS/FIRE.
         Default BFGS.
@@ -408,6 +412,17 @@ def localOptimize(pop: Population | Atoms,
     else:
         raise TypeError("pop must be a Population or an ase.Atoms object")
 
+    inheritedCalc: Calculator | None = None
+    if potential is None:
+        for atoms in newClusters:
+            if atoms.calc is not None:
+                inheritedCalc = atoms.calc
+                break
+        if inheritedCalc is None:
+            raise ValueError("potential is None and no calculator found in input clusters")
+        if isinstance(pop, Population):
+            print("Warning: potential is None. Inherited first found cluster calculator for all clusters.")
+
     for atoms in newClusters:
         # cell 自动添加到团簇对象上
         atoms.set_cell(cell)
@@ -415,7 +430,7 @@ def localOptimize(pop: Population | Atoms,
         atoms.center()
 
         # 计算器
-        atoms.calc = potential
+        atoms.calc = inheritedCalc if potential is None else potential
 
         # Optimizer selection: 统一使用 ASE Optimizer 子类
         opt_class = optimizer
