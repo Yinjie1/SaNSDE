@@ -24,7 +24,7 @@
 ### L2（函数接口）
 
 - `SaNSDE/05-AI接口文档/03-函数接口-localOptimize-randomCluster.md`
-- 触发：需要结构优化流程、随机团簇生成流程。
+- 触发：需要结构优化、随机团簇生成、变异/交叉/球切交叉/局部变换/选择流程。
 
 ### L3（少样本）
 
@@ -45,6 +45,7 @@
   - 输入/输出
   - 副作用与失败模式
   - 示例代码
+  - 迭代工作流节点（mutate/crossover/SphereCutSplice/localTransformation/select）
 - 更新顺序：
   1) 对应接口页（L1/L2/L3）
   2) `00-索引与加载策略.md`
