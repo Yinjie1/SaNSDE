@@ -930,7 +930,7 @@ def localTransformation(
 def select(
     pop1: Population,
     pop2: Population,
-    relax: Callable[[Population], Population | Atoms],
+    relax: Callable[[Population | Atoms], Population | Atoms],
 ) -> Population:
     """对原种群和候选种群执行选择并更新自适应参数."""
     if pop1.symbol != pop2.symbol:
@@ -962,10 +962,24 @@ def select(
             setattr(preservedCluster, 'energy', float(energyValue))
             pop1Candidates[i] = preservedCluster
 
-    # pop2: 按原策略做局域优化,并与 pop1 候选比较.
-    tempPop2 = relax(pop2)
-    if not isinstance(tempPop2, Population):
-        raise TypeError("relax must return Population when input is Population")
+    # pop2: 与 pop1 一致,先读取能量,仅对缺失能量个体做 relax 补全.
+    pop2EnergiesRaw: list[float | None] = pop2.energies.copy()
+    pop2Candidates: list[Atoms | None] = [None] * len(pop2)
+
+    for i, energyValue in enumerate(pop2EnergiesRaw):
+        if energyValue is None:
+            relaxedCluster = relax(copy.deepcopy(pop2[i]))
+            if not isinstance(relaxedCluster, Atoms):
+                raise TypeError("relax must return Atoms when input is Atoms")
+            relaxedEnergy = getattr(relaxedCluster, 'energy', None)
+            if relaxedEnergy is None:
+                raise ValueError(f"pop2 relax result missing energy at index {i}")
+            pop2EnergiesRaw[i] = float(relaxedEnergy)
+            pop2Candidates[i] = relaxedCluster
+        else:
+            preservedCluster = copy.deepcopy(pop2[i])
+            setattr(preservedCluster, 'energy', float(energyValue))
+            pop2Candidates[i] = preservedCluster
 
     crRec: list[float] = []
     deltaRec: list[float] = []
@@ -973,7 +987,7 @@ def select(
 
     # 选择环节要求两组种群都具备完整能量信息
     pop1Energies = pop1EnergiesRaw
-    pop2Energies = tempPop2.energies
+    pop2Energies = pop2EnergiesRaw
     pop1EnergyValues: list[float] = []
     pop2EnergyValues: list[float] = []
 
@@ -988,25 +1002,31 @@ def select(
 
     # mutTag 生命周期终点: select 在此消费 mutTag,用于统计并更新 p.
     # 选择环节要求 pop2 含 mutTag 信息,否则无法按策略统计并更新 p.
-    for i in range(len(tempPop2)):
-        if getattr(tempPop2[i], 'mut', None) is None:
+    for i in range(len(pop2Candidates)):
+        pop2Candidate = pop2Candidates[i]
+        if pop2Candidate is None:
+            raise ValueError(f"pop2 candidate missing at index {i}")
+        if getattr(pop2Candidate, 'mut', None) is None:
             raise ValueError(f"pop2 is missing mutTag at index {i}")
 
     for i in range(len(pop1Candidates)):
         pop1Candidate = pop1Candidates[i]
+        pop2Candidate = pop2Candidates[i]
         if pop1Candidate is None:
             raise ValueError(f"pop1 candidate missing at index {i}")
+        if pop2Candidate is None:
+            raise ValueError(f"pop2 candidate missing at index {i}")
 
         energy1 = pop1EnergyValues[i]
         energy2 = pop2EnergyValues[i]
-        mutTag = getattr(tempPop2[i], 'mut', None)
+        mutTag = getattr(pop2Candidate, 'mut', None)
 
         choosePop2 = energy2 < energy1
 
         if choosePop2:
-            tempClusters.addCluster(tempPop2[i], deepcopy=True)
+            tempClusters.addCluster(pop2Candidate, deepcopy=True)
             # 成功个体记录 CR 和能量改变量,用于后续更新 CRm.
-            currentCR = getattr(tempPop2[i], 'CR', None)
+            currentCR = getattr(pop2Candidate, 'CR', None)
             if currentCR is not None:
                 crRec.append(float(currentCR))
                 deltaRec.append(float(energy1 - energy2))
