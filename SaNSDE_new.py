@@ -574,7 +574,6 @@ def randomCluster(pop: Population,
 
 def mutate(pop: Population) -> Population:
     """对种群执行突变,返回突变后的暂定种群."""
-    # mutTag 生命周期起点: 仅在 mutate 里生成策略标签(0/1).
     if len(pop) < 4:
         raise ValueError("Mutation requires at least 4 clusters in population")
 
@@ -605,6 +604,7 @@ def mutate(pop: Population) -> Population:
                 pop[index1].get_positions()
                 + scaleFactor * (pop[index2].get_positions() - pop[index3].get_positions())
             )
+            # mutTag 生命周期起点: 在 mutate 中产生策略标签 0/1.
             mutTag = 0
         else:
             # DE/current-to-best/2
@@ -613,6 +613,7 @@ def mutate(pop: Population) -> Population:
                 + scaleFactor * (pop[indexBest].get_positions() - pop[i].get_positions())
                 + scaleFactor * (pop[index1].get_positions() - pop[index2].get_positions())
             )
+            # mutTag 生命周期起点: 在 mutate 中产生策略标签 0/1.
             mutTag = 1
 
         # 记录本个体突变策略标签 mutTag(0/1),供 select 统计成功/失败并更新 p.
@@ -626,7 +627,6 @@ def mutate(pop: Population) -> Population:
 
 def crossover(pop1: Population, pop2: Population) -> Population:
     """对原种群与突变种群执行交叉,返回交叉后种群."""
-    # mutTag 生命周期: 从 pop2(通常是 mutate 输出)透传到交叉后个体.
     if pop1.symbol != pop2.symbol:
         raise ValueError("Population symbols must match for crossover")
     if len(pop1) != len(pop2):
@@ -696,7 +696,6 @@ def SphereCutSplice(
     Population
         经过球切交叉与择优后的新种群.
     """
-    # mutTag 生命周期: 透传已有标签,不在此函数内新增策略标签.
     if pop1.symbol != pop2.symbol:
         raise ValueError("Population symbols must match for SphereCutSplice")
     if len(pop1) != len(pop2):
@@ -789,6 +788,12 @@ def SphereCutSplice(
             setattr(relaxedA, 'mut', mutTag)
             setattr(relaxedB, 'mut', mutTag)
 
+        # CR 生命周期透传: 供 select 在成功样本上更新 CRm.
+        crossRate = getattr(clusterB, 'CR', None)
+        if crossRate is not None:
+            setattr(relaxedA, 'CR', crossRate)
+            setattr(relaxedB, 'CR', crossRate)
+
         energyA = getattr(relaxedA, 'energy', None)
         energyB = getattr(relaxedB, 'energy', None)
         if energyA is None or energyB is None:
@@ -852,7 +857,6 @@ def localTransformation(
     Population
         经过局部变换与选择后的新种群.
     """
-    # mutTag 生命周期: 透传 sourcePop 的标签,不在此函数内新增策略标签.
     if relax is None:
         raise ValueError("localTransformation requires explicit relax callable")
     if r < 0:
@@ -894,6 +898,11 @@ def localTransformation(
         if mutTag is not None:
             setattr(baseCandidate, 'mut', mutTag)
 
+        # CR 生命周期透传: localTransformation 前后保持交叉率标签不丢失.
+        crossRate = getattr(sourcePop[i], 'CR', None)
+        if crossRate is not None:
+            setattr(baseCandidate, 'CR', crossRate)
+
         perturbedCluster = copy.deepcopy(sourcePop[i])
         positions = perturbedCluster.get_positions().copy()
         noise = np.random.uniform(-r, r, size=positions.shape)
@@ -909,6 +918,8 @@ def localTransformation(
 
         if mutTag is not None:
             setattr(relaxedPerturbed, 'mut', mutTag)
+        if crossRate is not None:
+            setattr(relaxedPerturbed, 'CR', crossRate)
 
         winner = relaxedPerturbed if float(energyPerturbed) < float(baseEnergy) else baseCandidate
         outputPop.addCluster(winner, deepcopy=False)
@@ -922,7 +933,6 @@ def select(
     relax: Callable[[Population], Population | Atoms],
 ) -> Population:
     """对原种群和候选种群执行选择并更新自适应参数."""
-    # mutTag 生命周期终点: select 消费 mutTag,用于统计并更新 p/CRm.
     if pop1.symbol != pop2.symbol:
         raise ValueError("Population symbols must match for selection")
     if len(pop1) != len(pop2):
@@ -958,6 +968,7 @@ def select(
             raise ValueError(f"pop2 is missing energy at index {i}")
         pop2EnergyValues.append(float(energyValue))
 
+    # mutTag 生命周期终点: select 在此消费 mutTag,用于统计并更新 p.
     # 选择环节要求 pop2 含 mutTag 信息,否则无法按策略统计并更新 p.
     for i in range(len(tempPop2)):
         if getattr(tempPop2[i], 'mut', None) is None:
