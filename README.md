@@ -152,7 +152,27 @@ json_path = pop_next.export(name="Au13_snapshot")
 json_path = pop_next.export(name="Au13_snapshot", xyz=True)
 ```
 
-### 4) 完整工作流脚本
+### 4) 种群其他操作
+
+```python
+# 索引：返回单个团簇 Atoms
+first_cluster = pop_opt[0]
+
+# 切片：返回新的 Population
+sub_pop = pop_opt[::2]
+print(len(sub_pop))
+
+# 迭代
+for cluster in sub_pop:
+    print(cluster.get_chemical_formula())
+
+# 当前最优团簇
+best_cluster = pop_opt.bestCluster
+best_energy = best_cluster.energy
+print(best_cluster.get_chemical_formula(), best_energy)
+```
+
+### 5) 完整工作流脚本
 
 可直接运行仓库根目录下的 `example.py`：
 
