@@ -130,7 +130,7 @@ calc = LennardJones()
 pop_opt = localOptimize(pop, potential=calc, optimizer=BFGS, fmax=0.05, steps=100)
 ```
 
-### 2) 单轮 SaNSDE（mutate -> crossover -> SphereCutSplice -> localTransformation -> select）
+### 2) 单轮 SaNSDE（变异 -> 交叉 -> 球切交叉 -> 局部变换 -> 选择）
 
 ```python
 from SaNSDE_new import mutate, crossover, SphereCutSplice, localTransformation, select, relax
