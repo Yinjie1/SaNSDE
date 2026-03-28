@@ -780,6 +780,12 @@ def SphereCutSplice(
         if not isinstance(relaxedA, Atoms) or not isinstance(relaxedB, Atoms):
             raise TypeError("relax must return Atoms when input is Atoms")
 
+        # 与 crossover 一致: 传递 mutTag 供后续 select 更新 p/CRm.
+        mutTag = getattr(clusterB, 'mut', None)
+        if mutTag is not None:
+            setattr(relaxedA, 'mut', mutTag)
+            setattr(relaxedB, 'mut', mutTag)
+
         energyA = getattr(relaxedA, 'energy', None)
         energyB = getattr(relaxedB, 'energy', None)
         if energyA is None or energyB is None:
@@ -879,6 +885,11 @@ def localTransformation(
         if baseEnergy is None or baseCandidate is None:
             raise ValueError("base energy completion failed in localTransformation")
 
+        # 传递 mutTag: localTransformation 前后保持策略标签不丢失.
+        mutTag = getattr(sourcePop[i], 'mut', None)
+        if mutTag is not None:
+            setattr(baseCandidate, 'mut', mutTag)
+
         perturbedCluster = copy.deepcopy(sourcePop[i])
         positions = perturbedCluster.get_positions().copy()
         noise = np.random.uniform(-r, r, size=positions.shape)
@@ -891,6 +902,9 @@ def localTransformation(
         energyPerturbed = getattr(relaxedPerturbed, 'energy', None)
         if energyPerturbed is None:
             raise ValueError("relax result must contain energy for localTransformation")
+
+        if mutTag is not None:
+            setattr(relaxedPerturbed, 'mut', mutTag)
 
         winner = relaxedPerturbed if float(energyPerturbed) < float(baseEnergy) else baseCandidate
         outputPop.addCluster(winner, deepcopy=False)

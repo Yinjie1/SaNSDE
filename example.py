@@ -37,10 +37,6 @@ def main() -> None:
         popSplice = SphereCutSplice(pop, popCross, r=0.8, relax=relax)
         popTrans = localTransformation(popSplice, r=0.25, relax=relax)
 
-        # select 需要 pop2 含 mutTag, 这里沿用本代 mutate 结果的标签.
-        for i, cluster in enumerate(popTrans):
-            setattr(cluster, "mut", getattr(popMut[i], "mut", None))
-
         # 3) 选择下一代并输出每代指标.
         popNext = select(pop, popTrans, relax=relax)
 
