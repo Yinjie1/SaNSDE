@@ -943,10 +943,28 @@ def select(
     tempClusters._p = pop1.p
     tempClusters._CRm = pop1.CRm
 
-    # 先对两组候选做局域优化,再比较能量
-    tempPop1 = relax(pop1)
+    # pop1: 先读取现有能量,仅对缺失能量个体做 relax 补全.
+    pop1EnergiesRaw: list[float | None] = pop1.energies.copy()
+    pop1Candidates: list[Atoms | None] = [None] * len(pop1)
+
+    for i, energyValue in enumerate(pop1EnergiesRaw):
+        if energyValue is None:
+            relaxedCluster = relax(copy.deepcopy(pop1[i]))
+            if not isinstance(relaxedCluster, Atoms):
+                raise TypeError("relax must return Atoms when input is Atoms")
+            relaxedEnergy = getattr(relaxedCluster, 'energy', None)
+            if relaxedEnergy is None:
+                raise ValueError(f"pop1 relax result missing energy at index {i}")
+            pop1EnergiesRaw[i] = float(relaxedEnergy)
+            pop1Candidates[i] = relaxedCluster
+        else:
+            preservedCluster = copy.deepcopy(pop1[i])
+            setattr(preservedCluster, 'energy', float(energyValue))
+            pop1Candidates[i] = preservedCluster
+
+    # pop2: 按原策略做局域优化,并与 pop1 候选比较.
     tempPop2 = relax(pop2)
-    if not isinstance(tempPop1, Population) or not isinstance(tempPop2, Population):
+    if not isinstance(tempPop2, Population):
         raise TypeError("relax must return Population when input is Population")
 
     crRec: list[float] = []
@@ -954,7 +972,7 @@ def select(
     ns1, ns2, nf1, nf2 = 0, 0, 0, 0
 
     # 选择环节要求两组种群都具备完整能量信息
-    pop1Energies = tempPop1.energies
+    pop1Energies = pop1EnergiesRaw
     pop2Energies = tempPop2.energies
     pop1EnergyValues: list[float] = []
     pop2EnergyValues: list[float] = []
@@ -974,7 +992,11 @@ def select(
         if getattr(tempPop2[i], 'mut', None) is None:
             raise ValueError(f"pop2 is missing mutTag at index {i}")
 
-    for i in range(len(tempPop1)):
+    for i in range(len(pop1Candidates)):
+        pop1Candidate = pop1Candidates[i]
+        if pop1Candidate is None:
+            raise ValueError(f"pop1 candidate missing at index {i}")
+
         energy1 = pop1EnergyValues[i]
         energy2 = pop2EnergyValues[i]
         mutTag = getattr(tempPop2[i], 'mut', None)
@@ -993,7 +1015,7 @@ def select(
             elif mutTag == 1:
                 ns2 += 1
         else:
-            tempClusters.addCluster(tempPop1[i], deepcopy=True)
+            tempClusters.addCluster(pop1Candidate, deepcopy=True)
             if mutTag == 0:
                 nf1 += 1
             elif mutTag == 1:
