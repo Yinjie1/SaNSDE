@@ -380,10 +380,7 @@ def localOptimize(pop: Population | Atoms,
         用于计算的模拟盒子大小, default [15, 15, 15].
     potential : Calculator, optional
         ASE计算器对象(e.g., LJ, EMT, DeepMD等).
-        当 potential=None 时:
-        - 对 Population: 遍历查找第一个已有 calc 的团簇,并将该 calc 应用于整个种群,打印 warning;
-          若未找到则报错.
-        - 对 Atoms: 要求 atoms.calc 已存在,否则报错.
+        不允许为 None; 若为 None 直接报错.
     optimizer : type[Optimizer], optional
         ASE 优化器类(Optimizer 子类), 例如 BFGS/LBFGS/FIRE.
         Default BFGS.
@@ -406,6 +403,9 @@ def localOptimize(pop: Population | Atoms,
     --------
     >>> popNew = localOptimize(pop, potential=calc, optimizer='LBFGS')
     """
+    if potential is None:
+        raise ValueError("potential must be an ASE calculator object, None is not allowed")
+
     if isinstance(pop, Population):
         newClusters = copy.deepcopy(pop) if deepcopy else pop
         isSingle = False
@@ -416,32 +416,18 @@ def localOptimize(pop: Population | Atoms,
     else:
         raise TypeError("pop must be a Population or an ase.Atoms object")
 
-    inheritedCalc: Calculator | None = None
-    if potential is None:
-        for atoms in newClusters:
-            if atoms.calc is not None:
-                inheritedCalc = atoms.calc
-                break
-        if inheritedCalc is None:
-            raise ValueError("potential is None and no calculator found in input clusters")
-        if isinstance(pop, Population):
-            print("Warning: potential is None. Inherited first found cluster calculator for all clusters.")
-
     for atoms in newClusters:
         # cell 自动添加到团簇对象上
         atoms.set_cell(cell)
         atoms.set_pbc(False)
 
         # 计算器
-        atoms.calc = inheritedCalc if potential is None else potential
+        atoms.calc = potential
 
         # Optimizer selection: 统一使用 ASE Optimizer 子类
         opt_class = optimizer
         if not isinstance(opt_class, type) or not issubclass(opt_class, Optimizer):
             raise TypeError("optimizer must be an ASE Optimizer subclass")
-
-        if atoms.calc is None:
-             continue
 
         try:
             dyn = opt_class(atoms, logfile=None) # type: ignore 
@@ -449,24 +435,25 @@ def localOptimize(pop: Population | Atoms,
         except Exception as e:
             print(f"Optimization failed: {e}")
 
-        # 只同步到团簇对象属性,Population.energies/forces 按需读取这里.
+        # 只同步到团簇对象属性, Population.energies/forces 按需读取这里.
+        # 仅复用优化器最后一步的 calculator.results, 不再触发额外能量/力计算.
         energyValue = None
         forceValue = None
         if atoms.calc is not None:
-            try:
-                energyValue = float(atoms.get_potential_energy())
-            except Exception:
-                energyValue = None
-            try:
-                forceValue = atoms.get_forces().tolist()
-            except Exception:
-                forceValue = None
+            calcResults = getattr(atoms.calc, 'results', None)
+            if not isinstance(calcResults, dict):
+                raise ValueError("calculator.results is missing after optimization")
+            if calcResults.get('energy') is None or calcResults.get('forces') is None:
+                raise ValueError("calculator.results must contain both energy and forces")
+            energyValue = float(calcResults['energy'])
+            forceValue = np.array(calcResults['forces']).tolist()
         setattr(atoms, 'energy', energyValue)
         setattr(atoms, 'forces', forceValue)
 
         # 计算后清除 cell
         # del atoms.cell # cell attribute deletion is not supported
         atoms.set_cell([0.0, 0.0, 0.0]) # Effectively clear cell dimensions
+        atoms.calc = None
 
     if isSingle:
         return newClusters.clusters[0]
