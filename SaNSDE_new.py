@@ -6,7 +6,7 @@ import json
 import copy
 import functools
 import numpy as np
-from typing import Any, Callable, Self, overload
+from typing import Callable, Self, overload
 from ase import Atoms
 from ase.io import write
 from ase.optimize import BFGS, LBFGS, GPMin, FIRE
@@ -47,16 +47,9 @@ class Population:
     forces : list[list[list[float]] | None]
         按需从每个团簇对象属性 ``cluster.forces`` 读取的力列表.
         若某团簇缺失该属性, 对应位置为 None.
+    bestCluster : Atoms
+        当前最低能量团簇. 空种群或全体缺失能量时抛 ValueError.
 
-    Methods
-    -------
-    addCluster(cluster: Atoms, deepcopy: bool = True) -> None
-        添加团簇到种群.
-    export(name: str | None = None, xyz: bool = False) -> str
-        导出种群快照为 JSON, 并可选导出 xyz 结构文件.
-    import_population(filename: str, confirm: bool = False) -> None
-        从 JSON 文件导入种群.
-        
     Examples
     --------
     初始化种群:
@@ -65,6 +58,22 @@ class Population:
     添加团簇:
     >>> cluster = Atoms('Au13', positions=...)
     >>> pop.addCluster(cluster)
+
+    切片:
+    >>> subPop = pop[::2]
+    >>> isinstance(subPop, Population)
+    True
+
+    索引:
+    >>> firstCluster = pop[0]
+
+    迭代:
+    >>> for cluster in pop:
+    ...     print(cluster.get_chemical_formula())
+
+    最优团簇:
+    >>> best = pop.bestCluster
+    >>> bestEnergy = best.energy
 
     导出种群:
     >>> json_path = pop.export(name="Gen_1")
