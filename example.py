@@ -3,11 +3,13 @@ from __future__ import annotations
 import time
 import numpy as np
 from SaNSDE_new import *
+# from deepmd.calculator import DP
+# dp = DP(model="graph.pb")
 
 relax = functools.partial(
     localOptimize,
     cell=[15, 15, 15],
-    # 这里替换为你需要的势函数的ase计算器对象
+    # 这里替换为你需要的势函数的ase计算器对象, 如potential=dp
     potential=LennardJones(),
     optimizer=BFGS,
     fmax=0.05,
