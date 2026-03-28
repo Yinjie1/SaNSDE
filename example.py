@@ -5,16 +5,7 @@ import numpy as np
 from SaNSDE_new import *
 
 
-def bestEnergy(pop: Population) -> float:
-    values = [float(e) for e in pop.energies if e is not None]
-    if not values:
-        raise ValueError("Population has no available energy")
-    return min(values)
-
-
 def main() -> None:
-    np.random.seed(42)
-
     # 1) 初始化种群: 先固定化学式, 再随机生成并添加 12 个 Au13 团簇.
     pop = Population(symbol="Au13")
     for _ in range(12):
@@ -40,7 +31,10 @@ def main() -> None:
         # 3) 选择下一代并输出每代指标.
         popNext = select(pop, popTrans, relax=relax)
 
-        currentBest = bestEnergy(popNext)
+        energyValues = [float(e) for e in popNext.energies if e is not None]
+        if not energyValues:
+            raise ValueError("Population has no available energy")
+        currentBest = min(energyValues)
         delta = "NA" if prevBest is None else f"{currentBest - prevBest:.8f}"
         elapsed = time.perf_counter() - tick
 
