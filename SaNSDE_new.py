@@ -574,6 +574,7 @@ def randomCluster(pop: Population,
 
 def mutate(pop: Population) -> Population:
     """对种群执行突变,返回突变后的暂定种群."""
+    # mutTag 生命周期起点: 仅在 mutate 里生成策略标签(0/1).
     if len(pop) < 4:
         raise ValueError("Mutation requires at least 4 clusters in population")
 
@@ -625,6 +626,7 @@ def mutate(pop: Population) -> Population:
 
 def crossover(pop1: Population, pop2: Population) -> Population:
     """对原种群与突变种群执行交叉,返回交叉后种群."""
+    # mutTag 生命周期: 从 pop2(通常是 mutate 输出)透传到交叉后个体.
     if pop1.symbol != pop2.symbol:
         raise ValueError("Population symbols must match for crossover")
     if len(pop1) != len(pop2):
@@ -694,6 +696,7 @@ def SphereCutSplice(
     Population
         经过球切交叉与择优后的新种群.
     """
+    # mutTag 生命周期: 透传已有标签,不在此函数内新增策略标签.
     if pop1.symbol != pop2.symbol:
         raise ValueError("Population symbols must match for SphereCutSplice")
     if len(pop1) != len(pop2):
@@ -849,6 +852,7 @@ def localTransformation(
     Population
         经过局部变换与选择后的新种群.
     """
+    # mutTag 生命周期: 透传 sourcePop 的标签,不在此函数内新增策略标签.
     if relax is None:
         raise ValueError("localTransformation requires explicit relax callable")
     if r < 0:
@@ -918,6 +922,7 @@ def select(
     relax: Callable[[Population], Population | Atoms],
 ) -> Population:
     """对原种群和候选种群执行选择并更新自适应参数."""
+    # mutTag 生命周期终点: select 消费 mutTag,用于统计并更新 p/CRm.
     if pop1.symbol != pop2.symbol:
         raise ValueError("Population symbols must match for selection")
     if len(pop1) != len(pop2):

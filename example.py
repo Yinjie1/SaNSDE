@@ -4,6 +4,15 @@ import time
 import numpy as np
 from SaNSDE_new import *
 
+relax = functools.partial(
+    localOptimize,
+    cell=[15, 15, 15],
+    # 这里替换为你需要的势函数的ase计算器对象
+    potential=LennardJones(),
+    optimizer=BFGS,
+    fmax=0.05,
+    steps=100,
+)
 
 def main() -> None:
     # 1) 初始化种群: 先固定化学式, 再随机生成并添加 12 个 Au13 团簇.
