@@ -26,7 +26,7 @@ def main() -> None:
         )
 
     prevBest: float | None = None
-    generations = 50
+    generations = 10
 
     for gen in range(1, generations + 1):
         tick = time.perf_counter()
@@ -36,6 +36,10 @@ def main() -> None:
         popCross = crossover(pop, popMut)
         popSplice = SphereCutSplice(pop, popCross, r=0.8, relax=relax)
         popTrans = localTransformation(popSplice, r=0.25, relax=relax)
+
+        # select 需要 pop2 含 mutTag, 这里沿用本代 mutate 结果的标签.
+        for i, cluster in enumerate(popTrans):
+            setattr(cluster, "mut", getattr(popMut[i], "mut", None))
 
         # 3) 选择下一代并输出每代指标.
         popNext = select(pop, popTrans, relax=relax)
@@ -53,7 +57,7 @@ def main() -> None:
         prevBest = currentBest
 
     # 5) 导出最终快照.
-    snapshotPath = pop.export(name="Au13_workflow_example_gen50", xyz=True)
+    snapshotPath = pop.export(name="Au13_workflow_example_gen10", xyz=True)
     print(f"final_snapshot={snapshotPath}")
 
 

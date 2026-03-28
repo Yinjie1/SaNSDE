@@ -614,6 +614,7 @@ def mutate(pop: Population) -> Population:
             )
             mutTag = 1
 
+        # 记录本个体突变策略标签 mutTag(0/1),供 select 统计成功/失败并更新 p.
         tempClusters[i].set_positions(newPositions)
         setattr(tempClusters[i], 'mut', mutTag)
         setattr(tempClusters[i], 'energy', None)
@@ -657,7 +658,9 @@ def crossover(pop1: Population, pop2: Population) -> Population:
             symbols=pop1[i].get_chemical_symbols(),
             positions=trialPositions,
         )
+        # 记录本个体交叉率 CR,供 select 在成功样本上更新 CRm.
         setattr(trialCluster, 'CR', crossRate)
+        # 传递 mutTag,供 select 统计对应策略成功/失败并更新 p.
         setattr(trialCluster, 'mut', getattr(pop2[i], 'mut', None))
 
         tempClusters.addCluster(trialCluster)
@@ -936,7 +939,7 @@ def select(
             raise ValueError(f"pop2 is missing energy at index {i}")
         pop2EnergyValues.append(float(energyValue))
 
-    # 选择环节要求 pop2 含 mutTag 信息,否则无法更新 p 和 CRm
+    # 选择环节要求 pop2 含 mutTag 信息,否则无法按策略统计并更新 p.
     for i in range(len(tempPop2)):
         if getattr(tempPop2[i], 'mut', None) is None:
             raise ValueError(f"pop2 is missing mutTag at index {i}")
@@ -950,6 +953,7 @@ def select(
 
         if choosePop2:
             tempClusters.addCluster(tempPop2[i], deepcopy=True)
+            # 成功个体记录 CR 和能量改变量,用于后续更新 CRm.
             currentCR = getattr(tempPop2[i], 'CR', None)
             if currentCR is not None:
                 crRec.append(float(currentCR))
@@ -965,11 +969,11 @@ def select(
             elif mutTag == 1:
                 nf2 += 1
 
-    # 更新 CRm:使用加权平均(仅统计成功个体)
+    # 更新 CRm:使用成功个体的 CR 按能量改变量加权平均.
     if crRec and sum(deltaRec) > 0:
         tempClusters._CRm = float(np.average(crRec, weights=deltaRec))
 
-    # 更新 p:按成功/失败统计更新策略选择概率
+    # 更新 p:按 mutTag 两类策略的成功/失败统计更新选择概率.
     denominator = ns2 * (ns1 + nf1) + ns1 * (ns2 + nf2)
     if denominator > 0:
         tempClusters._p = float((ns1 * (ns2 + nf2)) / denominator)
