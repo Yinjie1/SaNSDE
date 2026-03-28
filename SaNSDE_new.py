@@ -6,7 +6,7 @@ import json
 import copy
 import functools
 import numpy as np
-from typing import Any, Callable
+from typing import Any, Callable, Self, overload
 from ase import Atoms
 from ase.io import write
 from ase.optimize import BFGS, LBFGS, GPMin, FIRE
@@ -109,7 +109,21 @@ class Population:
     def __iter__(self):
         return iter(self._clusters)
 
-    def __getitem__(self, index: int) -> Atoms:
+    @overload
+    def __getitem__(self, index: int) -> Atoms: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> Self: ...
+
+    def __getitem__(self, index: int | slice) -> Atoms | Self:
+        if isinstance(index, slice):
+            subPop = Population(symbol=self._symbol)
+            subPop._fp = self._fp
+            subPop._p = self._p
+            subPop._CRm = self._CRm
+            for cluster in self._clusters[index]:
+                subPop.addCluster(cluster, deepcopy=True)
+            return subPop
         return self._clusters[index]
 
     def __len__(self) -> int:
@@ -142,6 +156,27 @@ class Population:
             forceValue = getattr(cluster, 'forces', None)
             forces.append(forceValue)
         return forces
+    
+    @property
+    def bestCluster(self) -> Atoms:
+        """返回当前最优团簇, 即最低能量团簇."""
+        if len(self._clusters) == 0:
+            raise ValueError("Population is empty, bestCluster is unavailable")
+
+        energies = self.energies
+        bestIndex: int | None = None
+        bestEnergy: float | None = None
+        for i, energyValue in enumerate(energies):
+            if energyValue is None:
+                continue
+            if bestEnergy is None or energyValue < bestEnergy:
+                bestEnergy = energyValue
+                bestIndex = i
+
+        if bestIndex is None:
+            raise ValueError("No valid energy in population, bestCluster is unavailable")
+
+        return self._clusters[bestIndex]
 
     def addCluster(self, cluster: Atoms, deepcopy: bool = True):
         """导入一个团簇对象(Atoms类型)到_clusters列表末尾.
