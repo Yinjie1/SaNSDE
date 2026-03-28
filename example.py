@@ -22,11 +22,7 @@ def main() -> None:
             pop,
             a=2.88,
             delta=0.5,
-            cell=[15, 15, 15],
-            potential=LennardJones(),
-            optimizer=BFGS,
-            fmax=0.05,
-            steps=100,
+            relax=relax,
         )
 
     prevBest: float | None = None
@@ -41,12 +37,7 @@ def main() -> None:
         popSplice = SphereCutSplice(pop, popCross, r=0.8, relax=relax)
         popTrans = localTransformation(popSplice, r=0.25, relax=relax)
 
-        # 3) select 要求候选种群含 mutTag, 演示流程补默认标签.
-        for cluster in popTrans:
-            if getattr(cluster, "mut", None) is None:
-                setattr(cluster, "mut", 0)
-
-        # 4) 选择下一代并输出每代指标.
+        # 3) 选择下一代并输出每代指标.
         popNext = select(pop, popTrans, relax=relax)
 
         currentBest = bestEnergy(popNext)

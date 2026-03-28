@@ -487,11 +487,7 @@ relax = functools.partial(
 def randomCluster(pop: Population, 
                   a: float, 
                   delta: float, 
-                  cell: list[float] | np.ndarray, 
-                  potential: Calculator,
-                  optimizer: Any, 
-                  fmax: float, 
-                  steps: int):
+                  relax: Callable[[Population | Atoms], Population | Atoms]):
     """随机生成一个团簇并添加进种群.
     
     使用生长法随机生成团簇初始坐标, 并进行局域优化后加入种群.
@@ -508,20 +504,12 @@ def randomCluster(pop: Population,
         晶格常数或第一近邻距离 (Angstrom). 用于控制生成团簇的致密程度.
     delta : float
         键长扰动因子 (0~1). bondl = (1 + delta * uniform(-0.25, 0.75)) * a.
-    cell : list or np.ndarray
-        模拟盒子大小.
-    potential : Calculator, optional
-        ASE计算器.
-    optimizer : str or Optimizer, optional
-        优化器类型.
-    fmax : float
-        力收敛判据.
-    steps : int
-        最大优化步数.
+    relax : Callable
+        局域优化函数. 可传入偏函数 relax() 或函数对象 localOptimize().
         
     Examples
     --------
-    >>> randomCluster(pop, a=2.5, delta=0.5, cell=[20]*3, potential=calc, optimizer='BFGS', fmax=0.02, steps=200)
+    >>> randomCluster(pop, a=2.5, delta=0.5, relax=relax)
     """
     N = pop.num
     if N == 0:
@@ -570,15 +558,7 @@ def randomCluster(pop: Population,
     cluster = Atoms(symbols=symbols, positions=positions)
     
     # localOptimize
-    optimizedCluster = localOptimize(
-        cluster,
-        cell=cell,
-        potential=potential,
-        optimizer=optimizer,
-        fmax=fmax,
-        steps=steps,
-        deepcopy=False,
-    )
+    optimizedCluster = relax(cluster)
     if not isinstance(optimizedCluster, Atoms):
         raise TypeError("localOptimize should return Atoms when input is Atoms")
     
