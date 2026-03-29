@@ -9,6 +9,7 @@ import numpy as np
 from typing import Callable, Self, overload
 from ase import Atoms
 from ase.io import write
+from ase.io.trajectory import Trajectory
 from ase.optimize import BFGS, LBFGS, GPMin, FIRE
 from ase.optimize.optimize import Optimizer
 from ase.calculators.calculator import Calculator
@@ -77,6 +78,9 @@ class Population:
 
     导出种群:
     >>> json_path = pop.export(name="Gen_1")
+
+    导出最优团簇轨迹:
+    >>> trajPath = pop.dump(name="Au13_best")
 
     导入种群:
     >>> pop_new = Population()
@@ -327,6 +331,56 @@ class Population:
             json.dump(summary_data, f, indent=4)
 
         return os.path.abspath(summary_path)
+
+    def dump(self, name: str | None = None) -> str:
+        """导出当前最优团簇到 ASE 轨迹文件(.traj).
+
+        使用 ASE Trajectory 接口写入 ./Populations/ 下的轨迹文件.
+        若文件已存在则追加写入新帧.
+        能量与力仅从团簇对象属性读取:
+        - 若存在 cluster.energy, 则写入 energy.
+        - 若存在 cluster.forces, 则写入 forces.
+        - 不会触发额外计算; 缺失字段则不写入.
+
+        Parameters
+        ----------
+        name : str, optional
+            轨迹文件名(不含扩展名). 默认使用 "{symbol}_best".
+
+        Returns
+        -------
+        str
+            导出轨迹文件的完整绝对路径.
+        """
+        bestCluster = self.bestCluster
+
+        baseDir = './Populations'
+        if not os.path.exists(baseDir):
+            os.makedirs(baseDir)
+
+        if name is None:
+            baseName = f"{self.symbol}_best" if self.symbol else "Population_best"
+        else:
+            baseName = name
+
+        trajPath = os.path.join(baseDir, f"{baseName}.traj")
+        mode = 'a' if os.path.exists(trajPath) else 'w'
+
+        exportCluster = bestCluster.copy()
+        writeKwargs: dict[str, float | np.ndarray] = {}
+
+        energyValue = getattr(bestCluster, 'energy', None)
+        if energyValue is not None:
+            writeKwargs['energy'] = float(energyValue)
+
+        forceValue = getattr(bestCluster, 'forces', None)
+        if forceValue is not None:
+            writeKwargs['forces'] = np.array(forceValue, dtype=float)
+
+        with Trajectory(trajPath, mode) as traj:
+            traj.write(exportCluster, **writeKwargs)
+
+        return os.path.abspath(trajPath)
 
     def import_population(self, filename: str, confirm: bool = False):
         """从JSON文件导入种群数据.
