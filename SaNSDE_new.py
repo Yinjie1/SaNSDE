@@ -732,7 +732,7 @@ def isConnectedGraph(cluster: Atoms, cutoff: float) -> bool:
     return all(visited)
 
 
-def mutate(pop: Population, a: float = 4) -> Population:
+def mutate(pop: Population, a: float = 4, n: int = 10) -> Population:
     """对种群执行突变,返回突变后的暂定种群.
 
     Parameters
@@ -742,11 +742,16 @@ def mutate(pop: Population, a: float = 4) -> Population:
     a : float, optional
         元素对应晶格常数(Ang). Default 4.
         仅在柯西分支用于半径约束阈值计算.
+    n : int, optional
+        柯西分支重采样最大次数. Default 10.
+        超过上限后将停止重采样,并使用最后一次候选坐标.
     """
     if len(pop) < 4:
         raise ValueError("Mutation requires at least 4 clusters in population")
     if a <= 0:
         raise ValueError("a must be > 0")
+    if n <= 0:
+        raise ValueError("n must be > 0")
 
     tempClusters = copy.deepcopy(pop)
 
@@ -758,7 +763,9 @@ def mutate(pop: Population, a: float = 4) -> Population:
     indexBest = int(np.argmin(np.array(energies, dtype=float)))
 
     nAtoms = pop.num
-    radiusLimit = 4 * a * (0.5 + (3 * nAtoms / (4 * np.pi * np.sqrt(2)))**(1.0 / 3.0))
+    # WARNING: 系数过小会导致柯西分支重采样次数激增, 甚至表现为长时间循环.
+    # 这里使用 10*a 对应阈值 5*R0, 放宽失败判据以降低卡顿风险.
+    radiusLimit = 10 * a * (0.5 + (3 * nAtoms / (4 * np.pi * np.sqrt(2)))**(1.0 / 3.0))
 
     for i in range(len(pop)):
         # 采样缩放因子分支:按 fp 在高斯/柯西之间切换.
@@ -793,14 +800,24 @@ def mutate(pop: Population, a: float = 4) -> Population:
             newPositions = buildPositions(scaleFactor)
         else:
             # 柯西分支增加半径约束: 若超出 2*R0 则重采样柯西分布.
+            retryCount = 0
+            lastPositions: np.ndarray | None = None
             while True:
                 scaleFactor = float(np.random.standard_cauchy())
                 trialPositions = buildPositions(scaleFactor)
+                lastPositions = trialPositions
                 maxDistance = float(np.linalg.norm(trialPositions, axis=1).max())
                 if maxDistance <= radiusLimit:
                     newPositions = trialPositions
                     break
                 print(f"突变失败, 存在距原点{maxDistance}的原子")
+                retryCount += 1
+                if retryCount >= n:
+                    if lastPositions is None:
+                        raise RuntimeError("mutate internal error: lastPositions is unavailable")
+                    print(f"警告: 柯西重采样达到上限 n={n}, 使用最后一次候选坐标")
+                    newPositions = lastPositions
+                    break
 
         # 记录本个体突变标签到 mut 属性(0/1).
         tempClusters[i].set_positions(newPositions)
