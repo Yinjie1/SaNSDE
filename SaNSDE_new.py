@@ -728,22 +728,10 @@ def isConnectedGraph(cluster: Atoms, cutoff: float) -> bool:
     return all(visited)
 
 
-def mutate(pop: Population, cutoff: float | None = None) -> Population:
-    """对种群执行突变,返回突变后的暂定种群.
-
-    Parameters
-    ----------
-    pop : Population
-        输入种群.
-    cutoff : float | None, optional
-        连通性阈值(Ang). 当为 None 时, 使用原突变逻辑.
-        当为数值时, 仅对柯西分布分支执行连通性检查:
-        若变异后团簇不连通, 则重采样柯西 scaleFactor 并重试.
-    """
+def mutate(pop: Population) -> Population:
+    """对种群执行突变,返回突变后的暂定种群."""
     if len(pop) < 4:
         raise ValueError("Mutation requires at least 4 clusters in population")
-    if cutoff is not None and cutoff <= 0:
-        raise ValueError("cutoff must be > 0 when provided")
 
     tempClusters = copy.deepcopy(pop)
 
@@ -755,45 +743,34 @@ def mutate(pop: Population, cutoff: float | None = None) -> Population:
     indexBest = int(np.argmin(np.array(energies, dtype=float)))
 
     for i in range(len(pop)):
-        useGaussian = np.random.uniform(0.0, 1.0) < tempClusters.fp
+        # 采样缩放因子 F:按 fp 在高斯/柯西分布之间切换
+        if np.random.uniform(0.0, 1.0) < tempClusters.fp:
+            scaleFactor = float(np.random.normal(0.5, 0.3))
+        else:
+            scaleFactor = float(np.random.standard_cauchy())
 
         # 从除 i 外的个体中采样互异索引
         candidateIndices = [idx for idx in range(len(pop)) if idx != i]
         index1, index2, index3 = np.random.choice(candidateIndices, size=3, replace=False)
 
         # 按 p 在两种突变策略之间切换
-        mutTag = 0 if np.random.uniform(0.0, 1.0) < tempClusters.p else 1
-
-        def buildPositions(scaleFactor: float) -> np.ndarray:
-            if mutTag == 0:
-                # DE/rand/1
-                return (
-                    pop[index1].get_positions()
-                    + scaleFactor * (pop[index2].get_positions() - pop[index3].get_positions())
-                )
+        if np.random.uniform(0.0, 1.0) < tempClusters.p:
+            # DE/rand/1
+            newPositions = (
+                pop[index1].get_positions()
+                + scaleFactor * (pop[index2].get_positions() - pop[index3].get_positions())
+            )
+            # mutTag 生命周期起点: 在 mutate 中产生策略标签 0/1.
+            mutTag = 0
+        else:
             # DE/current-to-best/2
-            return (
+            newPositions = (
                 pop[i].get_positions()
                 + scaleFactor * (pop[indexBest].get_positions() - pop[i].get_positions())
                 + scaleFactor * (pop[index1].get_positions() - pop[index2].get_positions())
             )
-
-        if useGaussian:
-            scaleFactor = float(np.random.normal(0.5, 0.3))
-            newPositions = buildPositions(scaleFactor)
-        else:
-            if cutoff is None:
-                scaleFactor = float(np.random.standard_cauchy())
-                newPositions = buildPositions(scaleFactor)
-            else:
-                while True:
-                    scaleFactor = float(np.random.standard_cauchy())
-                    candidatePositions = buildPositions(scaleFactor)
-                    candidateCluster = copy.deepcopy(pop[i])
-                    candidateCluster.set_positions(candidatePositions)
-                    if isConnectedGraph(candidateCluster, cutoff):
-                        newPositions = candidatePositions
-                        break
+            # mutTag 生命周期起点: 在 mutate 中产生策略标签 0/1.
+            mutTag = 1
 
         # 记录本个体突变策略标签 mutTag(0/1),供 select 统计成功/失败并更新 p.
         tempClusters[i].set_positions(newPositions)
