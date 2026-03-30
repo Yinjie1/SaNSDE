@@ -322,6 +322,9 @@ class Population:
             "date": datetime.now().strftime('%Y%m%d%H%M%S'),
             "symbol": self.symbol,
             "size": len(self),
+            "fp": self.fp,
+            "p": self.p,
+            "CRm": self.CRm,
             "min_energy": min_e,
             "min_energy_index": min_idx,
             "clusters": clusters_info
@@ -422,6 +425,17 @@ class Population:
         if self._symbol != data.get('symbol'):
              print(f"Warning: JSON symbol ({data.get('symbol')}) does not match population symbol ({self._symbol})")
              # Proceeding anyway, but this is a potential issue if user intends strict type checking
+
+        # Load adaptive parameters if present; keep current values when missing.
+        fpValue = data.get('fp')
+        pValue = data.get('p')
+        crmValue = data.get('CRm')
+        if fpValue is not None:
+            self._fp = float(fpValue)
+        if pValue is not None:
+            self._p = float(pValue)
+        if crmValue is not None:
+            self._CRm = float(crmValue)
         
         clusters_data = data.get('clusters', [])
         
