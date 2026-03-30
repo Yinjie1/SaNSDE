@@ -232,21 +232,26 @@ class Population:
     def export(self, name: str | None = None, xyz: bool = False) -> str:
         """导出种群数据到文件系统.
 
-        在当前目录'./Populations/'(如不存在则新建)下输出一个JSON文件.
-        JSON文件名为'name.json'(缺省时name为种群名称).
-        当 xyz=True 时, 会同时新建同名文件夹 name/, 其中输出团簇xyz文件.
+        在当前目录'./Populations/'(如不存在则新建)下输出一个 JSON 文件.
+        当 xyz=True 时, 会同时新建同名文件夹并输出团簇 xyz 文件.
 
         Parameters
         ----------
         name : str, optional
-            导出名称. 默认使用种群的 symbol.
+            导出名称(不含扩展名).
+            命名规则:
+            1) 当 name 为 None 时, 默认使用种群 symbol; 若 symbol 为空则使用 "Population".
+            2) JSON 文件名固定为 "{name}.json".
+            3) 当 "{name}.json" 已存在时, 自动追加时间戳后缀,
+               生成 "{name}_YYYYMMddhhmmss.json" 以避免覆盖.
+            4) 当 xyz=True 时, xyz 目录名与最终 JSON 同名(不含扩展名).
         xyz : bool, optional
-            是否同时导出团簇xyz文件. Default False.
+            是否同时导出团簇 xyz 文件. Default False.
 
         Returns
         -------
         str
-            导出JSON文件的完整绝对路径.
+            导出 JSON 文件的完整绝对路径.
         """
         if name is None:
             name = self.symbol if self.symbol else "Population"
