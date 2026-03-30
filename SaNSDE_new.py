@@ -649,6 +649,10 @@ def randomCluster(pop: Population,
             z = positions[idx_bondatom][2] + bondl * np.sin(bondtheta)
             
             trial_pos = np.array([x, y, z])
+
+            # 新原子必须位于半径 R0 球内.
+            if np.linalg.norm(trial_pos) > R0:
+                continue
             
             # if 该原子和其他原子距离 < 0.75*a: 重新生成
             dists = np.linalg.norm(positions[:i] - trial_pos, axis=1)
