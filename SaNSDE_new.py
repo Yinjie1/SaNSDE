@@ -732,10 +732,21 @@ def isConnectedGraph(cluster: Atoms, cutoff: float) -> bool:
     return all(visited)
 
 
-def mutate(pop: Population) -> Population:
-    """对种群执行突变,返回突变后的暂定种群."""
+def mutate(pop: Population, a: float = 4) -> Population:
+    """对种群执行突变,返回突变后的暂定种群.
+
+    Parameters
+    ----------
+    pop : Population
+        输入种群.
+    a : float, optional
+        元素对应晶格常数(Ang). Default 4.
+        仅在柯西分支用于半径约束阈值计算.
+    """
     if len(pop) < 4:
         raise ValueError("Mutation requires at least 4 clusters in population")
+    if a <= 0:
+        raise ValueError("a must be > 0")
 
     tempClusters = copy.deepcopy(pop)
 
@@ -746,37 +757,52 @@ def mutate(pop: Population) -> Population:
             raise ValueError(f"All clusters must have energy before mutation. Missing index: {i}")
     indexBest = int(np.argmin(np.array(energies, dtype=float)))
 
+    nAtoms = pop.num
+    radiusLimit = 4 * a * (0.5 + (3 * nAtoms / (4 * np.pi * np.sqrt(2)))**(1.0 / 3.0))
+
     for i in range(len(pop)):
-        # 采样缩放因子 F:按 fp 在高斯/柯西分布之间切换
-        if np.random.uniform(0.0, 1.0) < tempClusters.fp:
-            scaleFactor = float(np.random.normal(0.5, 0.3))
-        else:
-            scaleFactor = float(np.random.standard_cauchy())
+        # 采样缩放因子分支:按 fp 在高斯/柯西之间切换.
+        useGaussian = np.random.uniform(0.0, 1.0) < tempClusters.fp
+        # mutTag 在分布分支确定后立即确定: 0=Gaussian, 1=Cauchy.
+        mutTag = 0 if useGaussian else 1
 
         # 从除 i 外的个体中采样互异索引
         candidateIndices = [idx for idx in range(len(pop)) if idx != i]
         index1, index2, index3 = np.random.choice(candidateIndices, size=3, replace=False)
 
         # 按 p 在两种突变策略之间切换
-        if np.random.uniform(0.0, 1.0) < tempClusters.p:
-            # DE/rand/1
-            newPositions = (
-                pop[index1].get_positions()
-                + scaleFactor * (pop[index2].get_positions() - pop[index3].get_positions())
-            )
-            # mutTag 生命周期起点: 在 mutate 中产生策略标签 0/1.
-            mutTag = 0
-        else:
+        useRandStrategy = np.random.uniform(0.0, 1.0) < tempClusters.p
+
+        def buildPositions(scaleFactor: float) -> np.ndarray:
+            if useRandStrategy:
+                # DE/rand/1
+                return (
+                    pop[index1].get_positions()
+                    + scaleFactor * (pop[index2].get_positions() - pop[index3].get_positions())
+                )
             # DE/current-to-best/2
-            newPositions = (
+            return (
                 pop[i].get_positions()
                 + scaleFactor * (pop[indexBest].get_positions() - pop[i].get_positions())
                 + scaleFactor * (pop[index1].get_positions() - pop[index2].get_positions())
             )
-            # mutTag 生命周期起点: 在 mutate 中产生策略标签 0/1.
-            mutTag = 1
 
-        # 记录本个体突变策略标签 mutTag(0/1),供 select 统计成功/失败并更新 p.
+        if useGaussian:
+            # 高斯分支保持原逻辑.
+            scaleFactor = float(np.random.normal(0.5, 0.3))
+            newPositions = buildPositions(scaleFactor)
+        else:
+            # 柯西分支增加半径约束: 若超出 2*R0 则重采样柯西分布.
+            while True:
+                scaleFactor = float(np.random.standard_cauchy())
+                trialPositions = buildPositions(scaleFactor)
+                maxDistance = float(np.linalg.norm(trialPositions, axis=1).max())
+                if maxDistance <= radiusLimit:
+                    newPositions = trialPositions
+                    break
+                print(f"突变失败, 存在距原点{maxDistance}的原子")
+
+        # 记录本个体突变标签到 mut 属性(0/1).
         tempClusters[i].set_positions(newPositions)
         setattr(tempClusters[i], 'mut', mutTag)
         setattr(tempClusters[i], 'energy', None)
