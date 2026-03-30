@@ -169,7 +169,7 @@ class Population:
             forceValue = getattr(cluster, 'forces', None)
             forces.append(forceValue)
         return forces
-    
+
     @property
     def bestCluster(self) -> Atoms:
         """返回当前最优团簇, 即最低能量团簇."""
@@ -674,6 +674,58 @@ def randomCluster(pop: Population,
     forceValue = getattr(optimizedCluster, 'forces', None)
     setattr(pop.clusters[len(pop) - 1], 'energy', energyValue)
     setattr(pop.clusters[len(pop) - 1], 'forces', forceValue)
+
+
+def isConnectedGraph(cluster: Atoms, cutoff: float) -> bool:
+    """判断单个团簇是否为连通图.
+
+    Parameters
+    ----------
+    cluster : Atoms
+        待检查团簇.
+    cutoff : float
+        连边阈值(Ang). 两原子距离 <= cutoff 视为有边.
+
+    Returns
+    -------
+    bool
+        团簇连通返回 True, 否则返回 False.
+    """
+    # Step 1: 参数检查, cutoff 必填且必须为正数.
+    if cutoff is None:
+        raise ValueError("cutoff is required")
+    if cutoff <= 0:
+        raise ValueError("cutoff must be > 0")
+    if not isinstance(cluster, Atoms):
+        raise TypeError("cluster must be an ase.Atoms object")
+
+    nAtoms = len(cluster)
+
+    # Step 2: 0 或 1 个原子的团簇视为连通.
+    if nAtoms <= 1:
+        return True
+
+    # Step 3: 取坐标并初始化 DFS 状态.
+    positions = np.array(cluster.get_positions(), dtype=float)
+    visited = [False] * nAtoms
+    stack = [0]
+    visited[0] = True
+
+    # Step 4: 基于 cutoff 建边并做 DFS 遍历.
+    while stack:
+        i = stack.pop()
+        diff = positions - positions[i]
+        dists = np.linalg.norm(diff, axis=1)
+
+        # 距离 <= cutoff 视为邻居, 距离 > 0 排除自身.
+        neighbors = np.where((dists <= cutoff) & (dists > 0.0))[0]
+        for j in neighbors.tolist():
+            if not visited[j]:
+                visited[j] = True
+                stack.append(j)
+
+    # Step 5: 所有原子都被访问到则连通.
+    return all(visited)
 
 
 def mutate(pop: Population) -> Population:

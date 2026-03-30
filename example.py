@@ -56,9 +56,11 @@ def main() -> None:
 
         pop = popNext
         prevBest = currentBest
+        pop.dump("SaNSDE_example_best")
+        pop.export(name=f"SaNSDE_example_gen{gen}")
 
     # 5) 导出最终快照.
-    snapshotPath = pop.export(name="Au13_workflow_example_gen10", xyz=True)
+    snapshotPath = pop.export(name="SaNSDE_example_end", xyz=True)
     print(f"final_snapshot={snapshotPath}")
 
 
