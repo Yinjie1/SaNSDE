@@ -77,7 +77,7 @@ graph TD
 
 本实现参考 `workflow/变异&交叉简介.md` 与知识库接口文档, 核心思想如下:
 
-1. 初始化自适应参数:
+1. 初始化种群与自适应参数:
    - 变异策略概率 `p`
    - 缩放因子分布选择概率 `fp`
    - 交叉率中心 `CRm`
@@ -151,10 +151,10 @@ json_path = pop_next.export(name="Au13_snapshot", xyz=True)
 
 # 导出最优团簇轨迹(.traj 文件, 追加写入)
 traj_path = pop_next.dump(name="Au13_best")
-
-# 可视化轨迹(ASE GUI)
-# python -m ase gui ./Trajectories/Au13_best.traj
 ```
+
+> [!TIP]
+> 使用 ASE GUI 可视化轨迹: `python -m ase gui ./Trajectories/Au13_best.traj`
 
 ### 4) 种群其他操作
 
@@ -186,12 +186,25 @@ python example.py
 
 该脚本会:
 
-- 随机生成 `popsize` 个团簇并初始化(原子数 `atom`, 晶格常数 `a`, 种群规模 `popsize`, 迭代代数 `generations` 可配置)
-- 局域优化参数可配置: 计算盒 `cell`, 势函数 `potential`, 优化器 `optimizer`, 力收敛阈值 `fmax`, 最大优化步数 `steps`
+- 随机生成 `popsize` 个团簇并初始化
 - 使用 `relax()` 执行优化
 - 每代输出: 代数, 最低能量, 与上一代最优能量差, 本轮耗时
 - 每代导出轨迹帧(`dump()`)和种群快照(`export()`)
 - 最后导出最终快照(JSON + xyz)
+
+可配置参数:
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `atom` | 原子数 | 13 |
+| `a` | 晶格常数 | 2.88 |
+| `popsize` | 种群规模 | 12 |
+| `generations` | 迭代代数 | 10 |
+| `cell` | 计算盒尺寸 | [15, 15, 15] |
+| `potential` | 势函数 | LennardJones() |
+| `optimizer` | 优化器 | BFGS |
+| `fmax` | 力收敛阈值 | 0.05 |
+| `steps` | 最大优化步数 | 100 |
 
 ## 参考资料
 
