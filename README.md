@@ -120,30 +120,35 @@ graph TD
 ### 1) 基础对象与局域优化
 
 ```python
+from SaNSDE_new import *
 from ase import Atoms
 from ase.calculators.lj import LennardJones
 from ase.optimize import BFGS
-
-from SaNSDE_new import Population, localOptimize
 
 cluster = Atoms("Au13", positions=[[0, 0, 0]] * 13)
 pop = Population()
 pop.addCluster(cluster)
 
-calc = LennardJones()
-pop_opt = localOptimize(pop, potential=calc, optimizer=BFGS, fmax=0.05, steps=100)
+pop_opt = localOptimize(pop, potential=LennardJones(), optimizer=BFGS, fmax=0.05, steps=100)
 ```
 
 ### 2) 单轮 SaNSDE(变异 -> 交叉 -> 球切交叉 -> 局部变换 -> 选择)
 
 ```python
-from SaNSDE_new import mutate, crossover, sphereCutSplice, localTransformation, select, relax
+import functools
+from deepmd.calculator import DP
 
-pop_mut = mutate(pop_opt)
-pop_cross = crossover(pop_opt, pop_mut)
-pop_splice = sphereCutSplice(pop_opt, pop_cross, r=0.8, relax=relax)
-pop_trans = localTransformation(pop_splice, r=0.25, relax=relax)
-pop_next = select(pop_opt, pop_trans, relax=relax)
+# 使用 dp 势(需要安装并启动deepmd环境)
+dp = DP(model="graph.pb")
+# 自定义 relax 偏函数
+my_relax = functools.partial(localOptimize, potential=dp)
+
+# 单轮 SaNSDE
+pop_mut = mutate(pop, a=2.88)
+pop_cross = crossover(pop, pop_mut)
+pop_splice = sphereCutSplice(pop, pop_cross, r=0.8, relax=my_relax)
+pop_trans = localTransformation(pop_splice, r=0.25, relax=my_relax)
+pop_next = select(pop, pop_trans, relax=my_relax)
 ```
 
 ### 3) 导出结果
