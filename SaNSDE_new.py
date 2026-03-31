@@ -343,7 +343,7 @@ class Population:
     def dump(self, name: str | None = None) -> str:
         """导出当前最优团簇到 ASE 轨迹文件(.traj).
 
-        使用 ASE Trajectory 接口写入 ./Populations/ 下的轨迹文件.
+        使用 ASE Trajectory 接口写入 ./Trajectories/ 下的轨迹文件.
         若文件已存在则追加写入新帧.
         能量与力仅从团簇对象属性读取:
         - 若存在 cluster.energy, 则写入 energy.
@@ -362,7 +362,7 @@ class Population:
         """
         bestCluster = self.bestCluster
 
-        baseDir = './Populations'
+        baseDir = './Trajectories'
         if not os.path.exists(baseDir):
             os.makedirs(baseDir)
 
