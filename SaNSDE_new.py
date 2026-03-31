@@ -732,7 +732,7 @@ def isConnectedGraph(cluster: Atoms, cutoff: float) -> bool:
     return all(visited)
 
 
-def mutate(pop: Population, a: float = 4, n: int = 10) -> Population:
+def mutate(pop: Population, a: float = 4, n: int = 10, debug: bool = False) -> Population:
     """对种群执行突变,返回突变后的暂定种群.
 
     Parameters
@@ -745,6 +745,8 @@ def mutate(pop: Population, a: float = 4, n: int = 10) -> Population:
     n : int, optional
         柯西分支重采样最大次数. Default 10.
         超过上限后将停止重采样,并使用最后一次候选坐标.
+    debug : bool, optional
+        是否输出柯西分支重采样过程信息. Default False.
     """
     if len(pop) < 4:
         raise ValueError("Mutation requires at least 4 clusters in population")
@@ -810,12 +812,14 @@ def mutate(pop: Population, a: float = 4, n: int = 10) -> Population:
                 if maxDistance <= radiusLimit:
                     newPositions = trialPositions
                     break
-                print(f"突变失败, 存在距原点{maxDistance}的原子")
+                if debug:
+                    print(f"Mutation failed, atom at distance {maxDistance:.2f} from origin")
                 retryCount += 1
                 if retryCount >= n:
                     if lastPositions is None:
                         raise RuntimeError("mutate internal error: lastPositions is unavailable")
-                    print(f"警告: 柯西重采样达到上限 n={n}, 使用最后一次候选坐标")
+                    if debug:
+                        print(f"Warning: Cauchy retry limit reached n={n}, using last candidate positions")
                     newPositions = lastPositions
                     break
 
