@@ -877,7 +877,7 @@ def crossover(pop1: Population, pop2: Population) -> Population:
     return tempClusters
 
 
-def SphereCutSplice(
+def sphereCutSplice(
     pop1: Population,
     pop2: Population,
     r: float = 0.8,
@@ -904,11 +904,11 @@ def SphereCutSplice(
         经过球切交叉与择优后的新种群.
     """
     if pop1.symbol != pop2.symbol:
-        raise ValueError("Population symbols must match for SphereCutSplice")
+        raise ValueError("Population symbols must match for sphereCutSplice")
     if len(pop1) != len(pop2):
-        raise ValueError("Population sizes must match for SphereCutSplice")
+        raise ValueError("Population sizes must match for sphereCutSplice")
     if len(pop1) < 2:
-        raise ValueError("SphereCutSplice requires at least 2 clusters per population")
+        raise ValueError("sphereCutSplice requires at least 2 clusters per population")
     if not (0.0 < r <= 1.0):
         raise ValueError("r must be in (0, 1]")
 
@@ -918,7 +918,7 @@ def SphereCutSplice(
     tempClusters._CRm = pop1.CRm
 
     if relax is None:
-        raise ValueError("SphereCutSplice requires explicit relax callable")
+        raise ValueError("sphereCutSplice requires explicit relax callable")
 
     def spliceOne(clusterA: Atoms, clusterB: Atoms) -> Atoms | None:
         workA = copy.deepcopy(clusterA)
@@ -1004,7 +1004,7 @@ def SphereCutSplice(
         energyA = getattr(relaxedA, 'energy', None)
         energyB = getattr(relaxedB, 'energy', None)
         if energyA is None or energyB is None:
-            raise ValueError("relax result must contain energy for SphereCutSplice")
+            raise ValueError("relax result must contain energy for sphereCutSplice")
 
         return relaxedA if float(energyA) <= float(energyB) else relaxedB
 
@@ -1014,7 +1014,7 @@ def SphereCutSplice(
 
     while len(tempClusters) < targetSize:
         if retryCount >= maxRetries:
-            raise RuntimeError("SphereCutSplice failed to generate enough offspring after retries")
+            raise RuntimeError("sphereCutSplice failed to generate enough offspring after retries")
         retryCount += 1
 
         selected1 = np.random.choice(len(pop1), size=2, replace=False)

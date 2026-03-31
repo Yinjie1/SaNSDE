@@ -36,7 +36,7 @@ def main() -> None:
         # 2) 变异 + 交叉 + 球切交叉 + 局部变换.
         popMut = mutate(pop, a=2.88)
         popCross = crossover(pop, popMut)
-        popSplice = SphereCutSplice(pop, popCross, r=0.8, relax=relax)
+        popSplice = sphereCutSplice(pop, popCross, r=0.8, relax=relax)
         popTrans = localTransformation(popSplice, r=0.25, relax=relax)
 
         # 3) 选择下一代并输出每代指标.

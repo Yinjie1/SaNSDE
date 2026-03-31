@@ -9,7 +9,7 @@
 - `Population`：种群容器，维护同一化学式（同元素组成与计数）的团簇集合。
 - `localOptimize`：局域优化函数，输入 `Population | Atoms`，返回新的优化对象（不原地修改输入）。
 - `randomCluster`：随机生成团簇并通过传入的 `relax` 完成局域优化后加入种群。
-- `mutate`（变异）/ `crossover`（交叉）/ `SphereCutSplice`（球切交叉）/ `localTransformation`（局部变换）/ `select`（选择）：SaNSDE 主循环核心环节。
+- `mutate`（变异）/ `crossover`（交叉）/ `sphereCutSplice`（球切交叉）/ `localTransformation`（局部变换）/ `select`（选择）：SaNSDE 主循环核心环节。
 - `relax`：基于 `localOptimize` 的默认偏函数，固定常用优化参数，供选择环节复用。
 
 ## 环境需求
@@ -93,7 +93,7 @@ graph TD
     - 按 `CR` 和 `jrand` 执行逐原子交叉，保证每个试验个体至少继承一个突变原子。
     - 在个体上记录 `CR`，并透传 `mutTag`。
 
-4. 球切交叉（SphereCutSplice）：
+4. 球切交叉（sphereCutSplice）：
    - 从 `pop` 与 `popCross` 中随机抽样做球切交换。
    - 用质心移到原点后按半径规则交换外层原子。
    - 对候选结构 `relax` 后择优。
@@ -133,11 +133,11 @@ pop_opt = localOptimize(pop, potential=calc, optimizer=BFGS, fmax=0.05, steps=10
 ### 2) 单轮 SaNSDE（变异 -> 交叉 -> 球切交叉 -> 局部变换 -> 选择）
 
 ```python
-from SaNSDE_new import mutate, crossover, SphereCutSplice, localTransformation, select, relax
+from SaNSDE_new import mutate, crossover, sphereCutSplice, localTransformation, select, relax
 
 pop_mut = mutate(pop_opt)
 pop_cross = crossover(pop_opt, pop_mut)
-pop_splice = SphereCutSplice(pop_opt, pop_cross, r=0.8, relax=relax)
+pop_splice = sphereCutSplice(pop_opt, pop_cross, r=0.8, relax=relax)
 pop_trans = localTransformation(pop_splice, r=0.25, relax=relax)
 pop_next = select(pop_opt, pop_trans, relax=relax)
 ```

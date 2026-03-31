@@ -50,7 +50,7 @@
   - 输入/输出
   - 副作用与失败模式
   - 示例代码
-  - 迭代工作流节点（mutate/crossover/SphereCutSplice/localTransformation/select）
+  - 迭代工作流节点（mutate/crossover/sphereCutSplice/localTransformation/select）
 - 更新顺序：
   1) 对应接口页（L1/L2/L3）
   2) `00-索引与加载策略.md`
