@@ -6,11 +6,11 @@
 
 本仓库实现了一个面向纳米团簇全局优化的 SaNSDE 工作流, 核心模块集中在 `SaNSDE_new.py`.
 
-- `Population`: 种群容器, 维护同一化学式(同元素组成与计数)的团簇集合.
+- `Population`: 种群对象, 同一化学式(同元素组成与计数)的团簇集合.
 - `localOptimize`: 局域优化函数, 输入 `Population | Atoms`, 返回新的优化对象(不原地修改输入).
-- `randomCluster`: 随机生成团簇并通过传入的 `relax` 完成局域优化后加入种群.
-- `mutate`(变异)/ `crossover`(交叉)/ `sphereCutSplice`(球切交叉)/ `localTransformation`(局部变换)/ `select`(选择): SaNSDE 主循环核心环节.
-- `relax`: 基于 `localOptimize` 的默认偏函数, 固定常用优化参数, 供选择环节复用.
+- `randomCluster`: 随机生成团簇并局域优化后加入种群.
+- `mutate`(突变)/ `crossover`(交叉)/ `sphereCutSplice`(球切交叉)/ `localTransformation`(局部变换)/ `select`(选择): SaNSDE 主循环核心环节.
+- `relax`: 基于 `localOptimize` 的默认偏函数, 固定常用优化参数, 供后续一些团簇演化环节复用.
 
 ## 环境需求
 
@@ -33,7 +33,7 @@ graph TD
 
     InitNode --> MutNode
 
-    subgraph Mutation [变异]
+    subgraph Mutation [突变]
         direction TB
         MutNode[按 p 在 DE/rand/1 与 DE/current-to-best/2 间切换]
     end
