@@ -882,6 +882,7 @@ def sphereCutSplice(
     pop2: Population,
     r: float = 0.8,
     relax: Callable[[Population | Atoms], Population | Atoms] | None = None,
+    debug: bool = False,
 ) -> Population:
     """球切交叉:按球面划分并交换外层原子坐标,择优进入下一代.
 
@@ -897,11 +898,8 @@ def sphereCutSplice(
     relax : Callable, optional
         局域优化函数. 可传入偏函数 relax() 或函数对象 localOptimize().
         若使用默认值 None, 则直接报错.
-
-    Returns
-    -------
-    Population
-        经过球切交叉与择优后的新种群.
+    debug : bool, optional
+        是否输出重选过程信息. Default False.
     """
     if pop1.symbol != pop2.symbol:
         raise ValueError("Population symbols must match for sphereCutSplice")
@@ -1030,6 +1028,8 @@ def sphereCutSplice(
             winners.append(winner)
 
         if roundFailed:
+            if debug:
+                print(f"SphereCutSplice failed, retryCount={retryCount}")
             continue
 
         for winner in winners:
