@@ -125,11 +125,16 @@ from ase import Atoms
 from ase.calculators.lj import LennardJones
 from ase.optimize import BFGS
 
+# 新建一个团簇对象并添加进种群
 cluster = Atoms("Au13", positions=[[0, 0, 0]] * 13)
 pop = Population()
 pop.addCluster(cluster)
 
+# 局域优化配置
 pop_opt = localOptimize(pop, potential=LennardJones(), optimizer=BFGS, fmax=0.05, steps=100)
+
+# 随机生成一个团簇并添加进种群
+randomCluster(pop, a=2.88, delta=0.5, relax=pop_opt)
 ```
 
 ### 2) 单轮 SaNSDE(变异 -> 交叉 -> 球切交叉 -> 局部变换 -> 选择)
@@ -140,6 +145,7 @@ from deepmd.calculator import DP
 
 # 使用 dp 势(需要安装并启动deepmd环境)
 dp = DP(model="graph.pb")
+
 # 自定义 relax 偏函数
 my_relax = functools.partial(localOptimize, potential=dp)
 
