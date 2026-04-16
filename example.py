@@ -1,7 +1,8 @@
 from __future__ import annotations
-
+import functools
 import time
 import numpy as np
+from ase.calculators.lj import LennardJones
 from SaNSDE_new import *
 # from deepmd.calculator import DP
 
@@ -9,13 +10,13 @@ from SaNSDE_new import *
 atom = 13
 a=2.88
 popsize = 12
-generations = 10
+generations = 100
 # dp = DP(model="Au-Ce-C-O.pb")
 relax = functools.partial(
     localOptimize,
     cell=[15, 15, 15],
     # 这里替换为你需要的势函数的ase计算器对象, 如potential=dp
-    potential=LennardJones(),
+    potential=LennardJones(epsilon=0.4443, sigma=2.6367),
     optimizer=BFGS,
     fmax=0.05,
     steps=100,
@@ -32,7 +33,7 @@ for gen in range(1, generations + 1):
     tick = time.perf_counter()
 
     # 2) 变异 + 交叉 + 球切交叉 + 局部变换.
-    popMut = mutate(pop, a=a, debug=True)
+    popMut = mutate(pop, a=2*a, debug=True)
     popCross = crossover(pop, popMut)
     popSplice = sphereCutSplice(pop, popCross, r=0.8, relax=relax, debug=True)
     popTrans = localTransformation(popSplice, r=0.25, relax=relax)
