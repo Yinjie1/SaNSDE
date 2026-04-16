@@ -591,7 +591,8 @@ relax = functools.partial(
 def randomCluster(pop: Population, 
                   a: float, 
                   delta: float, 
-                  relax: Callable[[Population | Atoms], Population | Atoms]):
+                  relax: Callable[[Population | Atoms], Population | Atoms],
+                  is2D: bool = False):
     """随机生成一个团簇并添加进种群.
     
     使用生长法随机生成团簇初始坐标, 并进行局域优化后加入种群.
@@ -610,6 +611,10 @@ def randomCluster(pop: Population,
         键长扰动因子 (0~1). bondl = (1 + delta * uniform(-0.25, 0.75)) * a.
     relax : Callable
         局域优化函数. 可传入偏函数 relax() 或函数对象 localOptimize().
+    is2D : bool, optional
+        Whether to generate a 2D cluster in the xy plane. Default False.
+        When True, atoms are generated inside a disk with radius
+        R = a * (0.5 + sqrt((sqrt(3) / (2 * pi)) * N)), and z is fixed to 0.
         
     Examples
     --------
@@ -622,8 +627,11 @@ def randomCluster(pop: Population,
         else:
              raise ValueError("Population symbol not set, cannot determine cluster size.")
 
-    # R0 = 2*a*(1/2+(3*N/(4*np.pi*np.sqrt(2)))**(1/3))
-    R0 = 2 * a * (0.5 + (3 * N / (4 * np.pi * np.sqrt(2)))**(1.0/3.0))
+    # Radius limit for random growth.
+    if is2D:
+        R0 = a * (0.5 + np.sqrt((np.sqrt(3) / (2 * np.pi)) * N))
+    else:
+        R0 = 2 * a * (0.5 + (3 * N / (4 * np.pi * np.sqrt(2)))**(1.0/3.0))
 
     # Initialize positions
     dummy = Atoms(pop.symbol)
@@ -639,18 +647,23 @@ def randomCluster(pop: Population,
             # bondl = (1+delta*np.random.uniform(-0.25,0.75))*a
             bondl = (1 + delta * np.random.uniform(-0.25, 0.75)) * a
             
-            # 随机角方向
-            bondtheta = np.random.rand() * np.pi 
-            bondphi = np.random.rand() * 2 * np.pi
-            
-            # 生成一个新原子
-            x = positions[idx_bondatom][0] + bondl * np.cos(bondtheta) * np.cos(bondphi)
-            y = positions[idx_bondatom][1] + bondl * np.cos(bondtheta) * np.sin(bondphi)
-            z = positions[idx_bondatom][2] + bondl * np.sin(bondtheta)
+            if is2D:
+                # 2D mode: random direction in xy plane, z fixed at 0.
+                bondphi = np.random.rand() * 2 * np.pi
+                x = positions[idx_bondatom][0] + bondl * np.cos(bondphi)
+                y = positions[idx_bondatom][1] + bondl * np.sin(bondphi)
+                z = 0.0
+            else:
+                # 3D mode: random spherical direction.
+                bondtheta = np.random.rand() * np.pi
+                bondphi = np.random.rand() * 2 * np.pi
+                x = positions[idx_bondatom][0] + bondl * np.cos(bondtheta) * np.cos(bondphi)
+                y = positions[idx_bondatom][1] + bondl * np.cos(bondtheta) * np.sin(bondphi)
+                z = positions[idx_bondatom][2] + bondl * np.sin(bondtheta)
             
             trial_pos = np.array([x, y, z])
 
-            # 新原子必须位于半径 R0 球内.
+            # 新原子必须位于半径 R0 球/圆内.
             if np.linalg.norm(trial_pos) > R0:
                 continue
             
