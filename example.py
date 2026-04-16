@@ -7,10 +7,10 @@ from SaNSDE_new import *
 # from deepmd.calculator import DP
 
 # 参数设置
-atom = 13
-a=2.88
-popsize = 12
-generations = 100
+atom: int = 13
+a: float =2.88
+popsize: int = 12
+generations: int = 100
 # dp = DP(model="Au-Ce-C-O.pb")
 relax = functools.partial(
     localOptimize,
@@ -24,8 +24,18 @@ relax = functools.partial(
 
 # 1) 初始化种群: 先固定化学式, 再随机生成并添加 popsize 个 Au{atom} 团簇.
 pop = Population(symbol=f"Au{atom}")
-for _ in range(popsize):
-    randomCluster(pop, a=a, delta=0.5, relax=relax)
+if atom <= 20:
+    for _ in range(popsize):
+        if _ < popsize/2:
+            randomCluster(pop, a=a, delta=0.5, relax=relax, is2D=True)
+        else:
+            randomCluster(pop, a=a, delta=0.5, relax=relax)
+else:
+    for _ in range(popsize):
+        if _ < popsize/4:
+            randomCluster(pop, a=a, delta=0.5, relax=relax, is2D=True)
+        else:
+            randomCluster(pop, a=a, delta=0.5, relax=relax)
 
 prevBest: float | None = None
 
