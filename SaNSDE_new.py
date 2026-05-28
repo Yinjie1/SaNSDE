@@ -233,7 +233,7 @@ class Population:
         """导出种群数据到文件系统.
 
         在当前目录'./Populations/'(如不存在则新建)下输出一个 JSON 文件.
-        当 xyz=True 时, 会同时新建同名文件夹并输出团簇 xyz 文件.
+        当 xyz=True 时, 会同时输出同名的多帧 xyz 文件, 并在 comment 记录能量.
 
         Parameters
         ----------
@@ -244,9 +244,9 @@ class Population:
             2) JSON 文件名固定为 "{name}.json".
             3) 当 "{name}.json" 已存在时, 自动追加时间戳后缀,
                生成 "{name}_YYYYMMddhhmmss.json" 以避免覆盖.
-            4) 当 xyz=True 时, xyz 目录名与最终 JSON 同名(不含扩展名).
+            4) 当 xyz=True 时, xyz 文件名与最终 JSON 同名(不含扩展名).
         xyz : bool, optional
-            是否同时导出团簇 xyz 文件. Default False.
+            是否同时导出包含所有团簇的多帧 xyz 文件. Default False.
 
         Returns
         -------
@@ -272,25 +272,18 @@ class Population:
             summary_path = os.path.join(base_dir, f"{name}.json")
             print(f'Duplicate file found. New export name: {name}!')
 
-        # Optional xyz snapshot directory
+        # Optional xyz snapshot
         if xyz:
-            target_dir = os.path.join(base_dir, name)
-            if not os.path.exists(target_dir):
-                os.makedirs(target_dir)
-
-            # Export clusters as .xyz files (extxyz content)
-            for i, cluster in enumerate(self._clusters):
-                fname = f"{self.symbol}_{i}.xyz"
-                fpath = os.path.join(target_dir, fname)
-
-                exportCluster = cluster.copy()
-                if self.energies[i] is not None:
-                    setattr(exportCluster, 'energy', self.energies[i])
-
-                try:
-                    write(fpath, exportCluster, format='extxyz', write_results=False)
-                except Exception as e:
-                    print(f"Warning: Failed to write {fname}: {e}")
+            xyz_path = os.path.join(base_dir, f"{name}.xyz")
+            from ase.io.xyz import write_xyz
+            try:
+                with open(xyz_path, 'w', encoding='utf-8') as f:
+                    for i, cluster in enumerate(self._clusters):
+                        energy = self.energies[i]
+                        comment_str = str(energy) if energy is not None else ""
+                        write_xyz(f, [cluster], comment=comment_str)
+            except Exception as e:
+                print(f"Warning: Failed to write xyz file {xyz_path}: {e}")
         
         min_e = None
         min_idx = None
