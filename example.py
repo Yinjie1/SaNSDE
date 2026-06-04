@@ -11,6 +11,7 @@ element: str = 'Au'
 a: float = 2.88
 popsize: int = 12
 generations: int = 10
+stagnationLimit: int = 20
 atomMin: int = 3
 atomMax: int = 50
 # dp = DP(model="Au-Ce-C-O.pb")
@@ -41,12 +42,13 @@ def main(atom: int) -> None:
                 randomCluster(pop, a=a, delta=0.5, relax=relax)
 
     prevBest: float | None = None
+    stagnationCount: int = 0
 
     for gen in range(1, generations + 1):
         tick = time.perf_counter()
 
         # 2) 变异 + 交叉 + 球切交叉 + 局部变换.
-        popMut = mutate(pop, a=2 * a, debug=True)
+        popMut = mutate(pop, a=10 * a, debug=True)
         popCross = crossover(pop, popMut)
         popSplice = sphereCutSplice(pop, popCross, r=0.8, relax=relax, debug=True)
         popTrans = localTransformation(popSplice, r=0.25, relax=relax)
@@ -58,11 +60,20 @@ def main(atom: int) -> None:
         if not energyValues:
             raise ValueError("Population has no available energy")
         currentBest = min(energyValues)
-        delta = "NA" if prevBest is None else f"{currentBest - prevBest:.8f}"
+        if prevBest is None:
+            stagnationCount = 0
+            delta = "NA"
+        else:
+            diff = currentBest - prevBest
+            delta = f"{diff:.8f}"
+            if abs(diff) <= 1e-12:
+                stagnationCount += 1
+            else:
+                stagnationCount = 0
         elapsed = time.perf_counter() - tick
 
         print(
-            f"atom={atom} gen={gen:03d} best_energy={currentBest:.8f} "
+            f"atom={atom} gen={gen:03d} best_energy={currentBest:.8f}"
             f"delta_prev={delta} iter_time_s={elapsed:.4f}"
         )
 
@@ -70,6 +81,13 @@ def main(atom: int) -> None:
         prevBest = currentBest
         pop.dump(f"{element}{atom}_best")
         pop.export(name=f"{element}{atom}_gen{gen}")
+
+        if stagnationCount >= stagnationLimit:
+            print(
+                f"atom={atom} gen={gen:03d} converged=True"
+                f" reason=stagnant_{stagnationLimit}"
+            )
+            break
 
     # 5) 导出最终快照.
     snapshotPath = pop.export(name=f"{element}{atom}_end", xyz=True)
