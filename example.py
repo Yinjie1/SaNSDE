@@ -75,6 +75,7 @@ def main(atom: int) -> None:
         print(
             f"atom={atom} gen={gen:03d} best_energy={currentBest:.8f}"
             f"delta_prev={delta} iter_time_s={elapsed:.4f}"
+            f" best_streak={stagnationCount}"
         )
 
         pop = popNext
