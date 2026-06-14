@@ -434,7 +434,13 @@ class Population:
             self._p = float(pValue)
         if crmValue is not None:
             self._CRm = float(crmValue)
-        
+
+        # Import any extra attributes beyond the preset ones
+        presetKeys = {'symbol', 'fp', 'p', 'CRm', 'clusters'}
+        for key, value in data.items():
+            if key not in presetKeys:
+                setattr(self, key, value)
+
         clusters_data = data.get('clusters', [])
         
         for c_data in clusters_data:
