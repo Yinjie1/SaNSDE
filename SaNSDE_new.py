@@ -383,6 +383,47 @@ class Population:
 
         return os.path.abspath(trajPath)
 
+    def dumpxyz(self, name: str | None = None) -> str:
+        """导出当前最优团簇到 xyz 轨迹文件(.xyz).
+
+        使用 ase.io.xyz 写入 ./Trajectories/ 下的 xyz 轨迹文件.
+        若文件已存在则追加写入新帧.
+        xyz 的 comment 行写入最优团簇的能量(若存在 cluster.energy),
+        无能量时 comment 为空.
+
+        Parameters
+        ----------
+        name : str, optional
+            轨迹文件名(不含扩展名). 默认使用 "{symbol}_best".
+
+        Returns
+        -------
+        str
+            导出 xyz 轨迹文件的完整绝对路径.
+        """
+        from ase.io.xyz import write_xyz
+
+        bestCluster = self.bestCluster
+
+        baseDir = './Trajectories'
+        if not os.path.exists(baseDir):
+            os.makedirs(baseDir)
+
+        if name is None:
+            baseName = f"{self.symbol}_best" if self.symbol else "Population_best"
+        else:
+            baseName = name
+
+        xyzPath = os.path.join(baseDir, f"{baseName}.xyz")
+
+        energyValue = getattr(bestCluster, 'energy', None)
+        commentStr = str(energyValue) if energyValue is not None else ""
+
+        with open(xyzPath, 'a') as f:
+            write_xyz(f, [bestCluster], comment=commentStr)
+
+        return os.path.abspath(xyzPath)
+
     def import_population(self, filename: str, confirm: bool = False):
         """从JSON文件导入种群数据.
 

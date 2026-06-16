@@ -81,6 +81,7 @@ def main(atom: int) -> None:
         pop = popNext
         prevBest = currentBest
         pop.dump(f"{element}{atom}_best")
+        pop.dumpxyz(f"{element}{atom}_best")
         pop.export(name=f"{element}{atom}_gen{gen}")
 
         if stagnationCount >= stagnationLimit:
