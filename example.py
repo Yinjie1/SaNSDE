@@ -1,41 +1,64 @@
 from __future__ import annotations
 import functools
 import time
-import numpy as np
-from ase.calculators.lj import LennardJones
+from pathlib import Path
+# import numpy as np
+# from ase.calculators.lj import LennardJones
 from SaNSDE_new import *
-# from deepmd.calculator import DP
+from ase.io import read
+from ase.io.xyz import write_xyz
+from deepmd.calculator import DP
 
 # 初始化参数
 element: str = 'Au'
 a: float = 2.88
 popsize: int = 12
-generations: int = 10
-stagnationLimit: int = 20
-atomMin: int = 3
-atomMax: int = 50
-# dp = DP(model="Au-Ce-C-O.pb")
+generations: int = 500
+stagnationLimit: int = 50
+ediff: float = 1e-5
+atomMin: int = 29
+atomMax: int = 40
+initDir: Path = Path('init')
+keepSnapshots: int = 1
+popDir: Path = Path('Populations')
+bestDir: Path = Path('best')
+dp = DP(model="/home/linyj/02-linyj/potentials/dp/Au1c.pb")
 relax = functools.partial(
     localOptimize,
-    cell=[15, 15, 15],
+    cell=None,
     # 这里替换为你需要的势函数的ase计算器对象, 如potential=dp
-    potential=LennardJones(epsilon=0.4443, sigma=2.6367),
+    # potential=LennardJones(epsilon=0.4443, sigma=2.6367),
+    potential = dp,
     optimizer=BFGS,
     fmax=0.05,
-    steps=100,
+    steps=300,
 )
 
 def main(atom: int) -> None:
-    # 1) 初始化种群: 先固定化学式, 再随机生成并添加 popsize 个 {element}{atom} 团簇.
+    systemStart = time.perf_counter()
+    # 1) 初始化种群: 先从 init/ 目录尝试加载已有结构, 再随机补足至 popsize.
     pop = Population(symbol=f"{element}{atom}")
+    initPath = initDir / f"{element}{atom}_best.xyz"
+    initLoaded = False
+    if initPath.is_file():
+        print(f"load structure {element}{atom}...")
+        with open(initPath, 'r') as f:
+            lines = f.readlines()
+            energy_val = float(lines[1].strip())
+        cluster = read(initPath)
+        cluster.energy = energy_val
+        pop.addCluster(cluster)
+        initLoaded = True
+
+    remaining = popsize - 1 if initLoaded else popsize
     if atom <= 20:
-        for i in range(popsize):
+        for i in range(remaining):
             if i < popsize / 2:
                 randomCluster(pop, a=a, delta=0.5, relax=relax, is2D=True)
             else:
                 randomCluster(pop, a=a, delta=0.5, relax=relax)
     else:
-        for i in range(popsize):
+        for i in range(remaining):
             if i < popsize / 4:
                 randomCluster(pop, a=a, delta=0.5, relax=relax, is2D=True)
             else:
@@ -48,7 +71,7 @@ def main(atom: int) -> None:
         tick = time.perf_counter()
 
         # 2) 变异 + 交叉 + 球切交叉 + 局部变换.
-        popMut = mutate(pop, a=10 * a, debug=True)
+        popMut = mutate(pop, a=20 * a, debug=True)
         popCross = crossover(pop, popMut)
         popSplice = sphereCutSplice(pop, popCross, r=0.8, relax=relax, debug=True)
         popTrans = localTransformation(popSplice, r=0.25, relax=relax)
@@ -65,8 +88,8 @@ def main(atom: int) -> None:
             delta = "NA"
         else:
             diff = currentBest - prevBest
-            delta = f"{diff:.8f}"
-            if abs(diff) <= 1e-12:
+            delta = f"{diff:.6f}"
+            if abs(diff) <= ediff:
                 stagnationCount += 1
             else:
                 stagnationCount = 0
@@ -74,7 +97,7 @@ def main(atom: int) -> None:
 
         print(
             f"atom={atom} gen={gen:03d} best_energy={currentBest:.8f}"
-            f"delta_prev={delta} iter_time_s={elapsed:.4f}"
+            f" delta_prev={delta} iter_time_s={elapsed:.4f}"
             f" best_streak={stagnationCount}"
         )
 
@@ -84,18 +107,34 @@ def main(atom: int) -> None:
         pop.dumpxyz(f"{element}{atom}_best")
         pop.export(name=f"{element}{atom}_gen{gen}")
 
+        # 清理超出保留数量的旧快照
+        if gen > keepSnapshots:
+            old = gen - keepSnapshots
+            for f in popDir.glob(f"{element}{atom}_gen{old}*.json"):
+                f.unlink()
+
         if stagnationCount >= stagnationLimit:
+            sysElapsed = time.perf_counter() - systemStart
             print(
                 f"atom={atom} gen={gen:03d} converged=True"
                 f" reason=stagnant_{stagnationLimit}"
+                f" sys_time_s={sysElapsed:.4f}"
             )
             break
 
     # 5) 导出最终快照.
     snapshotPath = pop.export(name=f"{element}{atom}_end", xyz=True)
-    print(f"atom={atom} final_snapshot={snapshotPath}")
+    bestDir.mkdir(parents=True, exist_ok=True)
+    bestPath = bestDir / f"{element}{atom}_best.xyz"
+    bestEnergy = float(pop.bestCluster.energy)
+    with open(bestPath, 'w', encoding='utf-8') as f:
+        write_xyz(f, [pop.bestCluster], comment=str(bestEnergy))
+    print(f"atom={atom} final_snapshot={snapshotPath} best_xyz={bestPath}")
 
 
 if __name__ == "__main__":
+    programStart = time.perf_counter()
     for atom in range(atomMin, atomMax + 1):
         main(atom)
+    totalElapsed = time.perf_counter() - programStart
+    print(f"program total_time_s={totalElapsed:.4f}")
