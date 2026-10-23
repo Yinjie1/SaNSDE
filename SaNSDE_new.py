@@ -1,10 +1,10 @@
 """SaNSDE_new.py
 python 3.13.12
 """
-import os
 import json
 import copy
 import functools
+from pathlib import Path
 import numpy as np
 from typing import Callable, Self, overload
 from ase import Atoms
@@ -294,7 +294,7 @@ class Population:
             
         self._clusters.append(cluster_to_add)
 
-    def export(self, name: str | None = None, xyz: bool = False) -> str:
+    def export(self, name: str | None = None, xyz: bool = False) -> Path:
         """导出种群数据到文件系统.
 
         在当前目录'./Populations/'(如不存在则新建)下输出一个 JSON 文件.
@@ -315,34 +315,29 @@ class Population:
 
         Returns
         -------
-        str
+        pathlib.Path
             导出 JSON 文件的完整绝对路径.
         """
         if name is None:
             name = self.symbol if self.symbol else "Population"
-            
-        # Create directory ./Populations/name
-        base_dir = './Populations'
-        if not os.path.exists(base_dir):
-            os.makedirs(base_dir)
-            
-        target_dir = os.path.join(base_dir, name)
+
+        base_dir: Path = Path("./Populations")
+        base_dir.mkdir(parents=True, exist_ok=True)
 
         # Check for duplicate JSON filename
-        summary_path = os.path.join(base_dir, f"{name}.json")
-        if os.path.exists(summary_path):
+        summary_path: Path = base_dir / f"{name}.json"
+        if summary_path.exists():
             timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
             name = f"{name}_{timestamp}"
-            target_dir = os.path.join(base_dir, name)
-            summary_path = os.path.join(base_dir, f"{name}.json")
+            summary_path = base_dir / f"{name}.json"
             print(f'Duplicate file found. New export name: {name}!')
 
         # Optional xyz snapshot
         if xyz:
-            xyz_path = os.path.join(base_dir, f"{name}.xyz")
+            xyz_path: Path = base_dir / f"{name}.xyz"
             from ase.io.xyz import write_xyz
             try:
-                with open(xyz_path, 'w', encoding='utf-8') as f:
+                with xyz_path.open('w', encoding='utf-8') as f:
                     for i, cluster in enumerate(self._clusters):
                         energy = self.energies[i]
                         comment_str = str(energy) if energy is not None else ""
@@ -399,12 +394,12 @@ class Population:
             "clusters": clusters_info
         }
 
-        with open(summary_path, 'w') as f:
+        with summary_path.open('w', encoding='utf-8') as f:
             json.dump(summary_data, f, indent=4)
 
-        return os.path.abspath(summary_path)
+        return summary_path.resolve()
 
-    def dump(self, name: str | None = None) -> str:
+    def dump(self, name: str | None = None) -> Path:
         """导出当前最优团簇到 ASE 轨迹文件(.traj).
 
         使用 ASE Trajectory 接口写入 ./Trajectories/ 下的轨迹文件.
@@ -421,22 +416,21 @@ class Population:
 
         Returns
         -------
-        str
+        pathlib.Path
             导出轨迹文件的完整绝对路径.
         """
         best_cluster = self.best_cluster
 
-        base_dir = './Trajectories'
-        if not os.path.exists(base_dir):
-            os.makedirs(base_dir)
+        base_dir: Path = Path("./Trajectories")
+        base_dir.mkdir(parents=True, exist_ok=True)
 
         if name is None:
             base_name = f"{self.symbol}_best" if self.symbol else "Population_best"
         else:
             base_name = name
 
-        traj_path = os.path.join(base_dir, f"{base_name}.traj")
-        mode = 'a' if os.path.exists(traj_path) else 'w'
+        traj_path: Path = base_dir / f"{base_name}.traj"
+        mode = 'a' if traj_path.exists() else 'w'
 
         export_cluster = best_cluster.copy()
         write_kwargs: dict[str, float | np.ndarray] = {}
@@ -452,9 +446,9 @@ class Population:
         with Trajectory(traj_path, mode) as traj:
             traj.write(export_cluster, **write_kwargs)
 
-        return os.path.abspath(traj_path)
+        return traj_path.resolve()
 
-    def dump_xyz(self, name: str | None = None) -> str:
+    def dump_xyz(self, name: str | None = None) -> Path:
         """导出当前最优团簇到 xyz 轨迹文件(.xyz).
 
         使用 ase.io.xyz 写入 ./Trajectories/ 下的 xyz 轨迹文件.
@@ -469,33 +463,32 @@ class Population:
 
         Returns
         -------
-        str
+        pathlib.Path
             导出 xyz 轨迹文件的完整绝对路径.
         """
         from ase.io.xyz import write_xyz
 
         best_cluster = self.best_cluster
 
-        base_dir = './Trajectories'
-        if not os.path.exists(base_dir):
-            os.makedirs(base_dir)
+        base_dir: Path = Path("./Trajectories")
+        base_dir.mkdir(parents=True, exist_ok=True)
 
         if name is None:
             base_name = f"{self.symbol}_best" if self.symbol else "Population_best"
         else:
             base_name = name
 
-        xyz_path = os.path.join(base_dir, f"{base_name}.xyz")
+        xyz_path: Path = base_dir / f"{base_name}.xyz"
 
         energy_value = getattr(best_cluster, 'energy', None)
         comment_str = str(energy_value) if energy_value is not None else ""
 
-        with open(xyz_path, 'a') as f:
+        with xyz_path.open('a', encoding='utf-8') as f:
             write_xyz(f, [best_cluster], comment=comment_str)
 
-        return os.path.abspath(xyz_path)
+        return xyz_path.resolve()
 
-    def import_population(self, filename: str, confirm: bool = False):
+    def import_population(self, filename: str | Path, confirm: bool = False):
         """从JSON文件导入种群数据.
 
         直接读取指定的JSON文件.
@@ -504,13 +497,14 @@ class Population:
 
         Parameters
         ----------
-        filename : str
+        filename : str | pathlib.Path
             JSON文件的完整路径.
         confirm : bool, optional
             是否确认覆盖当前种群数据. Default False.
         """
-        if not os.path.exists(filename):
-             print(f"JSON file {filename} not found.")
+        json_path: Path = Path(filename)
+        if not json_path.is_file():
+             print(f"JSON file {json_path} not found.")
              return
 
         if len(self) > 0:
@@ -522,7 +516,7 @@ class Population:
                 self._symbol = None
 
         try:
-            with open(filename, 'r') as f:
+            with json_path.open('r', encoding='utf-8') as f:
                 data = json.load(f)
         except Exception as e:
             print(f"Failed to read JSON file: {e}")

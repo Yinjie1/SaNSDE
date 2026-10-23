@@ -16,7 +16,7 @@ element: str = 'Au'
 a: float = 2.88
 pop_size: int = 12
 generations: int = 500
-stagnation_limit: int = 50
+stagnation_limit: int = 10
 atom_min: int = 3
 atom_max: int = 5
 init_dir: Path = Path('init')
@@ -38,7 +38,7 @@ potential: LennardJones = LennardJones(epsilon=0.4443, sigma=2.6367)
 # 注意: hiphive 的 ZBLCalculator 内部用 ASE NeighborList, 其有效作用距离约为
 #   r_eff = cutoff + 2 * skin
 # 需要时取消下面注释即可恢复.
-# DP_MODEL: str = "/home/linyj/02-linyj/potentials/dp/Au3c.pth"
+# DP_MODEL: Path = Path("/home/linyj/02-linyj/potentials/dp/Au3c.pth")
 # ZBL_CUTOFF: float = 1.5
 # ZBL_SKIN: float = 0
 # dp: DP = DP(model=DP_MODEL)
@@ -223,7 +223,7 @@ def main(atom: int) -> None:
     best_dir.mkdir(parents=True, exist_ok=True)
     best_path = best_dir / f"{element}{atom}_best.xyz"
     best_energy = float(pop.best_cluster.energy)
-    with open(best_path, 'w', encoding='utf-8') as f:
+    with best_path.open('w', encoding='utf-8') as f:
         write_xyz(f, [pop.best_cluster], comment=str(best_energy))
     print(f"atom={atom} final_snapshot={snapshot_path} best_xyz={best_path}")
 
