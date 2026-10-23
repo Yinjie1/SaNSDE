@@ -16,6 +16,35 @@ from ase.calculators.calculator import Calculator
 from ase.calculators.lj import LennardJones
 from datetime import datetime
 
+MIN_ATOM_DISTANCE: float = 0.5
+
+
+def minPairDistance(positions: np.ndarray) -> float:
+    """计算一组坐标的最小原子间距.
+
+    Parameters
+    ----------
+    positions : numpy.ndarray
+        原子坐标, 形状为 ``(natoms, 3)``.
+
+    Returns
+    -------
+    float
+        最小两两间距. 原子数少于 2 时返回 ``inf``;
+        坐标含非有限值时返回 ``-inf``, 以便调用方判为非法几何.
+    """
+    coords: np.ndarray = np.asarray(positions, dtype=float)
+    if coords.ndim != 2 or coords.shape[1] != 3:
+        raise ValueError("positions must have shape (natoms, 3)")
+    if len(coords) < 2:
+        return float("inf")
+    if not np.isfinite(coords).all():
+        return -float("inf")
+    diff: np.ndarray = coords[:, None, :] - coords[None, :, :]
+    distances: np.ndarray = np.linalg.norm(diff, axis=-1)
+    np.fill_diagonal(distances, np.inf)
+    return float(distances.min())
+
 
 class Population:
     """种群对象
@@ -517,7 +546,7 @@ class Population:
 
 
 def localOptimize(pop: Population | Atoms, 
-                  cell: list[float] | np.ndarray = [15, 15, 15], 
+                  cell: list[float] | np.ndarray | None = None, 
                   potential: Calculator | None = None,
                   optimizer: type[Optimizer] = BFGS,
                   fmax: float = 0.05, 
@@ -533,8 +562,8 @@ def localOptimize(pop: Population | Atoms,
     ----------
     pop : Population or Atoms
         待优化的对象, 可以是整个种群对象(Population)或单个团簇(Atoms).
-    cell : list or np.ndarray, optional
-        用于计算的模拟盒子大小, default [15, 15, 15].
+    cell : list or np.ndarray or None, optional
+        用于计算的模拟盒子大小, default None.
     potential : Calculator, optional
         ASE计算器对象(e.g., LJ, EMT, DeepMD等).
         不允许为 None; 若为 None 直接报错.
@@ -575,8 +604,17 @@ def localOptimize(pop: Population | Atoms,
 
     for atoms in newClusters:
         # cell 自动添加到团簇对象上
-        atoms.set_cell(cell)
-        atoms.set_pbc(False)
+        if cell:
+            atoms.set_cell(cell)
+            atoms.set_pbc(False)
+
+        # 重合几何会让势函数返回 NaN, 直接判为无效个体, 不调用计算器.
+        if minPairDistance(atoms.get_positions()) < MIN_ATOM_DISTANCE:
+            setattr(atoms, 'energy', float('inf'))
+            setattr(atoms, 'forces', np.zeros((len(atoms), 3)).tolist())
+            atoms.set_cell([0.0, 0.0, 0.0])
+            atoms.calc = None
+            continue
 
         # 计算器
         atoms.calc = potential
@@ -598,14 +636,22 @@ def localOptimize(pop: Population | Atoms,
         forceValue = None
         if atoms.calc is not None:
             calcResults = getattr(atoms.calc, 'results', None)
-            if not isinstance(calcResults, dict):
-                raise ValueError("calculator.results is missing after optimization")
-            if calcResults.get('energy') is None or calcResults.get('forces') is None:
-                raise ValueError("calculator.results must contain both energy and forces")
-            energyValue = float(calcResults['energy'])
-            forceValue = np.array(calcResults['forces']).tolist()
-        setattr(atoms, 'energy', energyValue)
-        setattr(atoms, 'forces', forceValue)
+            if isinstance(calcResults, dict):
+                energyValue = calcResults.get('energy')
+                forceValue = calcResults.get('forces')
+
+        if energyValue is None or forceValue is None:
+            # 优化失败(含中途出现 NaN 坐标): 记为无效个体, 不中断整个流程.
+            setattr(atoms, 'energy', float('inf'))
+            setattr(atoms, 'forces', np.zeros((len(atoms), 3)).tolist())
+            positions = np.asarray(atoms.get_positions(), dtype=float)
+            if not np.isfinite(positions).all():
+                atoms.set_positions(
+                    np.nan_to_num(positions, nan=0.0, posinf=0.0, neginf=0.0)
+                )
+        else:
+            setattr(atoms, 'energy', float(energyValue))
+            setattr(atoms, 'forces', np.array(forceValue).tolist())
 
         # 计算后清除 cell
         # del atoms.cell # cell attribute deletion is not supported
@@ -876,6 +922,10 @@ def mutate(pop: Population, a: float = 4, n: int = 10, debug: bool = False) -> P
                     newPositions = lastPositions
                     break
 
+        # 突变产生重合几何时退回父代坐标, 避免把非法个体送入优化.
+        if minPairDistance(newPositions) < MIN_ATOM_DISTANCE:
+            newPositions = pop[i].get_positions()
+
         # 记录本个体突变标签到 mut 属性(0/1).
         tempClusters[i].set_positions(newPositions)
         setattr(tempClusters[i], 'mut', mutTag)
@@ -911,10 +961,17 @@ def crossover(pop1: Population, pop2: Population) -> Population:
         mutPositions = pop2[i].get_positions().copy()
         trialPositions = basePositions.copy()
 
-        # 逐原子交叉:按 CR 或 jrand 选择保留突变位姿
-        for j in range(pop1.num):
-            if np.random.uniform(0.0, 1.0) <= crossRate or j == jrand:
-                trialPositions[j] = mutPositions[j]
+        # 逐原子交叉:按 CR 或 jrand 选择保留突变位姿.
+        # 父代原子顺序不一致时可能选中同一物理原子, 导致坐标重合, 故重采.
+        for _attempt in range(10):
+            trialPositions = basePositions.copy()
+            for j in range(pop1.num):
+                if np.random.uniform(0.0, 1.0) <= crossRate or j == jrand:
+                    trialPositions[j] = mutPositions[j]
+            if minPairDistance(trialPositions) >= MIN_ATOM_DISTANCE:
+                break
+        else:
+            trialPositions = basePositions.copy()
 
         trialCluster = Atoms(
             symbols=pop1[i].get_chemical_symbols(),

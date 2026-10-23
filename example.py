@@ -2,12 +2,14 @@ from __future__ import annotations
 import functools
 import time
 from pathlib import Path
-# import numpy as np
+import numpy as np
 # from ase.calculators.lj import LennardJones
 from SaNSDE_new import *
 from ase.io import read
 from ase.io.xyz import write_xyz
+from ase.calculators.mixing import SumCalculator
 from deepmd.calculator import DP
+from hiphive.calculators.zbl import ZBLCalculator
 
 # 初始化参数
 element: str = 'Au'
@@ -16,19 +18,33 @@ popsize: int = 12
 generations: int = 500
 stagnationLimit: int = 50
 ediff: float = 1e-5
-atomMin: int = 29
-atomMax: int = 40
+atomMin: int = 3
+atomMax: int = 30
 initDir: Path = Path('init')
 keepSnapshots: int = 1
 popDir: Path = Path('Populations')
 bestDir: Path = Path('best')
-dp = DP(model="/home/linyj/02-linyj/potentials/dp/Au1c.pb")
+
+# DP + ZBL 混合势: DP 负责长程/成键描述, hiphive 的 ZBL 提供短程排斥, 避免
+# 原子重叠. 两者能量/力由 SumCalculator 直接相加: E_total = E_DP + E_ZBL.
+#
+# 注意: hiphive 的 ZBLCalculator 内部用 ASE NeighborList, 其有效作用距离约为
+#   r_eff = cutoff + 2 * skin
+# (skin 为邻居表缓冲). ZBL 屏蔽函数本身衰减较慢, 取值越大对正常键长区间
+# 干扰越大, 可按需要调整下面的 cutoff/skin.
+DP_MODEL: str = "/home/linyj/02-linyj/potentials/dp/Au3c.pth"
+ZBL_CUTOFF: float = 1.5
+ZBL_SKIN: float = 0
+
+dp: DP = DP(model=DP_MODEL)
+zbl: ZBLCalculator = ZBLCalculator(cutoff=ZBL_CUTOFF, skin=ZBL_SKIN)
+potential: SumCalculator = SumCalculator([dp, zbl])
 relax = functools.partial(
     localOptimize,
     cell=None,
     # 这里替换为你需要的势函数的ase计算器对象, 如potential=dp
     # potential=LennardJones(epsilon=0.4443, sigma=2.6367),
-    potential = dp,
+    potential = potential,
     optimizer=BFGS,
     fmax=0.05,
     steps=300,
@@ -42,10 +58,13 @@ def main(atom: int) -> None:
     initLoaded = False
     if initPath.is_file():
         print(f"load structure {element}{atom}...")
-        with open(initPath, 'r') as f:
-            lines = f.readlines()
-            energy_val = float(lines[1].strip())
         cluster = read(initPath)
+        # 用当前势(DP+ZBL)做一次单点计算得到能量, 不信任文件里可能来自旧势的能量.
+        cluster.calc = potential
+        energy_val = float(cluster.get_potential_energy())
+        cluster.calc = None  # 摘掉计算器: addCluster 会 deepcopy, DP 不可深拷贝
+        if not np.isfinite(energy_val):
+            energy_val = float('inf')
         cluster.energy = energy_val
         pop.addCluster(cluster)
         initLoaded = True
