@@ -17,7 +17,6 @@ from ase.calculators.lj import LennardJones
 from datetime import datetime
 
 MIN_ATOM_DISTANCE: float = 0.5
-POINT_GROUP_TOLERANCE: float = 0.3
 
 
 def min_pair_distance(positions: np.ndarray) -> float:
@@ -1297,11 +1296,23 @@ def select(
     pop1: Population,
     pop2: Population,
     relax: Callable[[Population | Atoms], Population | Atoms],
+    pg_tolerance: float = 0.3,
 ) -> Population:
     """对原种群和候选种群执行选择并更新自适应参数.
 
     被选中的个体在进入下一代时计算点群(PG, 熊夫利符号)和升序原子间距列表
     (distance_list); 若 pymatgen 不可用或点群分析失败, 对应个体 PG 记为 None.
+
+    Parameters
+    ----------
+    pop1 : Population
+        原种群.
+    pop2 : Population
+        候选种群.
+    relax : Callable
+        局域优化函数. 可传入偏函数 relax() 或函数对象 local_optimize().
+    pg_tolerance : float, optional
+        计算点群时传给 pymatgen ``PointGroupAnalyzer`` 的坐标容差. Default 0.3.
     """
     if pop1.symbol != pop2.symbol:
         raise ValueError("Population symbols must match for selection")
@@ -1423,14 +1434,14 @@ def select(
             )
             point_group = str(
                 PointGroupAnalyzer(
-                    molecule, tolerance=POINT_GROUP_TOLERANCE
+                    molecule, tolerance=pg_tolerance
                 ).get_pointgroup().sch_symbol
             )
         except Exception:
             point_group = None
         setattr(chosen_cluster, 'PG', point_group)
 
-        # 记录升序原子间距列表, 便于后续按 docs/similarity_function.md 计算相似性.
+        # 记录升序原子间距列表, 便于后续计算相似性函数.
         positions = np.asarray(chosen_cluster.get_positions(), dtype=float)
         pair_vectors = positions[:, None, :] - positions[None, :, :]
         pair_distances = np.linalg.norm(pair_vectors, axis=-1)
