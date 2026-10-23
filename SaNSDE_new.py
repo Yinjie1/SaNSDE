@@ -80,17 +80,17 @@ class Population:
     crm : float
         交叉率中心参数.
     energies : list[float | None]
-        按需从每个团簇对象属性 ``cluster.energy`` 读取的能量列表.
-        若某团簇缺失该属性, 对应位置为 None.
+        按需从 ``cluster.info['energy']`` 读取的能量列表.
+        若某团簇缺失该键, 对应位置为 None.
     forces : list[list[list[float]] | None]
-        按需从每个团簇对象属性 ``cluster.forces`` 读取的力列表.
-        若某团簇缺失该属性, 对应位置为 None.
+        按需从 ``cluster.arrays['forces']`` 读取的力列表.
+        若某团簇缺失该键, 对应位置为 None.
     PGs : list[str | None]
-        按需从每个团簇对象属性 ``cluster.PG`` 读取的点群(熊夫利符号)列表.
-        若某团簇缺失该属性, 对应位置为 None.
+        按需从 ``cluster.info['PG']`` 读取的点群(熊夫利符号)列表.
+        若某团簇缺失该键, 对应位置为 None.
     distance_lists : numpy.ndarray
-        按需从每个团簇对象属性 ``cluster.distance_list`` 读取的升序原子间距列表,
-        形状为 (len(self), N*(N-1)/2); 缺失该属性的团簇整行填充 NaN.
+        按需从 ``cluster.info['distance_list']`` 读取的升序原子间距列表,
+        形状为 (len(self), N*(N-1)/2); 缺失该键的团簇整行填充 NaN.
     best_cluster : Atoms
         当前最低能量团簇. 空种群或全体缺失能量时抛 ValueError.
 
@@ -117,7 +117,7 @@ class Population:
 
     最优团簇:
     >>> best = pop.best_cluster
-    >>> best_energy = best.energy
+    >>> best_energy = best.info['energy']
 
     导出种群:
     >>> json_path = pop.export(name="Gen_1")
@@ -195,10 +195,10 @@ class Population:
 
     @property
     def energies(self) -> list[float | None]:
-        """按需从团簇对象属性提取能量,缺失时返回 None."""
+        """按需从团簇 info 提取能量,缺失时返回 None."""
         energies: list[float | None] = []
         for cluster in self:
-            energy_value = getattr(cluster, 'energy', None)
+            energy_value = cluster.info.get('energy')
             if energy_value is not None:
                 energy_value = float(energy_value)
             energies.append(energy_value)
@@ -206,35 +206,37 @@ class Population:
 
     @property
     def forces(self) -> list[list[list[float]] | None]:
-        """按需从团簇对象属性提取力,缺失时返回 None."""
+        """按需从团簇 arrays 提取力,缺失时返回 None."""
         forces: list[list[list[float]] | None] = []
         for cluster in self:
-            force_value = getattr(cluster, 'forces', None)
+            force_value = cluster.arrays.get('forces')
+            if force_value is not None:
+                force_value = np.asarray(force_value, dtype=float).tolist()
             forces.append(force_value)
         return forces
 
     @property
     def PGs(self) -> list[str | None]:
-        """按需从团簇对象属性提取点群(熊夫利符号), 缺失时返回 None."""
+        """按需从团簇 info 提取点群(熊夫利符号), 缺失时返回 None."""
         point_groups: list[str | None] = []
         for cluster in self:
-            point_groups.append(getattr(cluster, 'PG', None))
+            point_groups.append(cluster.info.get('PG'))
         return point_groups
 
     @property
     def distance_lists(self) -> np.ndarray:
-        """按需从团簇对象属性提取升序原子间距列表, 返回二维数组.
+        """按需从团簇 info 提取升序原子间距列表, 返回二维数组.
 
         Returns
         -------
         numpy.ndarray
-            形状为 (len(self), N*(N-1)/2). 缺失 ``cluster.distance_list``
+            形状为 (len(self), N*(N-1)/2). 缺失 ``cluster.info['distance_list']``
             的团簇整行填充 NaN; 空种群返回形状 (0, 0) 的数组.
         """
         column_count = self.num * (self.num - 1) // 2
         rows: list[np.ndarray] = []
         for cluster in self:
-            distance_list = getattr(cluster, 'distance_list', None)
+            distance_list = cluster.info.get('distance_list')
             if distance_list is None:
                 rows.append(np.full(column_count, np.nan, dtype=float))
             else:
@@ -270,7 +272,7 @@ class Population:
         必须确保种群中所有团簇化学式相同.
         在添加前会将团簇质心平移到原点.
         若种群 symbol 为空, 则在添加第一个团簇时自动设置.
-        若团簇缺失 ``PG`` 或 ``distance_list`` 属性, 会尝试自动生成点群与
+        若团簇 info 中缺失 ``PG`` 或 ``distance_list`` 键, 会尝试自动生成点群与
         升序原子间距列表; pymatgen 不可用或点群计算失败时 ``PG`` 记为 None.
 
         Parameters
@@ -302,15 +304,15 @@ class Population:
             if current_symbol != self._symbol:
                  raise ValueError(f"Cluster symbol {current_symbol} does not match population symbol {self._symbol}")
 
-        # 缺失点群或升序原子间距列表时尝试生成, 已有属性则保持不变.
-        if not hasattr(cluster_to_add, 'PG') or not hasattr(cluster_to_add, 'distance_list'):
+        # 缺失点群或升序原子间距列表时尝试生成, 已有键则保持不变.
+        if 'PG' not in cluster_to_add.info or 'distance_list' not in cluster_to_add.info:
             positions = np.asarray(cluster_to_add.get_positions(), dtype=float)
-            if not hasattr(cluster_to_add, 'distance_list'):
+            if 'distance_list' not in cluster_to_add.info:
                 pair_vectors = positions[:, None, :] - positions[None, :, :]
                 pair_distances = np.linalg.norm(pair_vectors, axis=-1)
                 upper_distances = pair_distances[np.triu_indices(len(positions), k=1)]
-                setattr(cluster_to_add, 'distance_list', np.sort(upper_distances))
-            if not hasattr(cluster_to_add, 'PG'):
+                cluster_to_add.info['distance_list'] = np.sort(upper_distances)
+            if 'PG' not in cluster_to_add.info:
                 point_group: str | None = None
                 try:
                     molecule = Molecule(
@@ -323,7 +325,7 @@ class Population:
                     )
                 except Exception:
                     point_group = None
-                setattr(cluster_to_add, 'PG', point_group)
+                cluster_to_add.info['PG'] = point_group
 
         self._clusters.append(cluster_to_add)
 
@@ -391,16 +393,12 @@ class Population:
         for i, cluster in enumerate(self._clusters):
             # 准备单个团簇的信息
             force_data = self.forces[i]
-            if force_data is not None and isinstance(force_data, np.ndarray):
-                force_data = force_data.tolist()
-            elif force_data is None:
-                force_data = None
 
             energy_value = self.energies[i]
             if isinstance(energy_value, np.generic):
                 energy_value = energy_value.item()
 
-            distance_list = getattr(cluster, 'distance_list', None)
+            distance_list = cluster.info.get('distance_list')
             if distance_list is not None:
                 distance_list = np.asarray(distance_list, dtype=float).tolist()
 
@@ -410,7 +408,7 @@ class Population:
                 "energy": energy_value,
                 "positions": cluster.get_positions().tolist(),
                 "forces": force_data,
-                "PG": getattr(cluster, 'PG', None),
+                "PG": cluster.info.get('PG'),
                 "distance_list": distance_list
             }
             clusters_info.append(cluster_info)
@@ -437,9 +435,9 @@ class Population:
 
         使用 ASE Trajectory 接口写入 ./Trajectories/ 下的轨迹文件.
         若文件已存在则追加写入新帧.
-        能量与力仅从团簇对象属性读取:
-        - 若存在 cluster.energy, 则写入 energy.
-        - 若存在 cluster.forces, 则写入 forces.
+        能量与力仅从团簇的 ASE 原生容器读取:
+        - 若存在 cluster.info['energy'], 则写入 energy.
+        - 若存在 cluster.arrays['forces'], 则写入 forces.
         - 不会触发额外计算; 缺失字段则不写入.
 
         Parameters
@@ -468,11 +466,11 @@ class Population:
         export_cluster = best_cluster.copy()
         write_kwargs: dict[str, float | np.ndarray] = {}
 
-        energy_value = getattr(best_cluster, 'energy', None)
+        energy_value = best_cluster.info.get('energy')
         if energy_value is not None:
             write_kwargs['energy'] = float(energy_value)
 
-        force_value = getattr(best_cluster, 'forces', None)
+        force_value = best_cluster.arrays.get('forces')
         if force_value is not None:
             write_kwargs['forces'] = np.array(force_value, dtype=float)
 
@@ -486,7 +484,7 @@ class Population:
 
         使用 ase.io.xyz 写入 ./Trajectories/ 下的 xyz 轨迹文件.
         若文件已存在则追加写入新帧.
-        xyz 的 comment 行写入最优团簇的能量(若存在 cluster.energy),
+        xyz 的 comment 行写入最优团簇的能量(若存在 cluster.info['energy']),
         无能量时 comment 为空.
 
         Parameters
@@ -513,7 +511,7 @@ class Population:
 
         xyz_path = base_dir / f"{base_name}.xyz"
 
-        energy_value = getattr(best_cluster, 'energy', None)
+        energy_value = best_cluster.info.get('energy')
         comment_str = str(energy_value) if energy_value is not None else ""
 
         with xyz_path.open('a', encoding='utf-8') as f:
@@ -599,21 +597,20 @@ class Population:
                 # Note: self.add_cluster appends None to energies/forces, so we overwrite them below
                 self._clusters.append(cluster)
                 
-                # Set energy and forces on cluster object
+                # Set energy/forces/PG/distance_list into ASE native containers
                 energy = c_data.get('energy')
                 forces = c_data.get('forces')
                 
-                # Optional: Attach attributes to Atoms object for convenience
                 if energy is not None:
-                     setattr(cluster, 'energy', float(energy))
+                     cluster.info['energy'] = float(energy)
                 if forces is not None:
-                     setattr(cluster, 'forces', forces)
+                     cluster.arrays['forces'] = np.asarray(forces, dtype=float)
                 point_group = c_data.get('PG')
                 if point_group is not None:
-                     setattr(cluster, 'PG', point_group)
+                     cluster.info['PG'] = point_group
                 distance_list = c_data.get('distance_list')
                 if distance_list is not None:
-                     setattr(cluster, 'distance_list', np.asarray(distance_list, dtype=float))
+                     cluster.info['distance_list'] = np.asarray(distance_list, dtype=float)
                 
             except Exception as e:
                 print(f"Error loading cluster from JSON: {e}")
@@ -685,8 +682,8 @@ def local_optimize(pop: Population | Atoms,
 
         # 重合几何会让势函数返回 NaN, 直接判为无效个体, 不调用计算器.
         if min_pair_distance(atoms.get_positions()) < MIN_ATOM_DISTANCE:
-            setattr(atoms, 'energy', float('inf'))
-            setattr(atoms, 'forces', np.zeros((len(atoms), 3)).tolist())
+            atoms.info['energy'] = float('inf')
+            atoms.arrays['forces'] = np.zeros((len(atoms), 3))
             atoms.set_cell([0.0, 0.0, 0.0])
             atoms.calc = None
             continue
@@ -705,7 +702,7 @@ def local_optimize(pop: Population | Atoms,
         except Exception as e:
             print(f"Optimization failed: {e}")
 
-        # 只同步到团簇对象属性, Population.energies/forces 按需读取这里.
+        # 只同步到 atoms.info / atoms.arrays, Population.energies/forces 按需读取这里.
         # 仅复用优化器最后一步的 calculator.results, 不再触发额外能量/力计算.
         energy_value = None
         force_value = None
@@ -717,16 +714,16 @@ def local_optimize(pop: Population | Atoms,
 
         if energy_value is None or force_value is None:
             # 优化失败(含中途出现 NaN 坐标): 记为无效个体, 不中断整个流程.
-            setattr(atoms, 'energy', float('inf'))
-            setattr(atoms, 'forces', np.zeros((len(atoms), 3)).tolist())
+            atoms.info['energy'] = float('inf')
+            atoms.arrays['forces'] = np.zeros((len(atoms), 3))
             positions = np.asarray(atoms.get_positions(), dtype=float)
             if not np.isfinite(positions).all():
                 atoms.set_positions(
                     np.nan_to_num(positions, nan=0.0, posinf=0.0, neginf=0.0)
                 )
         else:
-            setattr(atoms, 'energy', float(energy_value))
-            setattr(atoms, 'forces', np.array(force_value).tolist())
+            atoms.info['energy'] = float(energy_value)
+            atoms.arrays['forces'] = np.asarray(force_value, dtype=float)
 
         # 计算后清除 cell
         # del atoms.cell # cell attribute deletion is not supported
@@ -848,10 +845,14 @@ def random_cluster(pop: Population,
     pop.add_cluster(optimized_cluster, deepcopy=False)
     
     # Update energy and forces
-    energy_value = getattr(optimized_cluster, 'energy', None)
-    force_value = getattr(optimized_cluster, 'forces', None)
-    setattr(pop.clusters[len(pop) - 1], 'energy', energy_value)
-    setattr(pop.clusters[len(pop) - 1], 'forces', force_value)
+    energy_value = optimized_cluster.info.get('energy')
+    force_value = optimized_cluster.arrays.get('forces')
+    added_cluster = pop.clusters[len(pop) - 1]
+    added_cluster.info['energy'] = energy_value
+    if force_value is None:
+        added_cluster.arrays.pop('forces', None)
+    else:
+        added_cluster.arrays['forces'] = np.asarray(force_value, dtype=float)
 
 
 def is_connected_graph(cluster: Atoms, cutoff: float) -> bool:
@@ -1004,8 +1005,8 @@ def mutate(pop: Population, a: float = 4, n: int = 10, debug: bool = False) -> P
         # 记录本个体突变标签到 mut 属性(0/1).
         temp_clusters[i].set_positions(new_positions)
         setattr(temp_clusters[i], 'mut', mut_tag)
-        setattr(temp_clusters[i], 'energy', None)
-        setattr(temp_clusters[i], 'forces', None)
+        temp_clusters[i].info['energy'] = None
+        temp_clusters[i].arrays.pop('forces', None)
 
     return temp_clusters
 
@@ -1184,8 +1185,8 @@ def sphere_cut_splice(
             setattr(relaxed_a, 'cr', cross_rate)
             setattr(relaxed_b, 'cr', cross_rate)
 
-        energy_a = getattr(relaxed_a, 'energy', None)
-        energy_b = getattr(relaxed_b, 'energy', None)
+        energy_a = relaxed_a.info.get('energy')
+        energy_b = relaxed_b.info.get('energy')
         if energy_a is None or energy_b is None:
             raise ValueError("relax result must contain energy for sphere_cut_splice")
 
@@ -1269,14 +1270,14 @@ def local_transformation(
             relaxed_base = relax(base_cluster)
             if not isinstance(relaxed_base, Atoms):
                 raise TypeError("relax must return Atoms when input is Atoms")
-            relaxed_energy = getattr(relaxed_base, 'energy', None)
+            relaxed_energy = relaxed_base.info.get('energy')
             if relaxed_energy is None:
                 raise ValueError("relax result must contain energy for local_transformation")
             base_energy_values[i] = float(relaxed_energy)
             base_candidates[i] = relaxed_base
         else:
             base_candidate = copy.deepcopy(source_pop[i])
-            setattr(base_candidate, 'energy', float(base_energy))
+            base_candidate.info['energy'] = float(base_energy)
             base_candidates[i] = base_candidate
 
     for i in range(len(source_pop)):
@@ -1304,7 +1305,7 @@ def local_transformation(
         if not isinstance(relaxed_perturbed, Atoms):
             raise TypeError("relax must return Atoms when input is Atoms")
 
-        energy_perturbed = getattr(relaxed_perturbed, 'energy', None)
+        energy_perturbed = relaxed_perturbed.info.get('energy')
         if energy_perturbed is None:
             raise ValueError("relax result must contain energy for local_transformation")
 
@@ -1360,14 +1361,14 @@ def select(
             relaxed_cluster = relax(copy.deepcopy(pop1[i]))
             if not isinstance(relaxed_cluster, Atoms):
                 raise TypeError("relax must return Atoms when input is Atoms")
-            relaxed_energy = getattr(relaxed_cluster, 'energy', None)
+            relaxed_energy = relaxed_cluster.info.get('energy')
             if relaxed_energy is None:
                 raise ValueError(f"pop1 relax result missing energy at index {i}")
             pop1_energies_raw[i] = float(relaxed_energy)
             pop1_candidates[i] = relaxed_cluster
         else:
             preserved_cluster = copy.deepcopy(pop1[i])
-            setattr(preserved_cluster, 'energy', float(energy_value))
+            preserved_cluster.info['energy'] = float(energy_value)
             pop1_candidates[i] = preserved_cluster
 
     # pop2: 与 pop1 一致,先读取能量,仅对缺失能量个体做 relax 补全.
@@ -1379,14 +1380,14 @@ def select(
             relaxed_cluster = relax(copy.deepcopy(pop2[i]))
             if not isinstance(relaxed_cluster, Atoms):
                 raise TypeError("relax must return Atoms when input is Atoms")
-            relaxed_energy = getattr(relaxed_cluster, 'energy', None)
+            relaxed_energy = relaxed_cluster.info.get('energy')
             if relaxed_energy is None:
                 raise ValueError(f"pop2 relax result missing energy at index {i}")
             pop2_energies_raw[i] = float(relaxed_energy)
             pop2_candidates[i] = relaxed_cluster
         else:
             preserved_cluster = copy.deepcopy(pop2[i])
-            setattr(preserved_cluster, 'energy', float(energy_value))
+            preserved_cluster.info['energy'] = float(energy_value)
             pop2_candidates[i] = preserved_cluster
 
     cr_rec: list[float] = []
@@ -1464,14 +1465,14 @@ def select(
             )
         except Exception:
             point_group = None
-        setattr(chosen_cluster, 'PG', point_group)
+        chosen_cluster.info['PG'] = point_group
 
         # 记录升序原子间距列表, 便于后续计算相似性函数.
         positions = np.asarray(chosen_cluster.get_positions(), dtype=float)
         pair_vectors = positions[:, None, :] - positions[None, :, :]
         pair_distances = np.linalg.norm(pair_vectors, axis=-1)
         upper_distances = pair_distances[np.triu_indices(len(positions), k=1)]
-        setattr(chosen_cluster, 'distance_list', np.sort(upper_distances))
+        chosen_cluster.info['distance_list'] = np.sort(upper_distances)
 
     # 更新 crm:使用成功个体的 cr 按能量改变量加权平均.
     if cr_rec and sum(delta_rec) > 0:

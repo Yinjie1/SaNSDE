@@ -137,7 +137,7 @@ def main(atom: int) -> None:
         cluster.calc = None  # 摘掉计算器: add_cluster 会 deepcopy, DP 不可深拷贝
         if not np.isfinite(energy_value):
             energy_value = float('inf')
-        cluster.energy = energy_value
+        cluster.info['energy'] = energy_value
         pop.add_cluster(cluster)
         init_loaded = True
 
@@ -176,9 +176,9 @@ def main(atom: int) -> None:
         if not energy_values:
             raise ValueError("Population has no available energy")
         best_cluster = pop_next.best_cluster
-        current_best = float(best_cluster.energy)
-        current_pg = getattr(best_cluster, 'PG', None)
-        current_distance_list = getattr(best_cluster, 'distance_list', None)
+        current_best = float(best_cluster.info['energy'])
+        current_pg = best_cluster.info.get('PG')
+        current_distance_list = best_cluster.info.get('distance_list')
         if prev_best is None:
             stagnation_count = 0
             delta = "NA"
@@ -246,7 +246,7 @@ def main(atom: int) -> None:
     snapshot_path = pop.export(name=f"{element}{atom}_end", xyz=True)
     best_dir.mkdir(parents=True, exist_ok=True)
     best_path = best_dir / f"{element}{atom}_best.xyz"
-    best_energy = float(pop.best_cluster.energy)
+    best_energy = float(pop.best_cluster.info['energy'])
     with best_path.open('w', encoding='utf-8') as f:
         write_xyz(f, [pop.best_cluster], comment=str(best_energy))
     print(f"atom={atom} final_snapshot={snapshot_path} best_xyz={best_path}")

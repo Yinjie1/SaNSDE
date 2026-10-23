@@ -189,7 +189,7 @@ for cluster in sub_pop:
 
 # 当前最优团簇
 best_cluster = pop_opt.bestCluster
-best_energy = best_cluster.energy
+best_energy = best_cluster.info['energy']
 print(best_cluster.get_chemical_formula(), best_energy)
 ```
 
