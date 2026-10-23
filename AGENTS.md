@@ -7,6 +7,7 @@
 - 主程序中的注释和 docstring 标点统一使用 ASCII 英文标点符号。
 - 类型注解使用 Python 新版本规范（例如 `list[float | None]`，避免 `List[Optional[float]]` 旧写法）。
 - 代码实现与类型写法以 Python 3.13 规范为准。
+- 路径处理统一用 pathlib
 - 约束：包含 DeepMD 计算器的 `Atoms` 对象不可深拷贝；`local_optimize` 优化结束后必须清除 `atoms.calc`，并避免将带计算器对象的团簇进入后续种群深拷贝流程。
 - 测试约束：默认使用轻量测试（小规模、少代数），避免运行高计算量基准或长时间任务；仅在用户明确要求时执行重负载测试。
 - 测试时将标准输出重定向到 `./stdout`
@@ -19,6 +20,8 @@
   - function local variables with non-trivial inferred types
   - return values of helper computations
   - dictionaries, lists, tuples, and numpy arrays
+- Do not add a type annotation when the type is obvious from the right-hand side,
+  for example `element = str(...)`, `path = Path(...)`, `count = len(...)`.
 - Prefer built-in generic syntax:
   - `list[int]`, `dict[str, float]`, `tuple[int, int]`
 - Prefer union operator syntax:

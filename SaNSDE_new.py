@@ -15,8 +15,6 @@ from ase.optimize.optimize import Optimizer
 from ase.calculators.calculator import Calculator
 from ase.calculators.lj import LennardJones
 from datetime import datetime
-
-# pymatgen 为可选依赖: 用于计算点群(PG). 导入失败时后续 PG 记为 None.
 try:
     from pymatgen.core import Molecule
     from pymatgen.symmetry.analyzer import PointGroupAnalyzer

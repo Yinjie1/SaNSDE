@@ -1,58 +1,68 @@
 from __future__ import annotations
 import functools
+import json
 import time
 from pathlib import Path
+from typing import Any
 import numpy as np
-from ase.calculators.lj import LennardJones
+from ase.calculators.mixing import SumCalculator
+from deepmd.calculator import DP
+from hiphive.calculators.zbl import ZBLCalculator
+# from ase.calculators.lj import LennardJones
 from SaNSDE_new import *
 from ase.io import read
 from ase.io.xyz import write_xyz
-# from ase.calculators.mixing import SumCalculator
-# from deepmd.calculator import DP
-# from hiphive.calculators.zbl import ZBLCalculator
 
-# 初始化参数
-element: str = 'Au'
-a: float = 2.88
-pop_size: int = 12
-generations: int = 500
-stagnation_limit: int = 10
-atom_min: int = 3
-atom_max: int = 5
-init_dir: Path = Path('init')
-keep_snapshots: int = 1
-pop_dir: Path = Path('Populations')
-best_dir: Path = Path('best')
+# 初始化参数: 默认值内联, 可由运行目录下的 params.json 覆盖, 缺失的键保持默认值.
+param_file = Path('params.json')
+try:
+    with param_file.open('r', encoding='utf-8') as f:
+        params: dict[str, Any] = json.load(f)
+    if not isinstance(params, dict):
+        raise TypeError(f"{param_file} must contain a JSON object")
+    print(f"load parameters from {param_file}")
+except FileNotFoundError:
+    params = {}
 
-ediff: float = 1e-5
-# 相似性函数阈值: S < similarity_reset 视为结构已改变, 直接清零停滞计数;
-# 0.9 <= S < similarity_energy_reset 时, 仅当最优能量变化超过 ediff 才清零
-similarity_reset: float = 0.9
-similarity_energy_reset: float = 0.95
-
-# LJ 势: 用于 N=3-5 小团簇的优化测试.
-potential: LennardJones = LennardJones(epsilon=0.4443, sigma=2.6367)
+element = str(params.get('element', 'Au'))
+a = float(params.get('a', 2.88))
+pop_size = int(params.get('pop_size', 12))
+generations = int(params.get('generations', 500))
+stagnation_limit = int(params.get('stagnation_limit', 10))
+atom_min = int(params.get('atom_min', 3))
+atom_max = int(params.get('atom_max', 5))
+init_dir = Path(params.get('init_dir', 'init'))
+keep_snapshots = int(params.get('keep_snapshots', 1))
+pop_dir = Path(params.get('pop_dir', 'Populations'))
+best_dir = Path(params.get('best_dir', 'best'))
+ediff = float(params.get('ediff', 1e-5))
+similarity_reset = float(params.get('similarity_reset', 0.9))
+similarity_energy_reset = float(params.get('similarity_energy_reset', 0.95))
 
 # DP + ZBL 混合势: DP 负责长程/成键描述, hiphive 的 ZBL 提供短程排斥, 避免
 # 原子重叠. 两者能量/力由 SumCalculator 直接相加: E_total = E_DP + E_ZBL.
 # 注意: hiphive 的 ZBLCalculator 内部用 ASE NeighborList, 其有效作用距离约为
 #   r_eff = cutoff + 2 * skin
-# 需要时取消下面注释即可恢复.
-# DP_MODEL: Path = Path("/home/linyj/02-linyj/potentials/dp/Au3c.pth")
-# ZBL_CUTOFF: float = 1.5
-# ZBL_SKIN: float = 0
-# dp: DP = DP(model=DP_MODEL)
-# zbl: ZBLCalculator = ZBLCalculator(cutoff=ZBL_CUTOFF, skin=ZBL_SKIN)
-# potential: SumCalculator = SumCalculator([dp, zbl])
+DP_MODEL = Path(params.get('DP_MODEL', "/home/linyj/02-linyj/potentials/dp/Au3c.pth"))
+ZBL_CUTOFF = float(params.get('ZBL_CUTOFF', 1.5))
+ZBL_SKIN = float(params.get('ZBL_SKIN', 0))
+fmax = float(params.get('fmax', 0.05))
+steps = int(params.get('steps', 300))
+dp: DP = DP(model=DP_MODEL)
+zbl: ZBLCalculator = ZBLCalculator(cutoff=ZBL_CUTOFF, skin=ZBL_SKIN)
+potential: SumCalculator = SumCalculator([dp, zbl])
+
+# LJ 势: 用于 N=3-5 小团簇的优化测试, 需要时取消下面注释并注释上面的混合势.
+# potential: LennardJones = LennardJones(epsilon=0.4443, sigma=2.6367)
+
 relax = functools.partial(
     local_optimize,
     cell=None,
-    # 这里替换为你需要的势函数的ase计算器对象, 如potential=dp
-    # potential=LennardJones(epsilon=0.4443, sigma=2.6367),
+    # 当前使用上面的 DP+ZBL 混合势; 如需 LJ, 改为 potential=LennardJones(...).
     potential = potential,
     optimizer=BFGS,
-    fmax=0.05,
-    steps=300,
+    fmax=fmax,
+    steps=steps,
 )
 
 
