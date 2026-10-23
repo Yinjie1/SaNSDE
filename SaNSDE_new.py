@@ -16,6 +16,16 @@ from ase.calculators.calculator import Calculator
 from ase.calculators.lj import LennardJones
 from datetime import datetime
 
+# pymatgen 为可选依赖: 用于计算点群(PG). 导入失败时后续 PG 记为 None.
+try:
+    from pymatgen.core import Molecule
+    from pymatgen.symmetry.analyzer import PointGroupAnalyzer
+except Exception:
+    print(
+        "Warning: pymatgen is missing in the current environment, "
+        "skipping point group calculation!"
+    )
+
 MIN_ATOM_DISTANCE: float = 0.5
 
 
@@ -262,6 +272,8 @@ class Population:
         必须确保种群中所有团簇化学式相同.
         在添加前会将团簇质心平移到原点.
         若种群 symbol 为空, 则在添加第一个团簇时自动设置.
+        若团簇缺失 ``PG`` 或 ``distance_list`` 属性, 会尝试自动生成点群与
+        升序原子间距列表; pymatgen 不可用或点群计算失败时 ``PG`` 记为 None.
 
         Parameters
         ----------
@@ -291,7 +303,30 @@ class Population:
             # 必须确保种群中所有团簇化学式相同
             if current_symbol != self._symbol:
                  raise ValueError(f"Cluster symbol {current_symbol} does not match population symbol {self._symbol}")
-            
+
+        # 缺失点群或升序原子间距列表时尝试生成, 已有属性则保持不变.
+        if not hasattr(cluster_to_add, 'PG') or not hasattr(cluster_to_add, 'distance_list'):
+            positions: np.ndarray = np.asarray(cluster_to_add.get_positions(), dtype=float)
+            if not hasattr(cluster_to_add, 'distance_list'):
+                pair_vectors: np.ndarray = positions[:, None, :] - positions[None, :, :]
+                pair_distances: np.ndarray = np.linalg.norm(pair_vectors, axis=-1)
+                upper_distances: np.ndarray = pair_distances[np.triu_indices(len(positions), k=1)]
+                setattr(cluster_to_add, 'distance_list', np.sort(upper_distances))
+            if not hasattr(cluster_to_add, 'PG'):
+                point_group: str | None = None
+                try:
+                    molecule = Molecule(
+                        cluster_to_add.get_chemical_symbols(), positions
+                    )
+                    point_group = str(
+                        PointGroupAnalyzer(molecule, tolerance=0.3)
+                        .get_pointgroup()
+                        .sch_symbol
+                    )
+                except Exception:
+                    point_group = None
+                setattr(cluster_to_add, 'PG', point_group)
+
         self._clusters.append(cluster_to_add)
 
     def export(self, name: str | None = None, xyz: bool = False) -> Path:
@@ -1420,8 +1455,6 @@ def select(
         chosen_cluster = temp_clusters[-1]
         point_group: str | None = None
         try:
-            from pymatgen.core import Molecule
-            from pymatgen.symmetry.analyzer import PointGroupAnalyzer
             molecule = Molecule(
                 chosen_cluster.get_chemical_symbols(),
                 chosen_cluster.get_positions(),
