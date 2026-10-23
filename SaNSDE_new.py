@@ -19,7 +19,7 @@ from datetime import datetime
 MIN_ATOM_DISTANCE: float = 0.5
 
 
-def minPairDistance(positions: np.ndarray) -> float:
+def min_pair_distance(positions: np.ndarray) -> float:
     """计算一组坐标的最小原子间距.
 
     Parameters
@@ -69,7 +69,7 @@ class Population:
         变异缩放因子采样分布的选择概率参数.
     p : float
         变异策略选择概率参数.
-    CRm : float
+    crm : float
         交叉率中心参数.
     energies : list[float | None]
         按需从每个团簇对象属性 ``cluster.energy`` 读取的能量列表.
@@ -77,7 +77,7 @@ class Population:
     forces : list[list[list[float]] | None]
         按需从每个团簇对象属性 ``cluster.forces`` 读取的力列表.
         若某团簇缺失该属性, 对应位置为 None.
-    bestCluster : Atoms
+    best_cluster : Atoms
         当前最低能量团簇. 空种群或全体缺失能量时抛 ValueError.
 
     Examples
@@ -87,29 +87,29 @@ class Population:
 
     添加团簇:
     >>> cluster = Atoms('Au13', positions=...)
-    >>> pop.addCluster(cluster)
+    >>> pop.add_cluster(cluster)
 
     切片:
-    >>> subPop = pop[::2]
-    >>> isinstance(subPop, Population)
+    >>> sub_pop = pop[::2]
+    >>> isinstance(sub_pop, Population)
     True
 
     索引:
-    >>> firstCluster = pop[0]
+    >>> first_cluster = pop[0]
 
     迭代:
     >>> for cluster in pop:
     ...     print(cluster.get_chemical_formula())
 
     最优团簇:
-    >>> best = pop.bestCluster
-    >>> bestEnergy = best.energy
+    >>> best = pop.best_cluster
+    >>> best_energy = best.energy
 
     导出种群:
     >>> json_path = pop.export(name="Gen_1")
 
     导出最优团簇轨迹:
-    >>> trajPath = pop.dump(name="Au13_best")
+    >>> traj_path = pop.dump(name="Au13_best")
 
     导入种群:
     >>> pop_new = Population()
@@ -120,7 +120,7 @@ class Population:
         self._symbol: str | None = symbol
         self._fp: float = 0.5
         self._p: float = 0.5
-        self._CRm: float = 0.5
+        self._crm: float = 0.5
 
     @property
     def clusters(self) -> list[Atoms]:
@@ -135,8 +135,8 @@ class Population:
         return self._p
 
     @property
-    def CRm(self) -> float:
-        return self._CRm
+    def crm(self) -> float:
+        return self._crm
 
     @property
     def symbol(self) -> str | None:
@@ -159,13 +159,13 @@ class Population:
 
     def __getitem__(self, index: int | slice) -> Atoms | Self:
         if isinstance(index, slice):
-            subPop = Population(symbol=self._symbol)
-            subPop._fp = self._fp
-            subPop._p = self._p
-            subPop._CRm = self._CRm
+            sub_pop = Population(symbol=self._symbol)
+            sub_pop._fp = self._fp
+            sub_pop._p = self._p
+            sub_pop._crm = self._crm
             for cluster in self._clusters[index]:
-                subPop.addCluster(cluster, deepcopy=True)
-            return subPop
+                sub_pop.add_cluster(cluster, deepcopy=True)
+            return sub_pop
         return self._clusters[index]
 
     def __len__(self) -> int:
@@ -184,10 +184,10 @@ class Population:
         """按需从团簇对象属性提取能量,缺失时返回 None."""
         energies: list[float | None] = []
         for cluster in self:
-            energyValue = getattr(cluster, 'energy', None)
-            if energyValue is not None:
-                energyValue = float(energyValue)
-            energies.append(energyValue)
+            energy_value = getattr(cluster, 'energy', None)
+            if energy_value is not None:
+                energy_value = float(energy_value)
+            energies.append(energy_value)
         return energies
 
     @property
@@ -195,32 +195,32 @@ class Population:
         """按需从团簇对象属性提取力,缺失时返回 None."""
         forces: list[list[list[float]] | None] = []
         for cluster in self:
-            forceValue = getattr(cluster, 'forces', None)
-            forces.append(forceValue)
+            force_value = getattr(cluster, 'forces', None)
+            forces.append(force_value)
         return forces
 
     @property
-    def bestCluster(self) -> Atoms:
+    def best_cluster(self) -> Atoms:
         """返回当前最优团簇, 即最低能量团簇."""
         if len(self._clusters) == 0:
-            raise ValueError("Population is empty, bestCluster is unavailable")
+            raise ValueError("Population is empty, best_cluster is unavailable")
 
         energies = self.energies
-        bestIndex: int | None = None
-        bestEnergy: float | None = None
-        for i, energyValue in enumerate(energies):
-            if energyValue is None:
+        best_index: int | None = None
+        best_energy: float | None = None
+        for i, energy_value in enumerate(energies):
+            if energy_value is None:
                 continue
-            if bestEnergy is None or energyValue < bestEnergy:
-                bestEnergy = energyValue
-                bestIndex = i
+            if best_energy is None or energy_value < best_energy:
+                best_energy = energy_value
+                best_index = i
 
-        if bestIndex is None:
-            raise ValueError("No valid energy in population, bestCluster is unavailable")
+        if best_index is None:
+            raise ValueError("No valid energy in population, best_cluster is unavailable")
 
-        return self._clusters[bestIndex]
+        return self._clusters[best_index]
 
-    def addCluster(self, cluster: Atoms, deepcopy: bool = True):
+    def add_cluster(self, cluster: Atoms, deepcopy: bool = True):
         """导入一个团簇对象(Atoms类型)到_clusters列表末尾.
 
         必须确保种群中所有团簇化学式相同.
@@ -243,11 +243,11 @@ class Population:
         if not isinstance(cluster, Atoms):
             raise TypeError("Cluster must be an ase.Atoms object")
 
-        clusterToAdd = copy.deepcopy(cluster) if deepcopy else cluster
+        cluster_to_add = copy.deepcopy(cluster) if deepcopy else cluster
         # 平移质心到原点
-        clusterToAdd.set_center_of_mass([0.0, 0.0, 0.0])
+        cluster_to_add.set_center_of_mass([0.0, 0.0, 0.0])
 
-        current_symbol = clusterToAdd.get_chemical_formula()
+        current_symbol = cluster_to_add.get_chemical_formula()
         
         if self._symbol is None:
             self.symbol = current_symbol 
@@ -256,7 +256,7 @@ class Population:
             if current_symbol != self._symbol:
                  raise ValueError(f"Cluster symbol {current_symbol} does not match population symbol {self._symbol}")
             
-        self._clusters.append(clusterToAdd)
+        self._clusters.append(cluster_to_add)
 
     def export(self, name: str | None = None, xyz: bool = False) -> str:
         """导出种群数据到文件系统.
@@ -332,14 +332,14 @@ class Population:
             elif force_data is None:
                 force_data = None
 
-            energyValue = self.energies[i]
-            if isinstance(energyValue, np.generic):
-                energyValue = energyValue.item()
+            energy_value = self.energies[i]
+            if isinstance(energy_value, np.generic):
+                energy_value = energy_value.item()
 
             cluster_info = {
                 "name": f"{self.symbol}_{i}",
                 "symbol": cluster.get_chemical_formula(),
-                "energy": energyValue,
+                "energy": energy_value,
                 "positions": cluster.get_positions().tolist(),
                 "forces": force_data
             }
@@ -351,7 +351,7 @@ class Population:
             "size": len(self),
             "fp": self.fp,
             "p": self.p,
-            "CRm": self.CRm,
+            "CRm": self.crm,
             "min_energy": min_e,
             "min_energy_index": min_idx,
             "clusters": clusters_info
@@ -382,37 +382,37 @@ class Population:
         str
             导出轨迹文件的完整绝对路径.
         """
-        bestCluster = self.bestCluster
+        best_cluster = self.best_cluster
 
-        baseDir = './Trajectories'
-        if not os.path.exists(baseDir):
-            os.makedirs(baseDir)
+        base_dir = './Trajectories'
+        if not os.path.exists(base_dir):
+            os.makedirs(base_dir)
 
         if name is None:
-            baseName = f"{self.symbol}_best" if self.symbol else "Population_best"
+            base_name = f"{self.symbol}_best" if self.symbol else "Population_best"
         else:
-            baseName = name
+            base_name = name
 
-        trajPath = os.path.join(baseDir, f"{baseName}.traj")
-        mode = 'a' if os.path.exists(trajPath) else 'w'
+        traj_path = os.path.join(base_dir, f"{base_name}.traj")
+        mode = 'a' if os.path.exists(traj_path) else 'w'
 
-        exportCluster = bestCluster.copy()
-        writeKwargs: dict[str, float | np.ndarray] = {}
+        export_cluster = best_cluster.copy()
+        write_kwargs: dict[str, float | np.ndarray] = {}
 
-        energyValue = getattr(bestCluster, 'energy', None)
-        if energyValue is not None:
-            writeKwargs['energy'] = float(energyValue)
+        energy_value = getattr(best_cluster, 'energy', None)
+        if energy_value is not None:
+            write_kwargs['energy'] = float(energy_value)
 
-        forceValue = getattr(bestCluster, 'forces', None)
-        if forceValue is not None:
-            writeKwargs['forces'] = np.array(forceValue, dtype=float)
+        force_value = getattr(best_cluster, 'forces', None)
+        if force_value is not None:
+            write_kwargs['forces'] = np.array(force_value, dtype=float)
 
-        with Trajectory(trajPath, mode) as traj:
-            traj.write(exportCluster, **writeKwargs)
+        with Trajectory(traj_path, mode) as traj:
+            traj.write(export_cluster, **write_kwargs)
 
-        return os.path.abspath(trajPath)
+        return os.path.abspath(traj_path)
 
-    def dumpxyz(self, name: str | None = None) -> str:
+    def dump_xyz(self, name: str | None = None) -> str:
         """导出当前最优团簇到 xyz 轨迹文件(.xyz).
 
         使用 ase.io.xyz 写入 ./Trajectories/ 下的 xyz 轨迹文件.
@@ -432,26 +432,26 @@ class Population:
         """
         from ase.io.xyz import write_xyz
 
-        bestCluster = self.bestCluster
+        best_cluster = self.best_cluster
 
-        baseDir = './Trajectories'
-        if not os.path.exists(baseDir):
-            os.makedirs(baseDir)
+        base_dir = './Trajectories'
+        if not os.path.exists(base_dir):
+            os.makedirs(base_dir)
 
         if name is None:
-            baseName = f"{self.symbol}_best" if self.symbol else "Population_best"
+            base_name = f"{self.symbol}_best" if self.symbol else "Population_best"
         else:
-            baseName = name
+            base_name = name
 
-        xyzPath = os.path.join(baseDir, f"{baseName}.xyz")
+        xyz_path = os.path.join(base_dir, f"{base_name}.xyz")
 
-        energyValue = getattr(bestCluster, 'energy', None)
-        commentStr = str(energyValue) if energyValue is not None else ""
+        energy_value = getattr(best_cluster, 'energy', None)
+        comment_str = str(energy_value) if energy_value is not None else ""
 
-        with open(xyzPath, 'a') as f:
-            write_xyz(f, [bestCluster], comment=commentStr)
+        with open(xyz_path, 'a') as f:
+            write_xyz(f, [best_cluster], comment=comment_str)
 
-        return os.path.abspath(xyzPath)
+        return os.path.abspath(xyz_path)
 
     def import_population(self, filename: str, confirm: bool = False):
         """从JSON文件导入种群数据.
@@ -495,20 +495,20 @@ class Population:
              # Proceeding anyway, but this is a potential issue if user intends strict type checking
 
         # Load adaptive parameters if present; keep current values when missing.
-        fpValue = data.get('fp')
-        pValue = data.get('p')
-        crmValue = data.get('CRm')
-        if fpValue is not None:
-            self._fp = float(fpValue)
-        if pValue is not None:
-            self._p = float(pValue)
-        if crmValue is not None:
-            self._CRm = float(crmValue)
+        fp_value = data.get('fp')
+        p_value = data.get('p')
+        crm_value = data.get('CRm')
+        if fp_value is not None:
+            self._fp = float(fp_value)
+        if p_value is not None:
+            self._p = float(p_value)
+        if crm_value is not None:
+            self._crm = float(crm_value)
 
         # Import any extra attributes beyond the preset ones
-        presetKeys = {'symbol', 'fp', 'p', 'CRm', 'clusters'}
+        preset_keys = {'symbol', 'fp', 'p', 'CRm', 'clusters'}
         for key, value in data.items():
-            if key not in presetKeys:
+            if key not in preset_keys:
                 setattr(self, key, value)
 
         clusters_data = data.get('clusters', [])
@@ -527,7 +527,7 @@ class Population:
                 cluster = Atoms(symbol, positions=positions)
                 
                 # Add to population
-                # Note: self.addCluster appends None to energies/forces, so we overwrite them below
+                # Note: self.add_cluster appends None to energies/forces, so we overwrite them below
                 self._clusters.append(cluster)
                 
                 # Set energy and forces on cluster object
@@ -545,13 +545,13 @@ class Population:
 
 
 
-def localOptimize(pop: Population | Atoms, 
-                  cell: list[float] | np.ndarray | None = None, 
-                  potential: Calculator | None = None,
-                  optimizer: type[Optimizer] = BFGS,
-                  fmax: float = 0.05, 
-                  steps: int = 100,
-                  deepcopy: bool = True) -> Population | Atoms:
+def local_optimize(pop: Population | Atoms, 
+                   cell: list[float] | np.ndarray | None = None, 
+                   potential: Calculator | None = None,
+                   optimizer: type[Optimizer] = BFGS,
+                   fmax: float = 0.05, 
+                   steps: int = 100,
+                   deepcopy: bool = True) -> Population | Atoms:
     """进行局域优化(结构弛豫)
     
     对种群中的所有团簇或单个团簇进行结构优化, 返回优化后的新对象.
@@ -587,29 +587,29 @@ def localOptimize(pop: Population | Atoms,
 
     Examples
     --------
-    >>> popNew = localOptimize(pop, potential=calc, optimizer='LBFGS')
+    >>> popNew = local_optimize(pop, potential=calc, optimizer='LBFGS')
     """
     if potential is None:
         raise ValueError("potential must be an ASE calculator object, None is not allowed")
 
     if isinstance(pop, Population):
-        newClusters = copy.deepcopy(pop) if deepcopy else pop
-        isSingle = False
+        new_clusters = copy.deepcopy(pop) if deepcopy else pop
+        is_single = False
     elif isinstance(pop, Atoms):
-        newClusters = Population()
-        newClusters.addCluster(pop, deepcopy=deepcopy)
-        isSingle = True
+        new_clusters = Population()
+        new_clusters.add_cluster(pop, deepcopy=deepcopy)
+        is_single = True
     else:
         raise TypeError("pop must be a Population or an ase.Atoms object")
 
-    for atoms in newClusters:
+    for atoms in new_clusters:
         # cell 自动添加到团簇对象上
         if cell:
             atoms.set_cell(cell)
             atoms.set_pbc(False)
 
         # 重合几何会让势函数返回 NaN, 直接判为无效个体, 不调用计算器.
-        if minPairDistance(atoms.get_positions()) < MIN_ATOM_DISTANCE:
+        if min_pair_distance(atoms.get_positions()) < MIN_ATOM_DISTANCE:
             setattr(atoms, 'energy', float('inf'))
             setattr(atoms, 'forces', np.zeros((len(atoms), 3)).tolist())
             atoms.set_cell([0.0, 0.0, 0.0])
@@ -632,15 +632,15 @@ def localOptimize(pop: Population | Atoms,
 
         # 只同步到团簇对象属性, Population.energies/forces 按需读取这里.
         # 仅复用优化器最后一步的 calculator.results, 不再触发额外能量/力计算.
-        energyValue = None
-        forceValue = None
+        energy_value = None
+        force_value = None
         if atoms.calc is not None:
-            calcResults = getattr(atoms.calc, 'results', None)
-            if isinstance(calcResults, dict):
-                energyValue = calcResults.get('energy')
-                forceValue = calcResults.get('forces')
+            calc_results = getattr(atoms.calc, 'results', None)
+            if isinstance(calc_results, dict):
+                energy_value = calc_results.get('energy')
+                force_value = calc_results.get('forces')
 
-        if energyValue is None or forceValue is None:
+        if energy_value is None or force_value is None:
             # 优化失败(含中途出现 NaN 坐标): 记为无效个体, 不中断整个流程.
             setattr(atoms, 'energy', float('inf'))
             setattr(atoms, 'forces', np.zeros((len(atoms), 3)).tolist())
@@ -650,22 +650,22 @@ def localOptimize(pop: Population | Atoms,
                     np.nan_to_num(positions, nan=0.0, posinf=0.0, neginf=0.0)
                 )
         else:
-            setattr(atoms, 'energy', float(energyValue))
-            setattr(atoms, 'forces', np.array(forceValue).tolist())
+            setattr(atoms, 'energy', float(energy_value))
+            setattr(atoms, 'forces', np.array(force_value).tolist())
 
         # 计算后清除 cell
         # del atoms.cell # cell attribute deletion is not supported
         atoms.set_cell([0.0, 0.0, 0.0]) # Effectively clear cell dimensions
         atoms.calc = None
 
-    if isSingle:
-        return newClusters.clusters[0]
-    return newClusters
+    if is_single:
+        return new_clusters.clusters[0]
+    return new_clusters
 
 
 # 局域优化偏函数:固定常用参数,供 select 等流程直接复用
 relax = functools.partial(
-    localOptimize,
+    local_optimize,
     cell=[15, 15, 15],
     potential=LennardJones(),
     optimizer=BFGS,
@@ -674,17 +674,17 @@ relax = functools.partial(
 )
 
 
-def randomCluster(pop: Population, 
-                  a: float, 
-                  delta: float, 
-                  relax: Callable[[Population | Atoms], Population | Atoms],
-                  is2D: bool = False):
+def random_cluster(pop: Population, 
+                   a: float, 
+                   delta: float, 
+                   relax: Callable[[Population | Atoms], Population | Atoms],
+                   is_2d: bool = False):
     """随机生成一个团簇并添加进种群.
     
     使用生长法随机生成团簇初始坐标, 并进行局域优化后加入种群.
     生成过程: 
     1. 第一个原子置于原点.
-    2. 后续原子在已生成原子的附近随机生成 (键长 bondl, 方向随机).
+    2. 后续原子在已生成原子的附近随机生成 (键长 bond_length, 方向随机).
     3. 检查新原子与已有原子的距离, 若过近(<0.75a)则重新生成.
 
     Parameters
@@ -694,68 +694,68 @@ def randomCluster(pop: Population,
     a : float
         晶格常数或第一近邻距离 (Angstrom). 用于控制生成团簇的致密程度.
     delta : float
-        键长扰动因子 (0~1). bondl = (1 + delta * uniform(-0.25, 0.75)) * a.
+        键长扰动因子 (0~1). bond_length = (1 + delta * uniform(-0.25, 0.75)) * a.
     relax : Callable
-        局域优化函数. 可传入偏函数 relax() 或函数对象 localOptimize().
-    is2D : bool, optional
+        局域优化函数. 可传入偏函数 relax() 或函数对象 local_optimize().
+    is_2d : bool, optional
         Whether to generate a 2D cluster in the xy plane. Default False.
         When True, atoms are generated inside a disk with radius
-        R = a * (0.5 + sqrt((sqrt(3) / (2 * pi)) * N)), and z is fixed to 0.
+        R = a * (0.5 + sqrt((sqrt(3) / (2 * pi)) * n_atoms)), and z is fixed to 0.
         
     Examples
     --------
-    >>> randomCluster(pop, a=2.5, delta=0.5, relax=relax)
+    >>> random_cluster(pop, a=2.5, delta=0.5, relax=relax)
     """
-    N = pop.num
-    if N == 0:
+    n_atoms = pop.num
+    if n_atoms == 0:
         if pop.symbol:
-             N = len(Atoms(pop.symbol))
+             n_atoms = len(Atoms(pop.symbol))
         else:
              raise ValueError("Population symbol not set, cannot determine cluster size.")
 
     # Radius limit for random growth.
-    if is2D:
-        R0 = a * (0.5 + np.sqrt((np.sqrt(3) / (2 * np.pi)) * N))
+    if is_2d:
+        r0 = a * (0.5 + np.sqrt((np.sqrt(3) / (2 * np.pi)) * n_atoms))
     else:
-        R0 = 2 * a * (0.5 + (3 * N / (4 * np.pi * np.sqrt(2)))**(1.0/3.0))
+        r0 = 2 * a * (0.5 + (3 * n_atoms / (4 * np.pi * np.sqrt(2)))**(1.0/3.0))
 
     # Initialize positions
     dummy = Atoms(pop.symbol)
     symbols = dummy.get_chemical_symbols()
     
-    positions = np.zeros((N, 3))
+    positions = np.zeros((n_atoms, 3))
     positions[0] = [0.0, 0.0, 0.0]
 
-    for i in range(1, N):
+    for i in range(1, n_atoms):
         while True:
-            idx_bondatom = np.random.randint(0, i)
+            idx_bond_atom = np.random.randint(0, i)
             
-            # bondl = (1+delta*np.random.uniform(-0.25,0.75))*a
-            bondl = (1 + delta * np.random.uniform(-0.25, 0.75)) * a
+            # bond_length = (1+delta*np.random.uniform(-0.25,0.75))*a
+            bond_length = (1 + delta * np.random.uniform(-0.25, 0.75)) * a
             
-            if is2D:
+            if is_2d:
                 # 2D mode: random direction in xy plane, z fixed at 0.
-                bondphi = np.random.rand() * 2 * np.pi
-                x = positions[idx_bondatom][0] + bondl * np.cos(bondphi)
-                y = positions[idx_bondatom][1] + bondl * np.sin(bondphi)
+                bond_phi = np.random.rand() * 2 * np.pi
+                x = positions[idx_bond_atom][0] + bond_length * np.cos(bond_phi)
+                y = positions[idx_bond_atom][1] + bond_length * np.sin(bond_phi)
                 z = 0.0
             else:
                 # 3D mode: random spherical direction.
-                bondtheta = np.random.rand() * np.pi
-                bondphi = np.random.rand() * 2 * np.pi
-                x = positions[idx_bondatom][0] + bondl * np.cos(bondtheta) * np.cos(bondphi)
-                y = positions[idx_bondatom][1] + bondl * np.cos(bondtheta) * np.sin(bondphi)
-                z = positions[idx_bondatom][2] + bondl * np.sin(bondtheta)
+                bond_theta = np.random.rand() * np.pi
+                bond_phi = np.random.rand() * 2 * np.pi
+                x = positions[idx_bond_atom][0] + bond_length * np.cos(bond_theta) * np.cos(bond_phi)
+                y = positions[idx_bond_atom][1] + bond_length * np.cos(bond_theta) * np.sin(bond_phi)
+                z = positions[idx_bond_atom][2] + bond_length * np.sin(bond_theta)
             
             trial_pos = np.array([x, y, z])
 
-            # 新原子必须位于半径 R0 球/圆内.
-            if np.linalg.norm(trial_pos) > R0:
+            # 新原子必须位于半径 r0 球/圆内.
+            if np.linalg.norm(trial_pos) > r0:
                 continue
             
             # if 该原子和其他原子距离 < 0.75*a: 重新生成
-            dists = np.linalg.norm(positions[:i] - trial_pos, axis=1)
-            if np.any(dists < 0.75 * a):
+            distances = np.linalg.norm(positions[:i] - trial_pos, axis=1)
+            if np.any(distances < 0.75 * a):
                 continue
             
             positions[i] = trial_pos
@@ -764,22 +764,22 @@ def randomCluster(pop: Population,
     # Create cluster
     cluster = Atoms(symbols=symbols, positions=positions)
     
-    # localOptimize
-    optimizedCluster = relax(cluster)
-    if not isinstance(optimizedCluster, Atoms):
-        raise TypeError("localOptimize should return Atoms when input is Atoms")
+    # local_optimize
+    optimized_cluster = relax(cluster)
+    if not isinstance(optimized_cluster, Atoms):
+        raise TypeError("local_optimize should return Atoms when input is Atoms")
     
     # Add to pop
-    pop.addCluster(optimizedCluster, deepcopy=False)
+    pop.add_cluster(optimized_cluster, deepcopy=False)
     
     # Update energy and forces
-    energyValue = getattr(optimizedCluster, 'energy', None)
-    forceValue = getattr(optimizedCluster, 'forces', None)
-    setattr(pop.clusters[len(pop) - 1], 'energy', energyValue)
-    setattr(pop.clusters[len(pop) - 1], 'forces', forceValue)
+    energy_value = getattr(optimized_cluster, 'energy', None)
+    force_value = getattr(optimized_cluster, 'forces', None)
+    setattr(pop.clusters[len(pop) - 1], 'energy', energy_value)
+    setattr(pop.clusters[len(pop) - 1], 'forces', force_value)
 
 
-def isConnectedGraph(cluster: Atoms, cutoff: float) -> bool:
+def is_connected_graph(cluster: Atoms, cutoff: float) -> bool:
     """判断单个团簇是否为连通图.
 
     Parameters
@@ -802,15 +802,15 @@ def isConnectedGraph(cluster: Atoms, cutoff: float) -> bool:
     if not isinstance(cluster, Atoms):
         raise TypeError("cluster must be an ase.Atoms object")
 
-    nAtoms = len(cluster)
+    n_atoms = len(cluster)
 
     # Step 2: 0 或 1 个原子的团簇视为连通.
-    if nAtoms <= 1:
+    if n_atoms <= 1:
         return True
 
     # Step 3: 取坐标并初始化 DFS 状态.
     positions = np.array(cluster.get_positions(), dtype=float)
-    visited = [False] * nAtoms
+    visited = [False] * n_atoms
     stack = [0]
     visited[0] = True
 
@@ -818,10 +818,10 @@ def isConnectedGraph(cluster: Atoms, cutoff: float) -> bool:
     while stack:
         i = stack.pop()
         diff = positions - positions[i]
-        dists = np.linalg.norm(diff, axis=1)
+        distances = np.linalg.norm(diff, axis=1)
 
         # 距离 <= cutoff 视为邻居, 距离 > 0 排除自身.
-        neighbors = np.where((dists <= cutoff) & (dists > 0.0))[0]
+        neighbors = np.where((distances <= cutoff) & (distances > 0.0))[0]
         for j in neighbors.tolist():
             if not visited[j]:
                 visited[j] = True
@@ -854,85 +854,85 @@ def mutate(pop: Population, a: float = 4, n: int = 10, debug: bool = False) -> P
     if n <= 0:
         raise ValueError("n must be > 0")
 
-    tempClusters = copy.deepcopy(pop)
+    temp_clusters = copy.deepcopy(pop)
 
     # 选取当前最优个体索引(最低能量),要求所有个体能量都已就绪
     energies = pop.energies
-    for i, energyValue in enumerate(energies):
-        if energyValue is None:
+    for i, energy_value in enumerate(energies):
+        if energy_value is None:
             raise ValueError(f"All clusters must have energy before mutation. Missing index: {i}")
-    indexBest = int(np.argmin(np.array(energies, dtype=float)))
+    index_best = int(np.argmin(np.array(energies, dtype=float)))
 
-    nAtoms = pop.num
+    n_atoms = pop.num
     # WARNING: 系数过小会导致柯西分支重采样次数激增, 甚至表现为长时间循环.
-    # 这里使用 10*a 对应阈值 5*R0, 放宽失败判据以降低卡顿风险.
-    radiusLimit = 10 * a * (0.5 + (3 * nAtoms / (4 * np.pi * np.sqrt(2)))**(1.0 / 3.0))
+    # 这里使用 10*a 对应阈值 5*r0, 放宽失败判据以降低卡顿风险.
+    radius_limit = 10 * a * (0.5 + (3 * n_atoms / (4 * np.pi * np.sqrt(2)))**(1.0 / 3.0))
 
     for i in range(len(pop)):
         # 采样缩放因子分支:按 fp 在高斯/柯西之间切换.
-        useGaussian = np.random.uniform(0.0, 1.0) < tempClusters.fp
-        # mutTag 在分布分支确定后立即确定: 0=Gaussian, 1=Cauchy.
-        mutTag = 0 if useGaussian else 1
+        use_gaussian = np.random.uniform(0.0, 1.0) < temp_clusters.fp
+        # mut_tag 在分布分支确定后立即确定: 0=Gaussian, 1=Cauchy.
+        mut_tag = 0 if use_gaussian else 1
 
         # 从除 i 外的个体中采样互异索引
-        candidateIndices = [idx for idx in range(len(pop)) if idx != i]
-        index1, index2, index3 = np.random.choice(candidateIndices, size=3, replace=False)
+        candidate_indices = [idx for idx in range(len(pop)) if idx != i]
+        index1, index2, index3 = np.random.choice(candidate_indices, size=3, replace=False)
 
         # 按 p 在两种突变策略之间切换
-        useRandStrategy = np.random.uniform(0.0, 1.0) < tempClusters.p
+        use_rand_strategy = np.random.uniform(0.0, 1.0) < temp_clusters.p
 
-        def buildPositions(scaleFactor: float) -> np.ndarray:
-            if useRandStrategy:
+        def build_positions(scale_factor: float) -> np.ndarray:
+            if use_rand_strategy:
                 # DE/rand/1
                 return (
                     pop[index1].get_positions()
-                    + scaleFactor * (pop[index2].get_positions() - pop[index3].get_positions())
+                    + scale_factor * (pop[index2].get_positions() - pop[index3].get_positions())
                 )
             # DE/current-to-best/2
             return (
                 pop[i].get_positions()
-                + scaleFactor * (pop[indexBest].get_positions() - pop[i].get_positions())
-                + scaleFactor * (pop[index1].get_positions() - pop[index2].get_positions())
+                + scale_factor * (pop[index_best].get_positions() - pop[i].get_positions())
+                + scale_factor * (pop[index1].get_positions() - pop[index2].get_positions())
             )
 
-        if useGaussian:
+        if use_gaussian:
             # 高斯分支保持原逻辑.
-            scaleFactor = float(np.random.normal(0.5, 0.3))
-            newPositions = buildPositions(scaleFactor)
+            scale_factor = float(np.random.normal(0.5, 0.3))
+            new_positions = build_positions(scale_factor)
         else:
-            # 柯西分支增加半径约束: 若超出 2*R0 则重采样柯西分布.
-            retryCount = 0
-            lastPositions: np.ndarray | None = None
+            # 柯西分支增加半径约束: 若超出 2*r0 则重采样柯西分布.
+            retry_count = 0
+            last_positions: np.ndarray | None = None
             while True:
-                scaleFactor = float(np.random.standard_cauchy())
-                trialPositions = buildPositions(scaleFactor)
-                lastPositions = trialPositions
-                maxDistance = float(np.linalg.norm(trialPositions, axis=1).max())
-                if maxDistance <= radiusLimit:
-                    newPositions = trialPositions
+                scale_factor = float(np.random.standard_cauchy())
+                trial_positions = build_positions(scale_factor)
+                last_positions = trial_positions
+                max_distance = float(np.linalg.norm(trial_positions, axis=1).max())
+                if max_distance <= radius_limit:
+                    new_positions = trial_positions
                     break
                 if debug:
-                    print(f"Mutation failed, atom at distance {maxDistance:.2f} from origin")
-                retryCount += 1
-                if retryCount >= n:
-                    if lastPositions is None:
-                        raise RuntimeError("mutate internal error: lastPositions is unavailable")
+                    print(f"Mutation failed, atom at distance {max_distance:.2f} from origin")
+                retry_count += 1
+                if retry_count >= n:
+                    if last_positions is None:
+                        raise RuntimeError("mutate internal error: last_positions is unavailable")
                     if debug:
                         print(f"Warning: Cauchy retry limit reached n={n}, using last candidate positions")
-                    newPositions = lastPositions
+                    new_positions = last_positions
                     break
 
         # 突变产生重合几何时退回父代坐标, 避免把非法个体送入优化.
-        if minPairDistance(newPositions) < MIN_ATOM_DISTANCE:
-            newPositions = pop[i].get_positions()
+        if min_pair_distance(new_positions) < MIN_ATOM_DISTANCE:
+            new_positions = pop[i].get_positions()
 
         # 记录本个体突变标签到 mut 属性(0/1).
-        tempClusters[i].set_positions(newPositions)
-        setattr(tempClusters[i], 'mut', mutTag)
-        setattr(tempClusters[i], 'energy', None)
-        setattr(tempClusters[i], 'forces', None)
+        temp_clusters[i].set_positions(new_positions)
+        setattr(temp_clusters[i], 'mut', mut_tag)
+        setattr(temp_clusters[i], 'energy', None)
+        setattr(temp_clusters[i], 'forces', None)
 
-    return tempClusters
+    return temp_clusters
 
 
 def crossover(pop1: Population, pop2: Population) -> Population:
@@ -942,52 +942,52 @@ def crossover(pop1: Population, pop2: Population) -> Population:
     if len(pop1) != len(pop2):
         raise ValueError("Population sizes must match for crossover")
 
-    tempClusters = Population(symbol=pop1.symbol)
-    tempClusters._fp = pop1.fp
-    tempClusters._p = pop1.p
-    tempClusters._CRm = pop1.CRm
+    temp_clusters = Population(symbol=pop1.symbol)
+    temp_clusters._fp = pop1.fp
+    temp_clusters._p = pop1.p
+    temp_clusters._crm = pop1.crm
 
     for i in range(len(pop1)):
         # 采样当前个体交叉率,并裁剪到 [0, 1].
         # 裁剪是为了保证交叉概率合法,避免出现负值或大于 1.
-        crossRate = np.random.normal(pop1.CRm, 0.1)
-        crossRate = np.clip(crossRate, 0.0, 1.0)
+        cross_rate = np.random.normal(pop1.crm, 0.1)
+        cross_rate = np.clip(cross_rate, 0.0, 1.0)
 
         # 至少保留一个原子来自突变种群
-        jrand = np.random.randint(0, pop1.num)
+        j_rand = np.random.randint(0, pop1.num)
 
         # 使用坐标拷贝进行交叉,保证不原地改动输入种群 pop1/pop2.
-        basePositions = pop1[i].get_positions().copy()
-        mutPositions = pop2[i].get_positions().copy()
-        trialPositions = basePositions.copy()
+        base_positions = pop1[i].get_positions().copy()
+        mut_positions = pop2[i].get_positions().copy()
+        trial_positions = base_positions.copy()
 
-        # 逐原子交叉:按 CR 或 jrand 选择保留突变位姿.
+        # 逐原子交叉:按 cr 或 j_rand 选择保留突变位姿.
         # 父代原子顺序不一致时可能选中同一物理原子, 导致坐标重合, 故重采.
         for _attempt in range(10):
-            trialPositions = basePositions.copy()
+            trial_positions = base_positions.copy()
             for j in range(pop1.num):
-                if np.random.uniform(0.0, 1.0) <= crossRate or j == jrand:
-                    trialPositions[j] = mutPositions[j]
-            if minPairDistance(trialPositions) >= MIN_ATOM_DISTANCE:
+                if np.random.uniform(0.0, 1.0) <= cross_rate or j == j_rand:
+                    trial_positions[j] = mut_positions[j]
+            if min_pair_distance(trial_positions) >= MIN_ATOM_DISTANCE:
                 break
         else:
-            trialPositions = basePositions.copy()
+            trial_positions = base_positions.copy()
 
-        trialCluster = Atoms(
+        trial_cluster = Atoms(
             symbols=pop1[i].get_chemical_symbols(),
-            positions=trialPositions,
+            positions=trial_positions,
         )
-        # 记录本个体交叉率 CR,供 select 在成功样本上更新 CRm.
-        setattr(trialCluster, 'CR', crossRate)
-        # 传递 mutTag,供 select 统计对应策略成功/失败并更新 p.
-        setattr(trialCluster, 'mut', getattr(pop2[i], 'mut', None))
+        # 记录本个体交叉率 cr,供 select 在成功样本上更新 crm.
+        setattr(trial_cluster, 'cr', cross_rate)
+        # 传递 mut_tag,供 select 统计对应策略成功/失败并更新 p.
+        setattr(trial_cluster, 'mut', getattr(pop2[i], 'mut', None))
 
-        tempClusters.addCluster(trialCluster)
+        temp_clusters.add_cluster(trial_cluster)
 
-    return tempClusters
+    return temp_clusters
 
 
-def sphereCutSplice(
+def sphere_cut_splice(
     pop1: Population,
     pop2: Population,
     r: float = 0.8,
@@ -1004,153 +1004,153 @@ def sphereCutSplice(
         父代种群 2.
     r : float, optional
         半径缩放系数,取值范围 (0, 1].
-        球面半径定义为 R = dmaxA * r.
+        球面半径定义为 R = dmax_a * r.
     relax : Callable, optional
-        局域优化函数. 可传入偏函数 relax() 或函数对象 localOptimize().
+        局域优化函数. 可传入偏函数 relax() 或函数对象 local_optimize().
         若使用默认值 None, 则直接报错.
     debug : bool, optional
         是否输出重选过程信息. Default False.
     """
     if pop1.symbol != pop2.symbol:
-        raise ValueError("Population symbols must match for sphereCutSplice")
+        raise ValueError("Population symbols must match for sphere_cut_splice")
     if len(pop1) != len(pop2):
-        raise ValueError("Population sizes must match for sphereCutSplice")
+        raise ValueError("Population sizes must match for sphere_cut_splice")
     if len(pop1) < 2:
-        raise ValueError("sphereCutSplice requires at least 2 clusters per population")
+        raise ValueError("sphere_cut_splice requires at least 2 clusters per population")
     if not (0.0 < r <= 1.0):
         raise ValueError("r must be in (0, 1]")
 
-    tempClusters = Population(symbol=pop1.symbol)
-    tempClusters._fp = pop1.fp
-    tempClusters._p = pop1.p
-    tempClusters._CRm = pop1.CRm
+    temp_clusters = Population(symbol=pop1.symbol)
+    temp_clusters._fp = pop1.fp
+    temp_clusters._p = pop1.p
+    temp_clusters._crm = pop1.crm
 
     if relax is None:
-        raise ValueError("sphereCutSplice requires explicit relax callable")
+        raise ValueError("sphere_cut_splice requires explicit relax callable")
 
-    def spliceOne(clusterA: Atoms, clusterB: Atoms) -> Atoms | None:
-        workA = copy.deepcopy(clusterA)
-        workB = copy.deepcopy(clusterB)
+    def splice_one(cluster_a: Atoms, cluster_b: Atoms) -> Atoms | None:
+        work_a = copy.deepcopy(cluster_a)
+        work_b = copy.deepcopy(cluster_b)
 
         # 这里按需求使用质心(center of mass)移动到原点,不使用几何中心.
-        workA.set_center_of_mass([0.0, 0.0, 0.0])
-        workB.set_center_of_mass([0.0, 0.0, 0.0])
+        work_a.set_center_of_mass([0.0, 0.0, 0.0])
+        work_b.set_center_of_mass([0.0, 0.0, 0.0])
 
-        positionsA = workA.get_positions().copy()
-        positionsB = workB.get_positions().copy()
-        symbolsA = workA.get_chemical_symbols()
-        symbolsB = workB.get_chemical_symbols()
+        positions_a = work_a.get_positions().copy()
+        positions_b = work_b.get_positions().copy()
+        symbols_a = work_a.get_chemical_symbols()
+        symbols_b = work_b.get_chemical_symbols()
 
-        distA = np.linalg.norm(positionsA, axis=1)
-        distB = np.linalg.norm(positionsB, axis=1)
+        dist_a = np.linalg.norm(positions_a, axis=1)
+        dist_b = np.linalg.norm(positions_b, axis=1)
 
-        dmaxA = float(np.max(distA))
-        radius = dmaxA * r
+        dmax_a = float(np.max(dist_a))
+        radius = dmax_a * r
 
-        symbolSet = sorted(set(symbolsA))
-        swapPairs: list[tuple[int, int]] = []
+        symbol_set = sorted(set(symbols_a))
+        swap_pairs: list[tuple[int, int]] = []
 
-        for symbol in symbolSet:
-            outerIndicesA = [
-                i for i, atomSymbol in enumerate(symbolsA)
-                if atomSymbol == symbol and distA[i] > radius
+        for symbol in symbol_set:
+            outer_indices_a = [
+                i for i, atom_symbol in enumerate(symbols_a)
+                if atom_symbol == symbol and dist_a[i] > radius
             ]
 
-            countOuter = len(outerIndicesA)
-            if countOuter == 0:
+            count_outer = len(outer_indices_a)
+            if count_outer == 0:
                 continue
 
-            candidateIndicesB = [
-                i for i, atomSymbol in enumerate(symbolsB)
-                if atomSymbol == symbol
+            candidate_indices_b = [
+                i for i, atom_symbol in enumerate(symbols_b)
+                if atom_symbol == symbol
             ]
-            candidateIndicesB.sort(key=lambda i: distB[i], reverse=True)
-            selectedIndicesB = candidateIndicesB[:countOuter]
+            candidate_indices_b.sort(key=lambda i: dist_b[i], reverse=True)
+            selected_indices_b = candidate_indices_b[:count_outer]
 
-            if len(selectedIndicesB) < countOuter:
+            if len(selected_indices_b) < count_outer:
                 return None
 
-            # 若团簇2被选中交换的原子里出现 <= dmaxA*r/2,则本次交换失败并重选.
+            # 若团簇2被选中交换的原子里出现 <= dmax_a*r/2,则本次交换失败并重选.
             threshold = radius / 2.0
-            if any(distB[idx] <= threshold for idx in selectedIndicesB):
+            if any(dist_b[idx] <= threshold for idx in selected_indices_b):
                 return None
 
-            outerIndicesA.sort(key=lambda i: distA[i], reverse=True)
-            selectedIndicesB.sort(key=lambda i: distB[i], reverse=True)
-            swapPairs.extend(zip(outerIndicesA, selectedIndicesB))
+            outer_indices_a.sort(key=lambda i: dist_a[i], reverse=True)
+            selected_indices_b.sort(key=lambda i: dist_b[i], reverse=True)
+            swap_pairs.extend(zip(outer_indices_a, selected_indices_b))
 
-        trialA = copy.deepcopy(workA)
-        trialB = copy.deepcopy(workB)
-        trialPosA = trialA.get_positions().copy()
-        trialPosB = trialB.get_positions().copy()
+        trial_a = copy.deepcopy(work_a)
+        trial_b = copy.deepcopy(work_b)
+        trial_pos_a = trial_a.get_positions().copy()
+        trial_pos_b = trial_b.get_positions().copy()
 
-        for indexA, indexB in swapPairs:
-            cache = trialPosA[indexA].copy()
-            trialPosA[indexA] = trialPosB[indexB]
-            trialPosB[indexB] = cache
+        for index_a, index_b in swap_pairs:
+            cache = trial_pos_a[index_a].copy()
+            trial_pos_a[index_a] = trial_pos_b[index_b]
+            trial_pos_b[index_b] = cache
 
-        trialA.set_positions(trialPosA)
-        trialB.set_positions(trialPosB)
+        trial_a.set_positions(trial_pos_a)
+        trial_b.set_positions(trial_pos_b)
 
-        relaxedA = relax(trialA)
-        relaxedB = relax(trialB)
-        if not isinstance(relaxedA, Atoms) or not isinstance(relaxedB, Atoms):
+        relaxed_a = relax(trial_a)
+        relaxed_b = relax(trial_b)
+        if not isinstance(relaxed_a, Atoms) or not isinstance(relaxed_b, Atoms):
             raise TypeError("relax must return Atoms when input is Atoms")
 
-        # 与 crossover 一致: 传递 mutTag 供后续 select 更新 p/CRm.
-        mutTag = getattr(clusterB, 'mut', None)
-        if mutTag is not None:
-            setattr(relaxedA, 'mut', mutTag)
-            setattr(relaxedB, 'mut', mutTag)
+        # 与 crossover 一致: 传递 mut_tag 供后续 select 更新 p/crm.
+        mut_tag = getattr(cluster_b, 'mut', None)
+        if mut_tag is not None:
+            setattr(relaxed_a, 'mut', mut_tag)
+            setattr(relaxed_b, 'mut', mut_tag)
 
-        # CR 生命周期透传: 供 select 在成功样本上更新 CRm.
-        crossRate = getattr(clusterB, 'CR', None)
-        if crossRate is not None:
-            setattr(relaxedA, 'CR', crossRate)
-            setattr(relaxedB, 'CR', crossRate)
+        # cr 生命周期透传: 供 select 在成功样本上更新 crm.
+        cross_rate = getattr(cluster_b, 'cr', None)
+        if cross_rate is not None:
+            setattr(relaxed_a, 'cr', cross_rate)
+            setattr(relaxed_b, 'cr', cross_rate)
 
-        energyA = getattr(relaxedA, 'energy', None)
-        energyB = getattr(relaxedB, 'energy', None)
-        if energyA is None or energyB is None:
-            raise ValueError("relax result must contain energy for sphereCutSplice")
+        energy_a = getattr(relaxed_a, 'energy', None)
+        energy_b = getattr(relaxed_b, 'energy', None)
+        if energy_a is None or energy_b is None:
+            raise ValueError("relax result must contain energy for sphere_cut_splice")
 
-        return relaxedA if float(energyA) <= float(energyB) else relaxedB
+        return relaxed_a if float(energy_a) <= float(energy_b) else relaxed_b
 
-    targetSize = len(pop1)
-    maxRetries = targetSize * 200
-    retryCount = 0
+    target_size = len(pop1)
+    max_retries = target_size * 200
+    retry_count = 0
 
-    while len(tempClusters) < targetSize:
-        if retryCount >= maxRetries:
-            raise RuntimeError("sphereCutSplice failed to generate enough offspring after retries")
-        retryCount += 1
+    while len(temp_clusters) < target_size:
+        if retry_count >= max_retries:
+            raise RuntimeError("sphere_cut_splice failed to generate enough offspring after retries")
+        retry_count += 1
 
-        selected1 = np.random.choice(len(pop1), size=2, replace=False)
-        selected2 = np.random.choice(len(pop2), size=2, replace=False)
+        selected_1 = np.random.choice(len(pop1), size=2, replace=False)
+        selected_2 = np.random.choice(len(pop2), size=2, replace=False)
 
         winners: list[Atoms] = []
-        roundFailed = False
-        for localIndex in range(2):
-            winner = spliceOne(pop1[int(selected1[localIndex])], pop2[int(selected2[localIndex])])
+        round_failed = False
+        for local_index in range(2):
+            winner = splice_one(pop1[int(selected_1[local_index])], pop2[int(selected_2[local_index])])
             if winner is None:
-                roundFailed = True
+                round_failed = True
                 break
             winners.append(winner)
 
-        if roundFailed:
+        if round_failed:
             if debug:
-                print(f"SphereCutSplice failed, retryCount={retryCount}")
+                print(f"SphereCutSplice failed, retry_count={retry_count}")
             continue
 
         for winner in winners:
-            if len(tempClusters) >= targetSize:
+            if len(temp_clusters) >= target_size:
                 break
-            tempClusters.addCluster(winner, deepcopy=False)
+            temp_clusters.add_cluster(winner, deepcopy=False)
 
-    return tempClusters
+    return temp_clusters
 
 
-def localTransformation(
+def local_transformation(
     pop: Population,
     r: float = 0.25,
     relax: Callable[[Population | Atoms], Population | Atoms] | None = None,
@@ -1167,7 +1167,7 @@ def localTransformation(
     r : float, optional
         扰动幅度, 每个坐标分量在 [-r, r] 取样. Default 0.25.
     relax : Callable, optional
-        局域优化函数. 可传偏函数 relax() 或函数对象 localOptimize().
+        局域优化函数. 可传偏函数 relax() 或函数对象 local_optimize().
 
     Returns
     -------
@@ -1175,73 +1175,73 @@ def localTransformation(
         经过局部变换与选择后的新种群.
     """
     if relax is None:
-        raise ValueError("localTransformation requires explicit relax callable")
+        raise ValueError("local_transformation requires explicit relax callable")
     if r < 0:
         raise ValueError("r must be >= 0")
 
-    sourcePop = pop
-    outputPop = Population(symbol=sourcePop.symbol)
-    outputPop._fp = sourcePop.fp
-    outputPop._p = sourcePop.p
-    outputPop._CRm = sourcePop.CRm
+    source_pop = pop
+    output_pop = Population(symbol=source_pop.symbol)
+    output_pop._fp = source_pop.fp
+    output_pop._p = source_pop.p
+    output_pop._crm = source_pop.crm
 
-    baseEnergyValues: list[float | None] = sourcePop.energies.copy()
-    baseCandidates: list[Atoms | None] = [None] * len(sourcePop)
+    base_energy_values: list[float | None] = source_pop.energies.copy()
+    base_candidates: list[Atoms | None] = [None] * len(source_pop)
 
-    for i, baseEnergy in enumerate(baseEnergyValues):
-        if baseEnergy is None:
-            baseCluster = copy.deepcopy(sourcePop[i])
-            relaxedBase = relax(baseCluster)
-            if not isinstance(relaxedBase, Atoms):
+    for i, base_energy in enumerate(base_energy_values):
+        if base_energy is None:
+            base_cluster = copy.deepcopy(source_pop[i])
+            relaxed_base = relax(base_cluster)
+            if not isinstance(relaxed_base, Atoms):
                 raise TypeError("relax must return Atoms when input is Atoms")
-            relaxedEnergy = getattr(relaxedBase, 'energy', None)
-            if relaxedEnergy is None:
-                raise ValueError("relax result must contain energy for localTransformation")
-            baseEnergyValues[i] = float(relaxedEnergy)
-            baseCandidates[i] = relaxedBase
+            relaxed_energy = getattr(relaxed_base, 'energy', None)
+            if relaxed_energy is None:
+                raise ValueError("relax result must contain energy for local_transformation")
+            base_energy_values[i] = float(relaxed_energy)
+            base_candidates[i] = relaxed_base
         else:
-            baseCandidate = copy.deepcopy(sourcePop[i])
-            setattr(baseCandidate, 'energy', float(baseEnergy))
-            baseCandidates[i] = baseCandidate
+            base_candidate = copy.deepcopy(source_pop[i])
+            setattr(base_candidate, 'energy', float(base_energy))
+            base_candidates[i] = base_candidate
 
-    for i in range(len(sourcePop)):
-        baseEnergy = baseEnergyValues[i]
-        baseCandidate = baseCandidates[i]
-        if baseEnergy is None or baseCandidate is None:
-            raise ValueError("base energy completion failed in localTransformation")
+    for i in range(len(source_pop)):
+        base_energy = base_energy_values[i]
+        base_candidate = base_candidates[i]
+        if base_energy is None or base_candidate is None:
+            raise ValueError("base energy completion failed in local_transformation")
 
-        # 传递 mutTag: localTransformation 前后保持策略标签不丢失.
-        mutTag = getattr(sourcePop[i], 'mut', None)
-        if mutTag is not None:
-            setattr(baseCandidate, 'mut', mutTag)
+        # 传递 mut_tag: local_transformation 前后保持策略标签不丢失.
+        mut_tag = getattr(source_pop[i], 'mut', None)
+        if mut_tag is not None:
+            setattr(base_candidate, 'mut', mut_tag)
 
-        # CR 生命周期透传: localTransformation 前后保持交叉率标签不丢失.
-        crossRate = getattr(sourcePop[i], 'CR', None)
-        if crossRate is not None:
-            setattr(baseCandidate, 'CR', crossRate)
+        # cr 生命周期透传: local_transformation 前后保持交叉率标签不丢失.
+        cross_rate = getattr(source_pop[i], 'cr', None)
+        if cross_rate is not None:
+            setattr(base_candidate, 'cr', cross_rate)
 
-        perturbedCluster = copy.deepcopy(sourcePop[i])
-        positions = perturbedCluster.get_positions().copy()
+        perturbed_cluster = copy.deepcopy(source_pop[i])
+        positions = perturbed_cluster.get_positions().copy()
         noise = np.random.uniform(-r, r, size=positions.shape)
-        perturbedCluster.set_positions(positions + noise)
+        perturbed_cluster.set_positions(positions + noise)
 
-        relaxedPerturbed = relax(perturbedCluster)
-        if not isinstance(relaxedPerturbed, Atoms):
+        relaxed_perturbed = relax(perturbed_cluster)
+        if not isinstance(relaxed_perturbed, Atoms):
             raise TypeError("relax must return Atoms when input is Atoms")
 
-        energyPerturbed = getattr(relaxedPerturbed, 'energy', None)
-        if energyPerturbed is None:
-            raise ValueError("relax result must contain energy for localTransformation")
+        energy_perturbed = getattr(relaxed_perturbed, 'energy', None)
+        if energy_perturbed is None:
+            raise ValueError("relax result must contain energy for local_transformation")
 
-        if mutTag is not None:
-            setattr(relaxedPerturbed, 'mut', mutTag)
-        if crossRate is not None:
-            setattr(relaxedPerturbed, 'CR', crossRate)
+        if mut_tag is not None:
+            setattr(relaxed_perturbed, 'mut', mut_tag)
+        if cross_rate is not None:
+            setattr(relaxed_perturbed, 'cr', cross_rate)
 
-        winner = relaxedPerturbed if float(energyPerturbed) < float(baseEnergy) else baseCandidate
-        outputPop.addCluster(winner, deepcopy=False)
+        winner = relaxed_perturbed if float(energy_perturbed) < float(base_energy) else base_candidate
+        output_pop.add_cluster(winner, deepcopy=False)
 
-    return outputPop
+    return output_pop
 
 
 def select(
@@ -1255,116 +1255,116 @@ def select(
     if len(pop1) != len(pop2):
         raise ValueError("Population sizes must match for selection")
 
-    tempClusters = Population(symbol=pop1.symbol)
-    tempClusters._fp = pop1.fp
-    tempClusters._p = pop1.p
-    tempClusters._CRm = pop1.CRm
+    temp_clusters = Population(symbol=pop1.symbol)
+    temp_clusters._fp = pop1.fp
+    temp_clusters._p = pop1.p
+    temp_clusters._crm = pop1.crm
 
     # pop1: 先读取现有能量,仅对缺失能量个体做 relax 补全.
-    pop1EnergiesRaw: list[float | None] = pop1.energies.copy()
-    pop1Candidates: list[Atoms | None] = [None] * len(pop1)
+    pop1_energies_raw: list[float | None] = pop1.energies.copy()
+    pop1_candidates: list[Atoms | None] = [None] * len(pop1)
 
-    for i, energyValue in enumerate(pop1EnergiesRaw):
-        if energyValue is None:
-            relaxedCluster = relax(copy.deepcopy(pop1[i]))
-            if not isinstance(relaxedCluster, Atoms):
+    for i, energy_value in enumerate(pop1_energies_raw):
+        if energy_value is None:
+            relaxed_cluster = relax(copy.deepcopy(pop1[i]))
+            if not isinstance(relaxed_cluster, Atoms):
                 raise TypeError("relax must return Atoms when input is Atoms")
-            relaxedEnergy = getattr(relaxedCluster, 'energy', None)
-            if relaxedEnergy is None:
+            relaxed_energy = getattr(relaxed_cluster, 'energy', None)
+            if relaxed_energy is None:
                 raise ValueError(f"pop1 relax result missing energy at index {i}")
-            pop1EnergiesRaw[i] = float(relaxedEnergy)
-            pop1Candidates[i] = relaxedCluster
+            pop1_energies_raw[i] = float(relaxed_energy)
+            pop1_candidates[i] = relaxed_cluster
         else:
-            preservedCluster = copy.deepcopy(pop1[i])
-            setattr(preservedCluster, 'energy', float(energyValue))
-            pop1Candidates[i] = preservedCluster
+            preserved_cluster = copy.deepcopy(pop1[i])
+            setattr(preserved_cluster, 'energy', float(energy_value))
+            pop1_candidates[i] = preserved_cluster
 
     # pop2: 与 pop1 一致,先读取能量,仅对缺失能量个体做 relax 补全.
-    pop2EnergiesRaw: list[float | None] = pop2.energies.copy()
-    pop2Candidates: list[Atoms | None] = [None] * len(pop2)
+    pop2_energies_raw: list[float | None] = pop2.energies.copy()
+    pop2_candidates: list[Atoms | None] = [None] * len(pop2)
 
-    for i, energyValue in enumerate(pop2EnergiesRaw):
-        if energyValue is None:
-            relaxedCluster = relax(copy.deepcopy(pop2[i]))
-            if not isinstance(relaxedCluster, Atoms):
+    for i, energy_value in enumerate(pop2_energies_raw):
+        if energy_value is None:
+            relaxed_cluster = relax(copy.deepcopy(pop2[i]))
+            if not isinstance(relaxed_cluster, Atoms):
                 raise TypeError("relax must return Atoms when input is Atoms")
-            relaxedEnergy = getattr(relaxedCluster, 'energy', None)
-            if relaxedEnergy is None:
+            relaxed_energy = getattr(relaxed_cluster, 'energy', None)
+            if relaxed_energy is None:
                 raise ValueError(f"pop2 relax result missing energy at index {i}")
-            pop2EnergiesRaw[i] = float(relaxedEnergy)
-            pop2Candidates[i] = relaxedCluster
+            pop2_energies_raw[i] = float(relaxed_energy)
+            pop2_candidates[i] = relaxed_cluster
         else:
-            preservedCluster = copy.deepcopy(pop2[i])
-            setattr(preservedCluster, 'energy', float(energyValue))
-            pop2Candidates[i] = preservedCluster
+            preserved_cluster = copy.deepcopy(pop2[i])
+            setattr(preserved_cluster, 'energy', float(energy_value))
+            pop2_candidates[i] = preserved_cluster
 
-    crRec: list[float] = []
-    deltaRec: list[float] = []
+    cr_rec: list[float] = []
+    delta_rec: list[float] = []
     ns1, ns2, nf1, nf2 = 0, 0, 0, 0
 
     # 选择环节要求两组种群都具备完整能量信息
-    pop1Energies = pop1EnergiesRaw
-    pop2Energies = pop2EnergiesRaw
-    pop1EnergyValues: list[float] = []
-    pop2EnergyValues: list[float] = []
+    pop1_energies = pop1_energies_raw
+    pop2_energies = pop2_energies_raw
+    pop1_energy_values: list[float] = []
+    pop2_energy_values: list[float] = []
 
-    for i, energyValue in enumerate(pop1Energies):
-        if energyValue is None:
+    for i, energy_value in enumerate(pop1_energies):
+        if energy_value is None:
             raise ValueError(f"pop1 is missing energy at index {i}")
-        pop1EnergyValues.append(float(energyValue))
-    for i, energyValue in enumerate(pop2Energies):
-        if energyValue is None:
+        pop1_energy_values.append(float(energy_value))
+    for i, energy_value in enumerate(pop2_energies):
+        if energy_value is None:
             raise ValueError(f"pop2 is missing energy at index {i}")
-        pop2EnergyValues.append(float(energyValue))
+        pop2_energy_values.append(float(energy_value))
 
-    # mutTag 生命周期终点: select 在此消费 mutTag,用于统计并更新 p.
-    # 选择环节要求 pop2 含 mutTag 信息,否则无法按策略统计并更新 p.
-    for i in range(len(pop2Candidates)):
-        pop2Candidate = pop2Candidates[i]
-        if pop2Candidate is None:
+    # mut_tag 生命周期终点: select 在此消费 mut_tag,用于统计并更新 p.
+    # 选择环节要求 pop2 含 mut_tag 信息,否则无法按策略统计并更新 p.
+    for i in range(len(pop2_candidates)):
+        pop2_candidate = pop2_candidates[i]
+        if pop2_candidate is None:
             raise ValueError(f"pop2 candidate missing at index {i}")
-        if getattr(pop2Candidate, 'mut', None) is None:
-            raise ValueError(f"pop2 is missing mutTag at index {i}")
+        if getattr(pop2_candidate, 'mut', None) is None:
+            raise ValueError(f"pop2 is missing mut_tag at index {i}")
 
-    for i in range(len(pop1Candidates)):
-        pop1Candidate = pop1Candidates[i]
-        pop2Candidate = pop2Candidates[i]
-        if pop1Candidate is None:
+    for i in range(len(pop1_candidates)):
+        pop1_candidate = pop1_candidates[i]
+        pop2_candidate = pop2_candidates[i]
+        if pop1_candidate is None:
             raise ValueError(f"pop1 candidate missing at index {i}")
-        if pop2Candidate is None:
+        if pop2_candidate is None:
             raise ValueError(f"pop2 candidate missing at index {i}")
 
-        energy1 = pop1EnergyValues[i]
-        energy2 = pop2EnergyValues[i]
-        mutTag = getattr(pop2Candidate, 'mut', None)
+        energy1 = pop1_energy_values[i]
+        energy2 = pop2_energy_values[i]
+        mut_tag = getattr(pop2_candidate, 'mut', None)
 
-        choosePop2 = energy2 < energy1
+        choose_pop2 = energy2 < energy1
 
-        if choosePop2:
-            tempClusters.addCluster(pop2Candidate, deepcopy=True)
-            # 成功个体记录 CR 和能量改变量,用于后续更新 CRm.
-            currentCR = getattr(pop2Candidate, 'CR', None)
-            if currentCR is not None:
-                crRec.append(float(currentCR))
-                deltaRec.append(float(energy1 - energy2))
-            if mutTag == 0:
+        if choose_pop2:
+            temp_clusters.add_cluster(pop2_candidate, deepcopy=True)
+            # 成功个体记录 cr 和能量改变量,用于后续更新 crm.
+            current_cr = getattr(pop2_candidate, 'cr', None)
+            if current_cr is not None:
+                cr_rec.append(float(current_cr))
+                delta_rec.append(float(energy1 - energy2))
+            if mut_tag == 0:
                 ns1 += 1
-            elif mutTag == 1:
+            elif mut_tag == 1:
                 ns2 += 1
         else:
-            tempClusters.addCluster(pop1Candidate, deepcopy=True)
-            if mutTag == 0:
+            temp_clusters.add_cluster(pop1_candidate, deepcopy=True)
+            if mut_tag == 0:
                 nf1 += 1
-            elif mutTag == 1:
+            elif mut_tag == 1:
                 nf2 += 1
 
-    # 更新 CRm:使用成功个体的 CR 按能量改变量加权平均.
-    if crRec and sum(deltaRec) > 0:
-        tempClusters._CRm = float(np.average(crRec, weights=deltaRec))
+    # 更新 crm:使用成功个体的 cr 按能量改变量加权平均.
+    if cr_rec and sum(delta_rec) > 0:
+        temp_clusters._crm = float(np.average(cr_rec, weights=delta_rec))
 
-    # 更新 p:按 mutTag 两类策略的成功/失败统计更新选择概率.
+    # 更新 p:按 mut_tag 两类策略的成功/失败统计更新选择概率.
     denominator = ns2 * (ns1 + nf1) + ns1 * (ns2 + nf2)
     if denominator > 0:
-        tempClusters._p = float((ns1 * (ns2 + nf2)) / denominator)
+        temp_clusters._p = float((ns1 * (ns2 + nf2)) / denominator)
 
-    return tempClusters
+    return temp_clusters
