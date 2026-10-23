@@ -17,13 +17,18 @@ a: float = 2.88
 pop_size: int = 12
 generations: int = 500
 stagnation_limit: int = 50
-ediff: float = 1e-5
 atom_min: int = 3
 atom_max: int = 5
 init_dir: Path = Path('init')
 keep_snapshots: int = 1
 pop_dir: Path = Path('Populations')
 best_dir: Path = Path('best')
+
+ediff: float = 1e-5
+# 相似性函数阈值: S < similarity_reset 视为结构已改变, 直接清零停滞计数;
+# 0.9 <= S < similarity_energy_reset 时, 仅当最优能量变化超过 ediff 才清零
+similarity_reset: float = 0.9
+similarity_energy_reset: float = 0.95
 
 # LJ 势: 用于 N=3-5 小团簇的优化测试.
 potential: LennardJones = LennardJones(epsilon=0.4443, sigma=2.6367)
@@ -49,6 +54,49 @@ relax = functools.partial(
     fmax=0.05,
     steps=300,
 )
+
+
+def similarity_function(
+    distance_a: np.ndarray | None,
+    distance_b: np.ndarray | None,
+) -> float:
+    """计算两个团簇的相似性函数 S, 见 docs/similarity_function.md.
+
+    Parameters
+    ----------
+    distance_a : numpy.ndarray | None
+        第一个团簇的升序原子间距列表 (长度 N*(N-1)/2).
+    distance_b : numpy.ndarray | None
+        第二个团簇的升序原子间距列表, 长度需与 distance_a 相同.
+
+    Returns
+    -------
+    float
+        相似性函数 S = 1 / (1 + q/u_l), 取值 (0, 1], 其中 u_l = 1.0.
+        缺失距离列表或两个列表长度不一致时返回 0.0, 视为完全不相似.
+
+    Examples
+    --------
+    >>> similarity_function(np.array([2.0, 3.0, 4.0]), np.array([2.0, 3.0, 4.0]))
+    1.0
+    """
+    u_l: float = 1.0
+    if distance_a is None or distance_b is None:
+        return 0.0
+    distance_a = np.asarray(distance_a, dtype=float)
+    distance_b = np.asarray(distance_b, dtype=float)
+    if distance_a.shape != distance_b.shape or distance_a.size == 0:
+        return 0.0
+    # 以最短原子间距归一化, 消除整体尺度差异; 最短间距为 0 时无法归一化.
+    if distance_a[0] <= 0.0 or distance_b[0] <= 0.0:
+        return 0.0
+    normalized_a: np.ndarray = distance_a / distance_a[0]
+    normalized_b: np.ndarray = distance_b / distance_b[0]
+    q_value: float = float(
+        np.sqrt(1.0 / distance_a.size * np.sum((normalized_a - normalized_b) ** 2))
+    )
+    return 1.0 / (1.0 + q_value / u_l)
+
 
 def main(atom: int) -> None:
     system_start = time.perf_counter()
@@ -84,6 +132,8 @@ def main(atom: int) -> None:
                 random_cluster(pop, a=a, delta=0.5, relax=relax)
 
     prev_best: float | None = None
+    prev_pg: str | None = None
+    prev_distance_list: np.ndarray | None = None
     stagnation_count: int = 0
 
     for gen in range(1, generations + 1):
@@ -101,27 +151,54 @@ def main(atom: int) -> None:
         energy_values = [float(e) for e in pop_next.energies if e is not None]
         if not energy_values:
             raise ValueError("Population has no available energy")
-        current_best = min(energy_values)
+        best_cluster = pop_next.best_cluster
+        current_best = float(best_cluster.energy)
+        current_pg = getattr(best_cluster, 'PG', None)
+        current_distance_list = getattr(best_cluster, 'distance_list', None)
         if prev_best is None:
             stagnation_count = 0
             delta = "NA"
+            similarity_value = "NA"
         else:
             diff = current_best - prev_best
             delta = f"{diff:.6f}"
-            if abs(diff) <= ediff:
-                stagnation_count += 1
-            else:
+            similarity = similarity_function(
+                current_distance_list, prev_distance_list
+            )
+            similarity_value = f"{similarity:.6f}"
+            # 点群改变或相似性 S < 0.9: 结构明显变化, 停滞计数清零.
+            # 0.9 <= S < 0.95 时, 仅当最优能量变化超过 ediff 才清零.
+            if (
+                current_pg != prev_pg
+                or similarity < similarity_reset
+                or (similarity < similarity_energy_reset and abs(diff) > ediff)
+            ):
                 stagnation_count = 0
+                # 输出结构变化判据: 点群变化/相似性/能量变化.
+                print(
+                    f"atom={atom} gen={gen:03d}"
+                    f" pg={prev_pg}->{current_pg}"
+                    f" similarity={similarity:.6f}"
+                    f" energy_diff={diff:.6f}"
+                )
+            else:
+                stagnation_count += 1
         elapsed = time.perf_counter() - tick
 
         print(
             f"atom={atom} gen={gen:03d} best_energy={current_best:.8f}"
-            f" delta_prev={delta} iter_time_s={elapsed:.4f}"
+            f" delta_prev={delta} similarity={similarity_value}"
+            f" pg={current_pg} iter_time_s={elapsed:.4f}"
             f" best_streak={stagnation_count}"
         )
 
         pop = pop_next
         prev_best = current_best
+        prev_pg = current_pg
+        if current_distance_list is None:
+            prev_distance_list = None
+        else:
+            prev_distance_list = np.asarray(current_distance_list, dtype=float).copy()
         pop.dump(f"{element}{atom}_best")
         pop.dump_xyz(f"{element}{atom}_best")
         pop.export(name=f"{element}{atom}_gen{gen}")
