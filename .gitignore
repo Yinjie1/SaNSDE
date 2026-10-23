@@ -1,12 +1,5 @@
-__pycache__/
-Populations/
-Trajectories/
-Clusters/
-others/
-stdout/
-test/
-.opencode/
-workflow/11-SaNSDE-随机-13.py
-workflow/
-*.pyc
-*.code-workspace
+/*
+!SaNSDE_new.py
+!example.py
+!.gitignore
+!AGENT.md

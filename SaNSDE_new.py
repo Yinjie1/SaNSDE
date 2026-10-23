@@ -17,6 +17,7 @@ from ase.calculators.lj import LennardJones
 from datetime import datetime
 
 MIN_ATOM_DISTANCE: float = 0.5
+POINT_GROUP_TOLERANCE: float = 0.3
 
 
 def min_pair_distance(positions: np.ndarray) -> float:
@@ -76,6 +77,9 @@ class Population:
         若某团簇缺失该属性, 对应位置为 None.
     forces : list[list[list[float]] | None]
         按需从每个团簇对象属性 ``cluster.forces`` 读取的力列表.
+        若某团簇缺失该属性, 对应位置为 None.
+    PGs : list[str | None]
+        按需从每个团簇对象属性 ``cluster.PG`` 读取的点群(熊夫利符号)列表.
         若某团簇缺失该属性, 对应位置为 None.
     best_cluster : Atoms
         当前最低能量团簇. 空种群或全体缺失能量时抛 ValueError.
@@ -198,6 +202,14 @@ class Population:
             force_value = getattr(cluster, 'forces', None)
             forces.append(force_value)
         return forces
+
+    @property
+    def PGs(self) -> list[str | None]:
+        """按需从团簇对象属性提取点群(熊夫利符号), 缺失时返回 None."""
+        point_groups: list[str | None] = []
+        for cluster in self:
+            point_groups.append(getattr(cluster, 'PG', None))
+        return point_groups
 
     @property
     def best_cluster(self) -> Atoms:
@@ -341,7 +353,8 @@ class Population:
                 "symbol": cluster.get_chemical_formula(),
                 "energy": energy_value,
                 "positions": cluster.get_positions().tolist(),
-                "forces": force_data
+                "forces": force_data,
+                "PG": getattr(cluster, 'PG', None)
             }
             clusters_info.append(cluster_info)
 
@@ -539,6 +552,9 @@ class Population:
                      setattr(cluster, 'energy', float(energy))
                 if forces is not None:
                      setattr(cluster, 'forces', forces)
+                point_group = c_data.get('PG')
+                if point_group is not None:
+                     setattr(cluster, 'PG', point_group)
                 
             except Exception as e:
                 print(f"Error loading cluster from JSON: {e}")
@@ -1249,7 +1265,11 @@ def select(
     pop2: Population,
     relax: Callable[[Population | Atoms], Population | Atoms],
 ) -> Population:
-    """对原种群和候选种群执行选择并更新自适应参数."""
+    """对原种群和候选种群执行选择并更新自适应参数.
+
+    被选中的个体在进入下一代时计算点群(PG, 熊夫利符号);
+    若 pymatgen 不可用或点群分析失败, 对应个体 PG 记为 None.
+    """
     if pop1.symbol != pop2.symbol:
         raise ValueError("Population symbols must match for selection")
     if len(pop1) != len(pop2):
@@ -1357,6 +1377,25 @@ def select(
                 nf1 += 1
             elif mut_tag == 1:
                 nf2 += 1
+
+        # 个体通过选择后计算点群(熊夫利符号); pymatgen 缺失或计算失败记为 None.
+        chosen_cluster = temp_clusters[-1]
+        point_group: str | None = None
+        try:
+            from pymatgen.core import Molecule
+            from pymatgen.symmetry.analyzer import PointGroupAnalyzer
+            molecule = Molecule(
+                chosen_cluster.get_chemical_symbols(),
+                chosen_cluster.get_positions(),
+            )
+            point_group = str(
+                PointGroupAnalyzer(
+                    molecule, tolerance=POINT_GROUP_TOLERANCE
+                ).get_pointgroup().sch_symbol
+            )
+        except Exception:
+            point_group = None
+        setattr(chosen_cluster, 'PG', point_group)
 
     # 更新 crm:使用成功个体的 cr 按能量改变量加权平均.
     if cr_rec and sum(delta_rec) > 0:
