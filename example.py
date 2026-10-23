@@ -48,12 +48,12 @@ ZBL_CUTOFF = float(params.get('ZBL_CUTOFF', 1.5))
 ZBL_SKIN = float(params.get('ZBL_SKIN', 0))
 fmax = float(params.get('fmax', 0.05))
 steps = int(params.get('steps', 300))
-dp: DP = DP(model=DP_MODEL)
-zbl: ZBLCalculator = ZBLCalculator(cutoff=ZBL_CUTOFF, skin=ZBL_SKIN)
-potential: SumCalculator = SumCalculator([dp, zbl])
+pes = DP(model=DP_MODEL)
+zbl = ZBLCalculator(cutoff=ZBL_CUTOFF, skin=ZBL_SKIN)
+potential = SumCalculator([pes, zbl])
 
 # LJ 势: 用于 N=3-5 小团簇的优化测试, 需要时取消下面注释并注释上面的混合势.
-# potential: LennardJones = LennardJones(epsilon=0.4443, sigma=2.6367)
+# potential = LennardJones(epsilon=0.4443, sigma=2.6367)
 
 relax = functools.partial(
     local_optimize,
@@ -90,7 +90,7 @@ def similarity_function(
     >>> similarity_function(np.array([2.0, 3.0, 4.0]), np.array([2.0, 3.0, 4.0]))
     1.0
     """
-    u_l: float = 1.0
+    u_l = 1.0
     if distance_a is None or distance_b is None:
         return 0.0
     distance_a = np.asarray(distance_a, dtype=float)
@@ -100,9 +100,9 @@ def similarity_function(
     # 以最短原子间距归一化, 消除整体尺度差异; 最短间距为 0 时无法归一化.
     if distance_a[0] <= 0.0 or distance_b[0] <= 0.0:
         return 0.0
-    normalized_a: np.ndarray = distance_a / distance_a[0]
-    normalized_b: np.ndarray = distance_b / distance_b[0]
-    q_value: float = float(
+    normalized_a = distance_a / distance_a[0]
+    normalized_b = distance_b / distance_b[0]
+    q_value = float(
         np.sqrt(1.0 / distance_a.size * np.sum((normalized_a - normalized_b) ** 2))
     )
     return 1.0 / (1.0 + q_value / u_l)
@@ -144,7 +144,7 @@ def main(atom: int) -> None:
     prev_best: float | None = None
     prev_pg: str | None = None
     prev_distance_list: np.ndarray | None = None
-    stagnation_count: int = 0
+    stagnation_count = 0
 
     for gen in range(1, generations + 1):
         tick = time.perf_counter()

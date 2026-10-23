@@ -24,7 +24,7 @@ except Exception:
         "skipping point group calculation!"
     )
 
-MIN_ATOM_DISTANCE: float = 0.5
+MIN_ATOM_DISTANCE = 0.5
 
 
 def min_pair_distance(positions: np.ndarray) -> float:
@@ -41,15 +41,15 @@ def min_pair_distance(positions: np.ndarray) -> float:
         最小两两间距. 原子数少于 2 时返回 ``inf``;
         坐标含非有限值时返回 ``-inf``, 以便调用方判为非法几何.
     """
-    coords: np.ndarray = np.asarray(positions, dtype=float)
+    coords = np.asarray(positions, dtype=float)
     if coords.ndim != 2 or coords.shape[1] != 3:
         raise ValueError("positions must have shape (natoms, 3)")
     if len(coords) < 2:
         return float("inf")
     if not np.isfinite(coords).all():
         return -float("inf")
-    diff: np.ndarray = coords[:, None, :] - coords[None, :, :]
-    distances: np.ndarray = np.linalg.norm(diff, axis=-1)
+    diff = coords[:, None, :] - coords[None, :, :]
+    distances = np.linalg.norm(diff, axis=-1)
     np.fill_diagonal(distances, np.inf)
     return float(distances.min())
 
@@ -231,7 +231,7 @@ class Population:
             形状为 (len(self), N*(N-1)/2). 缺失 ``cluster.distance_list``
             的团簇整行填充 NaN; 空种群返回形状 (0, 0) 的数组.
         """
-        column_count: int = self.num * (self.num - 1) // 2
+        column_count = self.num * (self.num - 1) // 2
         rows: list[np.ndarray] = []
         for cluster in self:
             distance_list = getattr(cluster, 'distance_list', None)
@@ -304,11 +304,11 @@ class Population:
 
         # 缺失点群或升序原子间距列表时尝试生成, 已有属性则保持不变.
         if not hasattr(cluster_to_add, 'PG') or not hasattr(cluster_to_add, 'distance_list'):
-            positions: np.ndarray = np.asarray(cluster_to_add.get_positions(), dtype=float)
+            positions = np.asarray(cluster_to_add.get_positions(), dtype=float)
             if not hasattr(cluster_to_add, 'distance_list'):
-                pair_vectors: np.ndarray = positions[:, None, :] - positions[None, :, :]
-                pair_distances: np.ndarray = np.linalg.norm(pair_vectors, axis=-1)
-                upper_distances: np.ndarray = pair_distances[np.triu_indices(len(positions), k=1)]
+                pair_vectors = positions[:, None, :] - positions[None, :, :]
+                pair_distances = np.linalg.norm(pair_vectors, axis=-1)
+                upper_distances = pair_distances[np.triu_indices(len(positions), k=1)]
                 setattr(cluster_to_add, 'distance_list', np.sort(upper_distances))
             if not hasattr(cluster_to_add, 'PG'):
                 point_group: str | None = None
@@ -354,11 +354,11 @@ class Population:
         if name is None:
             name = self.symbol if self.symbol else "Population"
 
-        base_dir: Path = Path("./Populations")
+        base_dir = Path("./Populations")
         base_dir.mkdir(parents=True, exist_ok=True)
 
         # Check for duplicate JSON filename
-        summary_path: Path = base_dir / f"{name}.json"
+        summary_path = base_dir / f"{name}.json"
         if summary_path.exists():
             timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
             name = f"{name}_{timestamp}"
@@ -367,7 +367,7 @@ class Population:
 
         # Optional xyz snapshot
         if xyz:
-            xyz_path: Path = base_dir / f"{name}.xyz"
+            xyz_path = base_dir / f"{name}.xyz"
             from ase.io.xyz import write_xyz
             try:
                 with xyz_path.open('w', encoding='utf-8') as f:
@@ -454,7 +454,7 @@ class Population:
         """
         best_cluster = self.best_cluster
 
-        base_dir: Path = Path("./Trajectories")
+        base_dir = Path("./Trajectories")
         base_dir.mkdir(parents=True, exist_ok=True)
 
         if name is None:
@@ -462,7 +462,7 @@ class Population:
         else:
             base_name = name
 
-        traj_path: Path = base_dir / f"{base_name}.traj"
+        traj_path = base_dir / f"{base_name}.traj"
         mode = 'a' if traj_path.exists() else 'w'
 
         export_cluster = best_cluster.copy()
@@ -503,7 +503,7 @@ class Population:
 
         best_cluster = self.best_cluster
 
-        base_dir: Path = Path("./Trajectories")
+        base_dir = Path("./Trajectories")
         base_dir.mkdir(parents=True, exist_ok=True)
 
         if name is None:
@@ -511,7 +511,7 @@ class Population:
         else:
             base_name = name
 
-        xyz_path: Path = base_dir / f"{base_name}.xyz"
+        xyz_path = base_dir / f"{base_name}.xyz"
 
         energy_value = getattr(best_cluster, 'energy', None)
         comment_str = str(energy_value) if energy_value is not None else ""
@@ -535,7 +535,7 @@ class Population:
         confirm : bool, optional
             是否确认覆盖当前种群数据. Default False.
         """
-        json_path: Path = Path(filename)
+        json_path = Path(filename)
         if not json_path.is_file():
              print(f"JSON file {json_path} not found.")
              return
