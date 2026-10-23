@@ -1,82 +1,4 @@
-# AGENTS 使用说明（SaNSDE 知识库）
-
-本仓库的知识库主要给 AI 使用，目标是：
-- 分层记录，按需加载，减少上下文占用。
-- 先加载最小必要信息，再逐步加深。
-
-## 知识来源
-
-- 代码接口文档在 Obsidian：`Yinjie/SaNSDE/05-AI接口文档/`
-- 入口索引：`SaNSDE/05-AI接口文档/00-索引与加载策略.md`
-
-## 分层加载协议（必须遵守）
-
-### L0（必读，低 token）
-
-- `SaNSDE/05-AI接口文档/01-SaNSDE_new-速览.md`
-- 用途：快速判断是否能完成任务、有哪些类和函数。
-
-### L1（类接口）
-
-- `SaNSDE/05-AI接口文档/02-Population-接口.md`
-- 触发：需要种群管理、导入导出、状态字段语义。
-
-### L2（函数接口）
-
-- `SaNSDE/05-AI接口文档/03-函数接口-localOptimize-randomCluster.md`
-- 触发：需要结构优化、随机团簇生成、变异/交叉/球切交叉/局部变换/选择流程。
-
-### L3（少样本）
-
-- `SaNSDE/05-AI接口文档/04-少样本示例.md`
-- 触发：需要快速生成调用代码、测试样例、脚手架片段。
-
-### L4（问题清单）
-
-- `SaNSDE/05-AI接口文档/05-问题清单.md`
-- 触发：需要排查已知异常、复用历史原因分析与修复方案。
-
-## 标准工作流（给 AI）
-
-1. 先读 L0。
-2. 根据任务类型决定是否追加 L1/L2/L3/L4。
-3. 输出前只保留本任务必要信息，不搬运整份文档。
-4. 若 `SaNSDE_new.py` 发生变更，先更新接口文档，再执行任务。
-
-## 更新规则
-
-- 修改 `SaNSDE_new.py` 中以下内容时，必须同步更新文档：
-  - 类/函数签名
-  - 输入/输出
-  - 副作用与失败模式
-  - 示例代码
-  - 迭代工作流节点（mutate/crossover/sphereCutSplice/localTransformation/select）
-- 更新顺序：
-  1) 对应接口页（L1/L2/L3）
-  2) `00-索引与加载策略.md`
-  3) 本文件（如加载策略变化）
-
-## Token 控制策略
-
-- 默认只加载 L0。
-- 未触发条件不要读取 L1/L2/L3。
-- 需要示例时优先读 L3，不重复抄录 L1/L2 全量内容。
-
-## 每次对话结束时必须完成
-
-- 会话记录放在 Obsidian：`SaNSDE/06-对话记录/`。
-- 新会话第一轮前先新建文件：`YYYYMMddsession名称.md`。
-- 每一轮回复后，立即追加该轮完整原文：
-  - `User` 原始提问全文
-  - `Assistant` 原始回答全文
-- 不用摘要替代原文；内容长可分段，但不得丢失语义。
-- 若某轮包含“业务内容 + 流程确认”，只记录业务内容；流程结果可作为业务轮的一行状态补充。
-- 发现本次会话的提问有重复记录时，优先去重，将两次回答合并。
-- 回复前强制自检：
-  1) 本轮是否已追加到会话文件。
-  2) 本次记录是否完整且无重复。
-- 任一未完成，先补齐再回复用户。
-
+# AGENTS 使用说明
 ## 代码修改约束（SaNSDE_new.py）
 
 - 若用户没有明确要求在主程序 `SaNSDE_new.py` 中新增或删除类/函数（例如仅要求修改某个方法），不得擅自新增或删除类/函数。
@@ -89,3 +11,58 @@
 - 测试约束：默认使用轻量测试（小规模、少代数），避免运行高计算量基准或长时间任务；仅在用户明确要求时执行重负载测试。
 - 进行程序测试时，先备份主程序到`./test/`, 然后必须在 `./test/` 下新建独立 Python 脚本并 `import SaNSDE_new`，不得将测试脚本写入主程序。
 - 测试时将标准输出重定向到 `./stdout/`，文件命名格式：`YYYYMMddhhmmss-任务名.txt`。
+
+# 新代码规范
+## Typing Rules
+
+- Use Python 3.13 style type hints for all new code.
+- Add explicit type annotations for variables whenever reasonable, especially:
+  - function local variables with non-trivial inferred types
+  - return values of helper computations
+  - dictionaries, lists, tuples, and numpy arrays
+- Prefer built-in generic syntax:
+  - `list[int]`, `dict[str, float]`, `tuple[int, int]`
+- Prefer union operator syntax:
+  - `str | None` instead of `Optional[str]`
+- Keep aliases explicit when needed:
+  - `type CitationMap = dict[np.int16, npt.NDArray[np.int16]]`
+
+## Documentation Rules
+
+- All public classes and functions must have docstrings.
+- Public methods should also have docstrings.
+- Special methods that are not typically called directly (for example `__len__`, `__iter__`, `__getitem__`) do not need per-method docstrings.
+- Put usage of such special methods in the class docstring `Examples` section.
+- Follow PEP 257 + common structured docstring convention (Google-style sections).
+- Each public API docstring should include:
+  - brief summary
+  - Args
+  - Returns
+  - Raises (if applicable)
+  - Examples (when helpful)
+- Class docstrings should include key Attributes.
+
+## Naming Rules
+
+- Use unified, concise, and clear naming.
+- Use `snake_case` for variables and functions.
+- Use `PascalCase` for classes.
+- Avoid ambiguous abbreviations unless they are domain-standard (for example `if`).
+- Keep naming consistent across parsing, model, and calculation logic.
+
+## Coding style
+
+- Use EAFP style, for example:
+  ```python
+  # EAFP style
+  try:
+      x = my_dict['key']
+  except KeyError:
+      # handle missing key
+
+  # LBYL style
+  if 'key' in my_dict:
+      x = my_dict['key']
+  else:
+      # handling missing key
+  ```
