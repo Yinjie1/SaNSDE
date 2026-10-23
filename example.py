@@ -24,33 +24,47 @@ try:
 except FileNotFoundError:
     params = {}
 
+# 体系配置
 element = str(params.get('element', 'Au'))
 a = float(params.get('a', 2.88))
+atom_min = int(params.get('atom_min', 3))
+atom_max = int(params.get('atom_max', 5))
+
+# IO
+init_dir = Path(params.get('init_dir', 'init'))
+best_dir = Path(params.get('best_dir', 'best'))
+keep_snapshots = int(params.get('keep_snapshots', 1))
+pop_dir = Path(params.get('pop_dir', 'Populations'))
+
+# 全局优化设置
 pop_size = int(params.get('pop_size', 12))
 generations = int(params.get('generations', 500))
 stagnation_limit = int(params.get('stagnation_limit', 10))
-atom_min = int(params.get('atom_min', 3))
-atom_max = int(params.get('atom_max', 5))
-init_dir = Path(params.get('init_dir', 'init'))
-keep_snapshots = int(params.get('keep_snapshots', 1))
-pop_dir = Path(params.get('pop_dir', 'Populations'))
-best_dir = Path(params.get('best_dir', 'best'))
 ediff = float(params.get('ediff', 1e-5))
 similarity_reset = float(params.get('similarity_reset', 0.9))
 similarity_energy_reset = float(params.get('similarity_energy_reset', 0.95))
 
-# DP + ZBL 混合势: DP 负责长程/成键描述, hiphive 的 ZBL 提供短程排斥, 避免
-# 原子重叠. 两者能量/力由 SumCalculator 直接相加: E_total = E_DP + E_ZBL.
+# 势能面
+# DP (+ 可选 ZBL) 势: DP 负责长程/成键描述, hiphive 的 ZBL 提供短程排斥, 避免
+# 原子重叠. use_zbl=True 时两者能量/力由 SumCalculator 直接相加:
+# E_total = E_DP + E_ZBL; use_zbl=False 时仅使用 DP.
 # 注意: hiphive 的 ZBLCalculator 内部用 ASE NeighborList, 其有效作用距离约为
 #   r_eff = cutoff + 2 * skin
 DP_MODEL = Path(params.get('DP_MODEL', "/home/linyj/02-linyj/potentials/dp/Au3c.pth"))
+use_zbl = bool(params.get('use_zbl', True))
 ZBL_CUTOFF = float(params.get('ZBL_CUTOFF', 1.5))
 ZBL_SKIN = float(params.get('ZBL_SKIN', 0))
+
+# 优化器参数: 收敛判据与最大优化步数
 fmax = float(params.get('fmax', 0.05))
 steps = int(params.get('steps', 300))
+
 pes = DP(model=DP_MODEL)
-zbl = ZBLCalculator(cutoff=ZBL_CUTOFF, skin=ZBL_SKIN)
-potential = SumCalculator([pes, zbl])
+if use_zbl:
+    zbl = ZBLCalculator(cutoff=ZBL_CUTOFF, skin=ZBL_SKIN)
+    potential = SumCalculator([pes, zbl])
+else:
+    potential = pes
 
 # LJ 势: 用于 N=3-5 小团簇的优化测试, 需要时取消下面注释并注释上面的混合势.
 # potential = LennardJones(epsilon=0.4443, sigma=2.6367)
@@ -58,7 +72,7 @@ potential = SumCalculator([pes, zbl])
 relax = functools.partial(
     local_optimize,
     cell=None,
-    # 当前使用上面的 DP+ZBL 混合势; 如需 LJ, 改为 potential=LennardJones(...).
+    # 当前使用上面的 DP(+ZBL) 势; 如需 LJ, 改为 potential=LennardJones(...).
     potential = potential,
     optimizer=BFGS,
     fmax=fmax,
@@ -117,7 +131,7 @@ def main(atom: int) -> None:
     if init_path.is_file():
         print(f"load structure {element}{atom}...")
         cluster = read(init_path)
-        # 用当前势(DP+ZBL)做一次单点计算得到能量, 不信任文件里可能来自旧势的能量.
+        # 用当前势(DP 或 DP+ZBL)做一次单点计算得到能量, 不信任文件里可能来自旧势的能量.
         cluster.calc = potential
         energy_value = float(cluster.get_potential_energy())
         cluster.calc = None  # 摘掉计算器: add_cluster 会 deepcopy, DP 不可深拷贝
