@@ -88,9 +88,6 @@ class Population:
     PGs : list[str | None]
         按需从 ``cluster.info['PG']`` 读取的点群(熊夫利符号)列表.
         若某团簇缺失该键, 对应位置为 None.
-    distance_lists : numpy.ndarray
-        按需从 ``cluster.info['distance_list']`` 读取的升序原子间距列表,
-        形状为 (len(self), N*(N-1)/2); 缺失该键的团簇整行填充 NaN.
     best_cluster : Atoms
         当前最低能量团簇. 空种群或全体缺失能量时抛 ValueError.
 
@@ -224,28 +221,6 @@ class Population:
         return point_groups
 
     @property
-    def distance_lists(self) -> np.ndarray:
-        """按需从团簇 info 提取升序原子间距列表, 返回二维数组.
-
-        Returns
-        -------
-        numpy.ndarray
-            形状为 (len(self), N*(N-1)/2). 缺失 ``cluster.info['distance_list']``
-            的团簇整行填充 NaN; 空种群返回形状 (0, 0) 的数组.
-        """
-        column_count = self.num * (self.num - 1) // 2
-        rows: list[np.ndarray] = []
-        for cluster in self:
-            distance_list = cluster.info.get('distance_list')
-            if distance_list is None:
-                rows.append(np.full(column_count, np.nan, dtype=float))
-            else:
-                rows.append(np.asarray(distance_list, dtype=float))
-        if not rows:
-            return np.zeros((0, 0), dtype=float)
-        return np.vstack(rows)
-
-    @property
     def best_cluster(self) -> Atoms:
         """返回当前最优团簇, 即最低能量团簇."""
         if len(self._clusters) == 0:
@@ -272,8 +247,8 @@ class Population:
         必须确保种群中所有团簇化学式相同.
         在添加前会将团簇质心平移到原点.
         若种群 symbol 为空, 则在添加第一个团簇时自动设置.
-        若团簇 info 中缺失 ``PG`` 或 ``distance_list`` 键, 会尝试自动生成点群与
-        升序原子间距列表; pymatgen 不可用或点群计算失败时 ``PG`` 记为 None.
+        若团簇 info 中缺失 ``PG`` 键, 会尝试自动生成点群;
+        pymatgen 不可用或点群计算失败时 ``PG`` 记为 None.
 
         Parameters
         ----------
@@ -304,28 +279,22 @@ class Population:
             if current_symbol != self._symbol:
                  raise ValueError(f"Cluster symbol {current_symbol} does not match population symbol {self._symbol}")
 
-        # 缺失点群或升序原子间距列表时尝试生成, 已有键则保持不变.
-        if 'PG' not in cluster_to_add.info or 'distance_list' not in cluster_to_add.info:
+        # 缺失点群时尝试生成, 已有键则保持不变.
+        if 'PG' not in cluster_to_add.info:
             positions = np.asarray(cluster_to_add.get_positions(), dtype=float)
-            if 'distance_list' not in cluster_to_add.info:
-                pair_vectors = positions[:, None, :] - positions[None, :, :]
-                pair_distances = np.linalg.norm(pair_vectors, axis=-1)
-                upper_distances = pair_distances[np.triu_indices(len(positions), k=1)]
-                cluster_to_add.info['distance_list'] = np.sort(upper_distances)
-            if 'PG' not in cluster_to_add.info:
-                point_group: str | None = None
-                try:
-                    molecule = Molecule(
-                        cluster_to_add.get_chemical_symbols(), positions
-                    )
-                    point_group = str(
-                        PointGroupAnalyzer(molecule, tolerance=0.3)
-                        .get_pointgroup()
-                        .sch_symbol
-                    )
-                except Exception:
-                    point_group = None
-                cluster_to_add.info['PG'] = point_group
+            point_group: str | None = None
+            try:
+                molecule = Molecule(
+                    cluster_to_add.get_chemical_symbols(), positions
+                )
+                point_group = str(
+                    PointGroupAnalyzer(molecule, tolerance=0.3)
+                    .get_pointgroup()
+                    .sch_symbol
+                )
+            except Exception:
+                point_group = None
+            cluster_to_add.info['PG'] = point_group
 
         self._clusters.append(cluster_to_add)
 
@@ -398,10 +367,6 @@ class Population:
             if isinstance(energy_value, np.generic):
                 energy_value = energy_value.item()
 
-            distance_list = cluster.info.get('distance_list')
-            if distance_list is not None:
-                distance_list = np.asarray(distance_list, dtype=float).tolist()
-
             cluster_info = {
                 "name": f"{self.symbol}_{i}",
                 "symbol": cluster.get_chemical_formula(),
@@ -409,7 +374,6 @@ class Population:
                 "positions": cluster.get_positions().tolist(),
                 "forces": force_data,
                 "PG": cluster.info.get('PG'),
-                "distance_list": distance_list
             }
             clusters_info.append(cluster_info)
 
@@ -597,7 +561,7 @@ class Population:
                 # Note: self.add_cluster appends None to energies/forces, so we overwrite them below
                 self._clusters.append(cluster)
                 
-                # Set energy/forces/PG/distance_list into ASE native containers
+                # Set energy/forces/PG into ASE native containers
                 energy = c_data.get('energy')
                 forces = c_data.get('forces')
                 
@@ -608,9 +572,6 @@ class Population:
                 point_group = c_data.get('PG')
                 if point_group is not None:
                      cluster.info['PG'] = point_group
-                distance_list = c_data.get('distance_list')
-                if distance_list is not None:
-                     cluster.info['distance_list'] = np.asarray(distance_list, dtype=float)
                 
             except Exception as e:
                 print(f"Error loading cluster from JSON: {e}")
@@ -1328,8 +1289,8 @@ def select(
 ) -> Population:
     """对原种群和候选种群执行选择并更新自适应参数.
 
-    被选中的个体在进入下一代时计算点群(PG, 熊夫利符号)和升序原子间距列表
-    (distance_list); 若 pymatgen 不可用或点群分析失败, 对应个体 PG 记为 None.
+    被选中的个体在进入下一代时计算点群(PG, 熊夫利符号);
+    若 pymatgen 不可用或点群分析失败, 对应个体 PG 记为 None.
 
     Parameters
     ----------
@@ -1466,13 +1427,6 @@ def select(
         except Exception:
             point_group = None
         chosen_cluster.info['PG'] = point_group
-
-        # 记录升序原子间距列表, 便于后续计算相似性函数.
-        positions = np.asarray(chosen_cluster.get_positions(), dtype=float)
-        pair_vectors = positions[:, None, :] - positions[None, :, :]
-        pair_distances = np.linalg.norm(pair_vectors, axis=-1)
-        upper_distances = pair_distances[np.triu_indices(len(positions), k=1)]
-        chosen_cluster.info['distance_list'] = np.sort(upper_distances)
 
     # 更新 crm:使用成功个体的 cr 按能量改变量加权平均.
     if cr_rec and sum(delta_rec) > 0:

@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 from typing import Any
 import numpy as np
+from ase import Atoms
 from ase.calculators.mixing import SumCalculator
 from deepmd.calculator import DP
 from hiphive.calculators.zbl import ZBLCalculator
@@ -80,46 +81,51 @@ relax = functools.partial(
 )
 
 
-def similarity_function(
-    distance_a: np.ndarray | None,
-    distance_b: np.ndarray | None,
-) -> float:
-    """计算两个团簇的相似性函数 S, 见 docs/similarity_function.md.
+def similarity_function(atoms_a: Atoms, atoms_b: Atoms) -> float:
+    """计算两个团簇的相似性函数 S = 1 / (1 + q).
+
+    自动从 ``Atoms`` 对象读取坐标并构造升序原子间距列表, 不依赖预先存储的
+    距离列表. 公式见 docs/similarity_function.md.
 
     Parameters
     ----------
-    distance_a : numpy.ndarray | None
-        第一个团簇的升序原子间距列表 (长度 N*(N-1)/2).
-    distance_b : numpy.ndarray | None
-        第二个团簇的升序原子间距列表, 长度需与 distance_a 相同.
+    atoms_a : Atoms
+        第一个团簇.
+    atoms_b : Atoms
+        第二个团簇.
 
     Returns
     -------
     float
-        相似性函数 S = 1 / (1 + q/u_l), 取值 (0, 1], 其中 u_l = 1.0.
-        缺失距离列表或两个列表长度不一致时返回 0.0, 视为完全不相似.
-
-    Examples
-    --------
-    >>> similarity_function(np.array([2.0, 3.0, 4.0]), np.array([2.0, 3.0, 4.0]))
-    1.0
+        相似性函数 S = 1 / (1 + q), 取值 (0, 1].
+        原子数不一致, 原子数少于 2, 坐标含非有限值, 或最短间距为 0 时
+        返回 0.0.
     """
-    u_l = 1.0
-    if distance_a is None or distance_b is None:
+    if len(atoms_a) != len(atoms_b) or len(atoms_a) < 2:
         return 0.0
-    distance_a = np.asarray(distance_a, dtype=float)
-    distance_b = np.asarray(distance_b, dtype=float)
-    if distance_a.shape != distance_b.shape or distance_a.size == 0:
+
+    positions_a = np.asarray(atoms_a.get_positions(), dtype=float)
+    positions_b = np.asarray(atoms_b.get_positions(), dtype=float)
+    if positions_a.shape != positions_b.shape:
         return 0.0
-    # 以最短原子间距归一化, 消除整体尺度差异; 最短间距为 0 时无法归一化.
-    if distance_a[0] <= 0.0 or distance_b[0] <= 0.0:
+    if not np.isfinite(positions_a).all() or not np.isfinite(positions_b).all():
         return 0.0
-    normalized_a = distance_a / distance_a[0]
-    normalized_b = distance_b / distance_b[0]
-    q_value = float(
-        np.sqrt(1.0 / distance_a.size * np.sum((normalized_a - normalized_b) ** 2))
-    )
-    return 1.0 / (1.0 + q_value / u_l)
+
+    pair_vectors_a = positions_a[:, None, :] - positions_a[None, :, :]
+    pair_vectors_b = positions_b[:, None, :] - positions_b[None, :, :]
+    upper_indices = np.triu_indices(len(positions_a), k=1)
+    distances_a = np.sort(np.linalg.norm(pair_vectors_a, axis=-1)[upper_indices])
+    distances_b = np.sort(np.linalg.norm(pair_vectors_b, axis=-1)[upper_indices])
+
+    if distances_a.size == 0:
+        return 0.0
+    if distances_a[0] <= 0.0 or distances_b[0] <= 0.0:
+        return 0.0
+
+    normalized_a = distances_a / distances_a[0]
+    normalized_b = distances_b / distances_b[0]
+    q_value = float(np.sqrt(np.mean((normalized_a - normalized_b) ** 2)))
+    return 1.0 / (1.0 + q_value)
 
 
 def main(atom: int) -> None:
@@ -157,7 +163,7 @@ def main(atom: int) -> None:
 
     prev_best: float | None = None
     prev_pg: str | None = None
-    prev_distance_list: np.ndarray | None = None
+    prev_best_cluster: Atoms | None = None
     stagnation_count = 0
 
     for gen in range(1, generations + 1):
@@ -178,17 +184,14 @@ def main(atom: int) -> None:
         best_cluster = pop_next.best_cluster
         current_best = float(best_cluster.info['energy'])
         current_pg = best_cluster.info.get('PG')
-        current_distance_list = best_cluster.info.get('distance_list')
-        if prev_best is None:
+        if prev_best is None or prev_best_cluster is None:
             stagnation_count = 0
             delta = "NA"
             similarity_value = "NA"
         else:
             diff = current_best - prev_best
             delta = f"{diff:.6f}"
-            similarity = similarity_function(
-                current_distance_list, prev_distance_list
-            )
+            similarity = similarity_function(best_cluster, prev_best_cluster)
             similarity_value = f"{similarity:.6f}"
             # 点群改变或相似性 S < 0.9: 结构明显变化, 停滞计数清零.
             # 0.9 <= S < 0.95 时, 仅当最优能量变化超过 ediff 才清零.
@@ -219,10 +222,7 @@ def main(atom: int) -> None:
         pop = pop_next
         prev_best = current_best
         prev_pg = current_pg
-        if current_distance_list is None:
-            prev_distance_list = None
-        else:
-            prev_distance_list = np.asarray(current_distance_list, dtype=float).copy()
+        prev_best_cluster = best_cluster.copy()
         pop.dump(f"{element}{atom}_best")
         pop.dump_xyz(f"{element}{atom}_best")
         pop.export(name=f"{element}{atom}_gen{gen}")
