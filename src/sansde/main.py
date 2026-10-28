@@ -241,6 +241,9 @@ def main(atom: int) -> None:
         if not energy_values:
             raise ValueError("Population has no available energy")
         best_cluster = pop_next.best_cluster
+        # candidate 为空时直接记录本代最优结构.
+        if not pop_next.candidate:
+            pop_next.add_candidate(best_cluster, candidate_size=candidate_size)
         current_best = float(best_cluster.info['energy'])
         current_pg = best_cluster.info.get('PG')
         if prev_best is None or prev_best_cluster is None:
