@@ -800,6 +800,7 @@ def select(
     temp_clusters._fp = pop1.fp
     temp_clusters._p = pop1.p
     temp_clusters._crm = pop1.crm
+    temp_clusters._candidate = [atoms.copy() for atoms in pop1.candidate]
 
     # pop1: 先读取现有能量,仅对缺失能量个体做 relax 补全.
     pop1_energies_raw: list[float | None] = pop1.energies.copy()

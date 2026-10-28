@@ -58,6 +58,7 @@ stagnation_limit = int(params.get('stagnation_limit', 10))
 ediff = float(params.get('ediff', 1e-5))
 similarity_reset = float(params.get('similarity_reset', 0.9))
 similarity_energy_reset = float(params.get('similarity_energy_reset', 0.95))
+candidate_size = int(params.get('candidate_size', 2))
 
 # 势能面
 # DP (+ 可选 ZBL) 势: DP 负责长程/成键描述, hiphive 的 ZBL 提供短程排斥, 避免
@@ -215,6 +216,8 @@ def main(atom: int) -> None:
                 or (similarity < similarity_energy_reset and abs(diff) > ediff)
             ):
                 stagnation_count = 0
+                # 结构变化判据满足: 本代最优结构加入候选列表.
+                pop_next.add_candidate(best_cluster, candidate_size=candidate_size)
                 # 输出结构变化判据: 点群变化/相似性/能量变化.
                 print(
                     f"atom={atom} gen={gen:03d}"
@@ -239,7 +242,7 @@ def main(atom: int) -> None:
         prev_best_cluster = best_cluster.copy()
         pop.dump(f"{element}{atom}_best")
         pop.dump_xyz(f"{element}{atom}_best")
-        pop.export(name=f"{element}{atom}_gen{gen}")
+        snapshot_path = pop.export(name=f"{element}{atom}_gen{gen}")
 
         # 清理超出保留数量的旧快照
         if gen > keep_snapshots:
@@ -256,14 +259,13 @@ def main(atom: int) -> None:
             )
             break
 
-    # 5) 导出最终快照.
-    snapshot_path = pop.export(name=f"{element}{atom}_end", xyz=True)
+    # 5) 导出最终结果.
     best_dir.mkdir(parents=True, exist_ok=True)
     best_path = best_dir / f"{element}{atom}_best.xyz"
     best_energy = float(pop.best_cluster.info['energy'])
     with best_path.open('w', encoding='utf-8') as f:
         write_xyz(f, [pop.best_cluster], comment=str(best_energy))
-    print(f"atom={atom} final_snapshot={snapshot_path} best_xyz={best_path}")
+    print(f"atom={atom} final_snapshot={snapshot_path}")
 
 
 if __name__ == "__main__":
