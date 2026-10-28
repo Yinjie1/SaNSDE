@@ -36,6 +36,7 @@ htmlcov/
 .tox/
 .nox/
 .hypothesis/
+.test
 
 # ===== 类型检查 / Lint 缓存 =====
 .mypy_cache/

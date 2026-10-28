@@ -2,13 +2,13 @@
 python 3.13.12
 """
 import copy
-import json
 from datetime import datetime
 from pathlib import Path
 from typing import Self, overload
 
 import numpy as np
 from ase import Atoms
+from ase.io.jsonio import read_json, write_json
 from ase.io.trajectory import Trajectory
 
 try:
@@ -269,6 +269,7 @@ class Population:
         """导出种群数据到文件系统.
 
         在当前目录'./Populations/'(如不存在则新建)下输出一个 JSON 文件.
+        团簇以 ASE JSON 格式(Atoms 对象)存入 ``clusters`` 列表.
         当 xyz=True 时, 会同时输出同名的多帧 xyz 文件, 并在 comment 记录能量.
 
         Parameters
@@ -325,25 +326,6 @@ class Population:
             if isinstance(min_e, np.generic):
                 min_e = min_e.item()
 
-        clusters_info = []
-        for i, cluster in enumerate(self._clusters):
-            # 准备单个团簇的信息
-            force_data = self.forces[i]
-
-            energy_value = self.energies[i]
-            if isinstance(energy_value, np.generic):
-                energy_value = energy_value.item()
-
-            cluster_info = {
-                "name": f"{self.symbol}_{i}",
-                "symbol": cluster.get_chemical_formula(),
-                "energy": energy_value,
-                "positions": cluster.get_positions().tolist(),
-                "forces": force_data,
-                "PG": cluster.info.get('PG'),
-            }
-            clusters_info.append(cluster_info)
-
         summary_data = {
             "date": datetime.now().strftime('%Y%m%d%H%M%S'),
             "symbol": self.symbol,
@@ -353,11 +335,12 @@ class Population:
             "CRm": self.crm,
             "min_energy": min_e,
             "min_energy_index": min_idx,
-            "clusters": clusters_info
+            # 每个团簇直接以 ASE JSON 格式(Atoms)存入列表.
+            "clusters": self._clusters,
         }
 
         with summary_path.open('w', encoding='utf-8') as f:
-            json.dump(summary_data, f, indent=4)
+            write_json(f, summary_data)
 
         return summary_path.resolve()
 
@@ -454,7 +437,8 @@ class Population:
         """从JSON文件导入种群数据.
 
         直接读取指定的JSON文件.
-        直接使用JSON文件中的数据重建Atoms对象, 能量和力.
+        ``clusters`` 中的 ASE JSON (Atoms) 直接重建为 Atoms 对象;
+        同时兼容旧版手写 dict 格式.
         如果种群非空, 需要设置 confirm=True 才能覆盖现有数据.
 
         Parameters
@@ -479,7 +463,7 @@ class Population:
 
         try:
             with json_path.open('r', encoding='utf-8') as f:
-                data = json.load(f)
+                data = read_json(f)
         except (OSError, ValueError) as e:
             print(f"Failed to read JSON file: {e}")
             return
@@ -512,7 +496,13 @@ class Population:
         clusters_data = data.get('clusters', [])
         
         for c_data in clusters_data:
+            if isinstance(c_data, Atoms):
+                # ASE JSON 快照: 能量/点群在 info, 力在 arrays 中, 直接收编.
+                self._clusters.append(c_data)
+                continue
+
             try:
+                # 兼容旧版手写 dict 格式.
                 # Reconstruct Atoms object
                 symbol = c_data.get('symbol')
                 positions = c_data.get('positions')
