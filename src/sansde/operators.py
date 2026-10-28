@@ -25,6 +25,8 @@ with contextlib.suppress(Exception):
 
 MIN_ATOM_DISTANCE = 0.5
 
+# 作用于团簇
+
 def compute_point_group(
     cluster: Atoms,
     tolerance: float = 0.3,
@@ -104,6 +106,55 @@ def min_pair_distance(positions: np.ndarray) -> float:
     np.fill_diagonal(distances, np.inf)
     return float(distances.min())
 
+
+def similarity_function(atoms_a: Atoms, atoms_b: Atoms) -> float:
+    """计算两个团簇的相似性函数 S = 1 / (1 + q).
+
+    自动从 ``Atoms`` 对象读取坐标并构造升序原子间距列表, 不依赖预先存储的
+    距离列表. 公式见 docs/similarity_function.md.
+
+    Parameters
+    ----------
+    atoms_a : Atoms
+        第一个团簇.
+    atoms_b : Atoms
+        第二个团簇.
+
+    Returns
+    -------
+    float
+        相似性函数 S = 1 / (1 + q), 取值 (0, 1].
+        原子数不一致, 原子数少于 2, 坐标含非有限值, 或最短间距为 0 时
+        返回 0.0.
+    """
+    if len(atoms_a) != len(atoms_b) or len(atoms_a) < 2:
+        return 0.0
+
+    positions_a = np.asarray(atoms_a.get_positions(), dtype=float)
+    positions_b = np.asarray(atoms_b.get_positions(), dtype=float)
+    if positions_a.shape != positions_b.shape:
+        return 0.0
+    if not np.isfinite(positions_a).all() or not np.isfinite(positions_b).all():
+        return 0.0
+
+    pair_vectors_a = positions_a[:, None, :] - positions_a[None, :, :]
+    pair_vectors_b = positions_b[:, None, :] - positions_b[None, :, :]
+    upper_indices = np.triu_indices(len(positions_a), k=1)
+    distances_a = np.sort(np.linalg.norm(pair_vectors_a, axis=-1)[upper_indices])
+    distances_b = np.sort(np.linalg.norm(pair_vectors_b, axis=-1)[upper_indices])
+
+    if distances_a.size == 0:
+        return 0.0
+    if distances_a[0] <= 0.0 or distances_b[0] <= 0.0:
+        return 0.0
+
+    normalized_a = distances_a / distances_a[0]
+    normalized_b = distances_b / distances_b[0]
+    q_value = float(np.sqrt(np.mean((normalized_a - normalized_b) ** 2)))
+    return 1.0 / (1.0 + q_value)
+
+
+# 作用于种群
 
 def local_optimize(pop: Population | Atoms, 
                    cell: list[float] | np.ndarray | None = None, 
