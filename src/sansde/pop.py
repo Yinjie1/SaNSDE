@@ -36,6 +36,9 @@ class Population:
     ----------
     clusters : list[Atoms]
         当前种群中的团簇列表.
+    candidate : list[Atoms]
+        历史候选团簇列表, 按能量升序排列(最优在前), 长度由
+        ``add_candidate`` 的 candidate_size 参数控制.
     symbol : str | None
         种群化学式. 仅允许在未设置时初始化一次.
     num : int
@@ -99,10 +102,15 @@ class Population:
         self._fp: float = 0.5
         self._p: float = 0.5
         self._crm: float = 0.5
+        self._candidate: list[Atoms] = []
 
     @property
     def clusters(self) -> list[Atoms]:
         return self._clusters
+
+    @property
+    def candidate(self) -> list[Atoms]:
+        return self._candidate
 
     @property
     def fp(self) -> float:
@@ -265,6 +273,28 @@ class Population:
 
         self._clusters.append(cluster_to_add)
 
+    def add_candidate(self, cluster: Atoms, candidate_size: int = 2) -> None:
+        """把团簇加入候选列表首位, 并保持列表长度不超过 candidate_size.
+
+        Parameters
+        ----------
+        cluster : Atoms
+            待加入候选列表的团簇.
+        candidate_size : int, optional
+            候选列表的最大长度. Default 2, 即只保留最优和次优团簇.
+
+        Returns
+        -------
+        None
+            该方法原地修改候选列表, 无返回值.
+        """
+        if candidate_size < 0:
+            raise ValueError("candidate_size must be >= 0")
+        candidate_copy = cluster.copy()
+        candidate_copy.calc = None
+        self._candidate.insert(0, candidate_copy)
+        del self._candidate[candidate_size:]
+
     def export(self, name: str | None = None, xyz: bool = False) -> Path:
         """导出种群数据到文件系统.
 
@@ -337,6 +367,7 @@ class Population:
             "min_energy_index": min_idx,
             # 每个团簇直接以 ASE JSON 格式(Atoms)存入列表.
             "clusters": self._clusters,
+            "candidate": self._candidate,
         }
 
         with summary_path.open('w', encoding='utf-8') as f:
@@ -460,6 +491,7 @@ class Population:
             else:
                 self._clusters = []
                 self._symbol = None
+                self._candidate = []
 
         try:
             with json_path.open('r', encoding='utf-8') as f:
@@ -488,10 +520,15 @@ class Population:
             self._crm = float(crm_value)
 
         # Import any extra attributes beyond the preset ones
-        preset_keys = {'symbol', 'fp', 'p', 'CRm', 'clusters'}
+        preset_keys = {'symbol', 'fp', 'p', 'CRm', 'clusters', 'candidate'}
         for key, value in data.items():
             if key not in preset_keys:
                 setattr(self, key, value)
+
+        candidate_data = data.get('candidate', [])
+        self._candidate = [
+            atoms.copy() for atoms in candidate_data if isinstance(atoms, Atoms)
+        ]
 
         clusters_data = data.get('clusters', [])
         
