@@ -7,6 +7,7 @@ instances while keeping the population container free of algorithmic code.
 import contextlib
 import copy
 import functools
+import signal
 from collections.abc import Callable
 
 import numpy as np
@@ -21,8 +22,59 @@ with contextlib.suppress(Exception):
     from pymatgen.core import Molecule
     from pymatgen.symmetry.analyzer import PointGroupAnalyzer
 
-
 MIN_ATOM_DISTANCE = 0.5
+
+def compute_point_group(
+    cluster: Atoms,
+    tolerance: float = 0.3,
+    timeout: float = 30.0,
+) -> str | None:
+    """计算团簇点群(熊夫利符号), 失败或超时返回 None.
+
+    pymatgen 的 ``PointGroupAnalyzer`` 在近简并结构上可能长时间生成对称操作,
+    这里用 ``SIGALRM`` 限制单次计算时长, 超时后放弃计算并发出警告.
+
+    Parameters
+    ----------
+    cluster : Atoms
+        待计算点群的团簇.
+    tolerance : float, optional
+        传给 pymatgen ``PointGroupAnalyzer`` 的坐标容差. Default 0.3.
+    timeout : float, optional
+        单次点群计算允许的最长时间(秒). Default 5.0.
+
+    Returns
+    -------
+    str | None
+        点群熊夫利符号; pymatgen 不可用、计算失败或超时时返回 None.
+    """
+    try:
+        molecule = Molecule(cluster.get_chemical_symbols(), cluster.get_positions())
+    except Exception:  # noqa: BLE001
+        return None
+
+    def handle_timeout(signum: int, frame: object) -> None:
+        raise TimeoutError
+
+    previous_handler = signal.signal(signal.SIGALRM, handle_timeout)
+    signal.setitimer(signal.ITIMER_REAL, timeout)
+    try:
+        return str(
+            PointGroupAnalyzer(molecule, tolerance=tolerance)
+            .get_pointgroup()
+            .sch_symbol
+        )
+    except TimeoutError:
+        print(
+            f"Warning: PointGroupAnalyzer timed out after {timeout}s, "
+            "point group set to None."
+        )
+        return None
+    except Exception:  # noqa: BLE001
+        return None
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous_handler)
 
 
 def min_pair_distance(positions: np.ndarray) -> float:
@@ -900,22 +952,11 @@ def select(
             elif mut_tag == 1:
                 nf2 += 1
 
-        # 个体通过选择后计算点群(熊夫利符号); pymatgen 缺失或计算失败记为 None.
+        # 个体通过选择后计算点群(熊夫利符号); 失败或超时记为 None.
         chosen_cluster = temp_clusters[-1]
-        point_group: str | None = None
-        try:
-            molecule = Molecule(
-                chosen_cluster.get_chemical_symbols(),
-                chosen_cluster.get_positions(),
-            )
-            point_group = str(
-                PointGroupAnalyzer(
-                    molecule, tolerance=pg_tolerance
-                ).get_pointgroup().sch_symbol
-            )
-        except Exception:  # noqa: BLE001
-            point_group = None
-        chosen_cluster.info['PG'] = point_group
+        chosen_cluster.info['PG'] = compute_point_group(
+            chosen_cluster, tolerance=pg_tolerance
+        )
 
     # 更新 crm:使用成功个体的 cr 按能量改变量加权平均.
     if cr_rec and sum(delta_rec) > 0:

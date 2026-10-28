@@ -11,15 +11,6 @@ from ase import Atoms
 from ase.io.jsonio import read_json, write_json
 from ase.io.trajectory import Trajectory
 
-try:
-    from pymatgen.core import Molecule
-    from pymatgen.symmetry.analyzer import PointGroupAnalyzer
-except Exception:  # noqa: BLE001
-    print(
-        "Warning: pymatgen is missing in the current environment, "
-        "skipping point group calculation!"
-    )
-
 
 class Population:
     """种群对象
@@ -222,8 +213,6 @@ class Population:
         必须确保种群中所有团簇化学式相同.
         在添加前会将团簇质心平移到原点.
         若种群 symbol 为空, 则在添加第一个团簇时自动设置.
-        若团簇 info 中缺失 ``PG`` 键, 会尝试自动生成点群;
-        pymatgen 不可用或点群计算失败时 ``PG`` 记为 None.
 
         Parameters
         ----------
@@ -253,23 +242,6 @@ class Population:
             # 必须确保种群中所有团簇化学式相同
             if current_symbol != self._symbol:
                  raise ValueError(f"Cluster symbol {current_symbol} does not match population symbol {self._symbol}")
-
-        # 缺失点群时尝试生成, 已有键则保持不变.
-        if 'PG' not in cluster_to_add.info:
-            positions = np.asarray(cluster_to_add.get_positions(), dtype=float)
-            point_group: str | None = None
-            try:
-                molecule = Molecule(
-                    cluster_to_add.get_chemical_symbols(), positions
-                )
-                point_group = str(
-                    PointGroupAnalyzer(molecule, tolerance=0.3)
-                    .get_pointgroup()
-                    .sch_symbol
-                )
-            except Exception:  # noqa: BLE001
-                point_group = None
-            cluster_to_add.info['PG'] = point_group
 
         self._clusters.append(cluster_to_add)
 
