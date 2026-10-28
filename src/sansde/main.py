@@ -5,7 +5,6 @@ import functools
 import json
 import time
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 from ase import Atoms
@@ -32,76 +31,97 @@ from sansde.operators import (
 )
 from sansde.pop import Population
 
+
 # 初始化参数: 默认值内联, 可由运行目录下的 params.json 覆盖, 缺失的键保持默认值.
-param_file = Path('params.json')
-try:
-    with param_file.open('r', encoding='utf-8') as f:
-        params: dict[str, Any] = json.load(f)
-    if not isinstance(params, dict):
-        raise TypeError(f"{param_file} must contain a JSON object")
-    print(f"load parameters from {param_file}")
-except FileNotFoundError:
-    params = {}
+def load_config(params_path: Path) -> None:
+    """Load run configuration from a JSON file and build the potential.
 
-# 体系配置
-element = str(params.get('element', 'Au'))
-a = float(params.get('a', 2.88))
-atom_min = int(params.get('atom_min', 3))
-atom_max = int(params.get('atom_max', 5))
+    Parameters
+    ----------
+    params_path : pathlib.Path
+        Parameter JSON file. A missing file keeps the built-in defaults.
 
-# IO
-init_dir = Path(params.get('init_dir', 'init'))
-init_pop_dir = Path(params.get('init_pop_dir', '')) # 非空时忽略 init_dir
-best_dir = Path(params.get('best_dir', 'best'))
-keep_snapshots = int(params.get('keep_snapshots', 1))
-pop_dir = Path(params.get('pop_dir', 'Populations'))
+    Returns
+    -------
+    None
+        The configuration is stored in module-level names used by ``main``.
+    """
+    global params, element, a, atom_min, atom_max
+    global init_dir, init_pop_dir, best_dir, keep_snapshots, pop_dir
+    global pop_size, generations, stagnation_limit, ediff
+    global similarity_reset, similarity_energy_reset, candidate_size
+    global DP_MODEL, use_zbl, ZBL_CUTOFF, ZBL_SKIN
+    global fmax, steps, potential, relax
 
-# 全局优化设置
-pop_size = int(params.get('pop_size', 12))
-generations = int(params.get('generations', 500))
-stagnation_limit = int(params.get('stagnation_limit', 10))
-ediff = float(params.get('ediff', 1e-5))
-similarity_reset = float(params.get('similarity_reset', 0.9))
-similarity_energy_reset = float(params.get('similarity_energy_reset', 0.95))
-candidate_size = int(params.get('candidate_size', 2))
+    params_path = Path('params.json')
+    try:
+        with params_path.open('r', encoding='utf-8') as f:
+            params = json.load(f)
+        if not isinstance(params, dict):
+            raise TypeError(f"{params_path} must contain a JSON object")
+        print(f"load parameters from {params_path}")
+    except FileNotFoundError:
+        params = {}
 
-# 势能面
-# DP (+ 可选 ZBL) 势: DP 负责长程/成键描述, hiphive 的 ZBL 提供短程排斥, 避免
-# 原子重叠. use_zbl=True 时两者能量/力由 SumCalculator 直接相加:
-# E_total = E_DP + E_ZBL; use_zbl=False 时仅使用 DP.
-# 注意: hiphive 的 ZBLCalculator 内部用 ASE NeighborList, 其有效作用距离约为
-#   r_eff = cutoff + 2 * skin
-DP_MODEL = Path(params.get('DP_MODEL', "/home/linyj/02-linyj/potentials/dp/Au3c.pth"))
-use_zbl = bool(params.get('use_zbl', True))
-ZBL_CUTOFF = float(params.get('ZBL_CUTOFF', 1.5))
-ZBL_SKIN = float(params.get('ZBL_SKIN', 0))
-if use_zbl and ZBLCalculator is None:
-    print("Warning: hiphive is not installed; ZBL is disabled.")
-    use_zbl = False
+    # 体系配置
+    element = str(params.get('element', 'Au'))
+    a = float(params.get('a', 2.88))
+    atom_min = int(params.get('atom_min', 3))
+    atom_max = int(params.get('atom_max', 5))
 
-# 优化器参数: 收敛判据与最大优化步数
-fmax = float(params.get('fmax', 0.05))
-steps = int(params.get('steps', 300))
+    # IO
+    init_dir = Path(params.get('init_dir', 'init'))
+    init_pop_dir = Path(params.get('init_pop_dir', '')) # 非空时忽略 init_dir
+    best_dir = Path(params.get('best_dir', 'best'))
+    keep_snapshots = int(params.get('keep_snapshots', 1))
+    pop_dir = Path(params.get('pop_dir', 'Populations'))
 
-pes = DP(model=DP_MODEL)
-if use_zbl:
-    zbl = ZBLCalculator(cutoff=ZBL_CUTOFF, skin=ZBL_SKIN)
-    potential = SumCalculator([pes, zbl])
-else:
-    potential = pes
+    # 全局优化设置
+    pop_size = int(params.get('pop_size', 12))
+    generations = int(params.get('generations', 500))
+    stagnation_limit = int(params.get('stagnation_limit', 10))
+    ediff = float(params.get('ediff', 1e-5))
+    similarity_reset = float(params.get('similarity_reset', 0.9))
+    similarity_energy_reset = float(params.get('similarity_energy_reset', 0.95))
+    candidate_size = int(params.get('candidate_size', 2))
 
-# LJ 势: 用于 N=3-5 小团簇的优化测试, 需要时取消下面注释并注释上面的混合势.
-# potential = LennardJones(epsilon=0.4443, sigma=2.6367)
+    # 势能面
+    # DP (+ 可选 ZBL) 势: DP 负责长程/成键描述, hiphive 的 ZBL 提供短程排斥, 避免
+    # 原子重叠. use_zbl=True 时两者能量/力由 SumCalculator 直接相加:
+    # E_total = E_DP + E_ZBL; use_zbl=False 时仅使用 DP.
+    # 注意: hiphive 的 ZBLCalculator 内部用 ASE NeighborList, 其有效作用距离约为
+    #   r_eff = cutoff + 2 * skin
+    DP_MODEL = Path(params.get('DP_MODEL', "/home/linyj/02-linyj/potentials/dp/Au3c.pth"))
+    use_zbl = bool(params.get('use_zbl', True))
+    ZBL_CUTOFF = float(params.get('ZBL_CUTOFF', 1.5))
+    ZBL_SKIN = float(params.get('ZBL_SKIN', 0))
+    if use_zbl and ZBLCalculator is None:
+        print("Warning: hiphive is not installed; ZBL is disabled.")
+        use_zbl = False
 
-relax = functools.partial(
-    local_optimize,
-    cell=None,
-    # 当前使用上面的 DP(+ZBL) 势; 如需 LJ, 改为 potential=LennardJones(...).
-    potential = potential, # type: ignore
-    optimizer=BFGS,
-    fmax=fmax,
-    steps=steps,
-)
+    # 优化器参数: 收敛判据与最大优化步数
+    fmax = float(params.get('fmax', 0.05))
+    steps = int(params.get('steps', 300))
+
+    pes = DP(model=DP_MODEL)
+    if use_zbl:
+        zbl = ZBLCalculator(cutoff=ZBL_CUTOFF, skin=ZBL_SKIN)
+        potential = SumCalculator([pes, zbl])
+    else:
+        potential = pes
+
+    # LJ 势: 用于 N=3-5 小团簇的优化测试, 需要时取消下面注释并注释上面的混合势.
+    # potential = LennardJones(epsilon=0.4443, sigma=2.6367)
+
+    relax = functools.partial(
+        local_optimize,
+        cell=None,
+        # 当前使用上面的 DP(+ZBL) 势; 如需 LJ, 改为 potential=LennardJones(...).
+        potential = potential, # type: ignore
+        optimizer=BFGS,
+        fmax=fmax,
+        steps=steps,
+    )
 
 
 def similarity_function(atoms_a: Atoms, atoms_b: Atoms) -> float:
@@ -322,9 +342,21 @@ def main(atom: int) -> None:
     print(f"atom={atom} final_snapshot={snapshot_path}")
 
 
-if __name__ == "__main__":
+def run(params_path: Path) -> None:
+    """Run the optimization for every configured cluster size.
+
+    Parameters
+    ----------
+    params_path : pathlib.Path
+        Parameter JSON file passed to ``load_config``.
+    """
+    load_config(params_path)
     program_start = time.perf_counter()
     for atom in range(atom_min, atom_max + 1):
         main(atom)
     total_elapsed = time.perf_counter() - program_start
     print(f"program total_time_s={total_elapsed:.4f}")
+
+
+if __name__ == "__main__":
+    run(Path("params.json"))
