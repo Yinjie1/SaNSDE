@@ -1,18 +1,12 @@
 # AGENTS 使用说明
-## 代码修改约束（SaNSDE_new.py）
+## 本项目修改约束
 
-- 若用户没有明确要求在主程序 `SaNSDE_new.py` 中新增或删除类/函数（例如仅要求修改某个方法），不得擅自新增或删除类/函数。
-- 命名遵循文末 `新代码规范 / Naming Rules`: 函数与变量用 `snake_case`, 类用 `PascalCase`。
+- 若用户没有明确要求在主程序中新增或删除类/函数（例如仅要求修改某个方法），不得擅自新增或删除类/函数。
 - 类和函数注释格式参照 `class Population`：简介、参数、返回、示例（有必要时）。
-- 主程序中的注释和 docstring 标点统一使用 ASCII 英文标点符号。
-- 类型注解使用 Python 新版本规范（例如 `list[float | None]`，避免 `List[Optional[float]]` 旧写法）。
-- 代码实现与类型写法以 Python 3.13 规范为准。
-- 路径处理统一用 pathlib
 - 约束：包含 DeepMD 计算器的 `Atoms` 对象不可深拷贝；`local_optimize` 优化结束后必须清除 `atoms.calc`，并避免将带计算器对象的团簇进入后续种群深拷贝流程。
 - 测试约束：默认使用轻量测试（小规模、少代数），避免运行高计算量基准或长时间任务；仅在用户明确要求时执行重负载测试。
-- 测试时将标准输出重定向到 `./stdout`
+- 测试时将标准输出重定向到 `.test/stdout`
 
-# 新代码规范
 ## Typing Rules
 
 - Use Python 3.13 style type hints for all new code.
@@ -43,6 +37,8 @@
   - Raises (if applicable)
   - Examples (when helpful)
 - Class docstrings should include key Attributes.
+- Use ASCII punctuation in comments and docstrings in the main program.
+  Do not use full-width or other Unicode punctuation marks.
 
 ## Naming Rules
 
@@ -68,3 +64,8 @@
   else:
       # handling missing key
   ```
+- Use `pathlib` for all path handling.
+
+## Linting Rules
+
+- Use ruff to lint modified code; see the `ruff` skill for usage details.

@@ -1,18 +1,32 @@
+#!/usr/bin/env python3
 from __future__ import annotations
+
 import functools
 import json
 import time
 from pathlib import Path
 from typing import Any
+
 import numpy as np
 from ase import Atoms
 from ase.calculators.mixing import SumCalculator
-from deepmd.calculator import DP
-from hiphive.calculators.zbl import ZBLCalculator
-# from ase.calculators.lj import LennardJones
-from SaNSDE_new import *
 from ase.io import read
 from ase.io.xyz import write_xyz
+from ase.optimize import BFGS
+from deepmd.calculator import DP
+from hiphive.calculators.zbl import ZBLCalculator
+
+# from ase.calculators.lj import LennardJones
+from operators import (
+    crossover,
+    local_optimize,
+    local_transformation,
+    mutate,
+    random_cluster,
+    select,
+    sphere_cut_splice,
+)
+from pop import Population
 
 # 初始化参数: 默认值内联, 可由运行目录下的 params.json 覆盖, 缺失的键保持默认值.
 param_file = Path('params.json')
@@ -74,7 +88,7 @@ relax = functools.partial(
     local_optimize,
     cell=None,
     # 当前使用上面的 DP(+ZBL) 势; 如需 LJ, 改为 potential=LennardJones(...).
-    potential = potential,
+    potential = potential, # type: ignore
     optimizer=BFGS,
     fmax=fmax,
     steps=steps,
