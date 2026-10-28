@@ -14,7 +14,11 @@ from ase.io import read
 from ase.io.xyz import write_xyz
 from ase.optimize import BFGS
 from deepmd.calculator import DP
-from hiphive.calculators.zbl import ZBLCalculator
+
+try:
+    from hiphive.calculators.zbl import ZBLCalculator
+except ImportError:
+    ZBLCalculator = None  # type: ignore[assignment]
 
 # from ase.calculators.lj import LennardJones
 from operators import (
@@ -71,6 +75,9 @@ DP_MODEL = Path(params.get('DP_MODEL', "/home/linyj/02-linyj/potentials/dp/Au3c.
 use_zbl = bool(params.get('use_zbl', True))
 ZBL_CUTOFF = float(params.get('ZBL_CUTOFF', 1.5))
 ZBL_SKIN = float(params.get('ZBL_SKIN', 0))
+if use_zbl and ZBLCalculator is None:
+    print("Warning: hiphive is not installed; ZBL is disabled.")
+    use_zbl = False
 
 # 优化器参数: 收敛判据与最大优化步数
 fmax = float(params.get('fmax', 0.05))
