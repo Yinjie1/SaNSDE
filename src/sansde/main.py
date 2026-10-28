@@ -47,6 +47,7 @@ atom_max = int(params.get('atom_max', 5))
 
 # IO
 init_dir = Path(params.get('init_dir', 'init'))
+init_pop_dir = Path(params.get('init_pop_dir', '')) # 非空时忽略 init_dir
 best_dir = Path(params.get('best_dir', 'best'))
 keep_snapshots = int(params.get('keep_snapshots', 1))
 pop_dir = Path(params.get('pop_dir', 'Populations'))
@@ -145,36 +146,79 @@ def similarity_function(atoms_a: Atoms, atoms_b: Atoms) -> float:
 
 def main(atom: int) -> None:
     system_start = time.perf_counter()
-    # 1) 初始化种群: 先从 init/ 目录尝试加载已有结构, 再随机补足至 pop_size.
-    pop = Population(symbol=f"{element}{atom}")
-    init_path = init_dir / f"{element}{atom}_best.xyz"
+    # 1) 初始化种群: init_pop_dir 非空时按尺寸加载给定种群;
+    #    否则从 init/ 目录加载单个最优结构, 再随机补足至 pop_size.
+    expected_symbol = f"{element}{atom}"
+    pop = Population(symbol=expected_symbol)
     init_loaded = False
-    if init_path.is_file():
-        print(f"load structure {element}{atom}...")
-        cluster = read(init_path)
-        # 用当前势(DP 或 DP+ZBL)做一次单点计算得到能量, 不信任文件里可能来自旧势的能量.
-        cluster.calc = potential
-        energy_value = float(cluster.get_potential_energy())
-        cluster.calc = None  # 摘掉计算器: add_cluster 会 deepcopy, DP 不可深拷贝
-        if not np.isfinite(energy_value):
-            energy_value = float('inf')
-        cluster.info['energy'] = energy_value
-        pop.add_cluster(cluster)
-        init_loaded = True
+    init_from_pop = False
 
-    remaining = pop_size - 1 if init_loaded else pop_size
-    if atom <= 20:
-        for i in range(remaining):
-            if i < pop_size / 2:
-                random_cluster(pop, a=a, delta=0.5, relax=relax, is_2d=True)
-            else:
-                random_cluster(pop, a=a, delta=0.5, relax=relax)
+    # Path("") 会被规范化为 '.', 以此判断 init_pop_dir 是否为空.
+    if init_pop_dir != Path('.'):
+        # 文件名支持 {element}{atom}.json、{element}{atom}_gen3.json 等;
+        # 逐个尝试, 用化学式校验, 不匹配则继续下一个.
+        for init_pop_path in sorted(init_pop_dir.glob(f"{expected_symbol}*.json")):
+            pop = Population()
+            pop.import_population(init_pop_path)
+            if pop.symbol != expected_symbol or len(pop) == 0:
+                print(f"skip initial population {init_pop_path}: symbol mismatch")
+                continue
+            init_from_pop = True
+            init_loaded = True
+            print(f"load initial population {element}{atom} from {init_pop_path}...")
+            break
+        if init_from_pop:
+            # 初始种群可能来自旧势, 用当前势重算团簇和候选团簇的能量与力.
+            for cluster in [*pop.clusters, *pop.candidate]:
+                cluster.calc = potential
+                try:
+                    energy_value = float(cluster.get_potential_energy())
+                    force_value = np.asarray(cluster.get_forces(), dtype=float)
+                finally:
+                    cluster.calc = None
+                if np.isfinite(energy_value):
+                    cluster.info['energy'] = energy_value
+                    cluster.arrays['forces'] = force_value
+                else:
+                    cluster.info['energy'] = float('inf')
+                    cluster.arrays['forces'] = np.zeros((len(cluster), 3))
+        else:
+            pop = Population(symbol=expected_symbol)
     else:
-        for i in range(remaining):
-            if i < pop_size / 4:
-                random_cluster(pop, a=a, delta=0.5, relax=relax, is_2d=True)
+        init_path = init_dir / f"{element}{atom}.xyz"
+        if init_path.is_file():
+            print(f"load structure {element}{atom}...")
+            cluster = read(init_path)
+            # 用当前势(DP 或 DP+ZBL)重算能量和力, 不信任文件里可能来自旧势的数据.
+            cluster.calc = potential
+            try:
+                energy_value = float(cluster.get_potential_energy())
+                force_value = np.asarray(cluster.get_forces(), dtype=float)
+            finally:
+                cluster.calc = None  # 摘掉计算器: add_cluster 会 deepcopy, DP 不可深拷贝
+            if np.isfinite(energy_value):
+                cluster.info['energy'] = energy_value
+                cluster.arrays['forces'] = force_value
             else:
-                random_cluster(pop, a=a, delta=0.5, relax=relax)
+                cluster.info['energy'] = float('inf')
+                cluster.arrays['forces'] = np.zeros((len(cluster), 3))
+            pop.add_cluster(cluster)
+            init_loaded = True
+
+    if not init_from_pop:
+        remaining = pop_size - 1 if init_loaded else pop_size
+        if atom <= 20:
+            for i in range(remaining):
+                if i < pop_size / 2:
+                    random_cluster(pop, a=a, delta=0.5, relax=relax, is_2d=True)
+                else:
+                    random_cluster(pop, a=a, delta=0.5, relax=relax)
+        else:
+            for i in range(remaining):
+                if i < pop_size / 4:
+                    random_cluster(pop, a=a, delta=0.5, relax=relax, is_2d=True)
+                else:
+                    random_cluster(pop, a=a, delta=0.5, relax=relax)
 
     prev_best: float | None = None
     prev_pg: str | None = None
