@@ -1,20 +1,23 @@
 """SaNSDE_new.py
 python 3.13.12
 """
-import json
 import copy
 import functools
+import json
+from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
+from typing import Self, overload
+
 import numpy as np
-from typing import Callable, Self, overload
 from ase import Atoms
-from ase.io import write
-from ase.io.trajectory import Trajectory
-from ase.optimize import BFGS, LBFGS, GPMin, FIRE
-from ase.optimize.optimize import Optimizer
 from ase.calculators.calculator import Calculator
 from ase.calculators.lj import LennardJones
-from datetime import datetime
+from ase.io import write
+from ase.io.trajectory import Trajectory
+from ase.optimize import BFGS
+from ase.optimize.optimize import Optimizer
+
 try:
     from pymatgen.core import Molecule
     from pymatgen.symmetry.analyzer import PointGroupAnalyzer
