@@ -54,7 +54,6 @@ def load_config(params_path: Path) -> None:
     global DP_MODEL, use_zbl, ZBL_CUTOFF, ZBL_SKIN
     global fmax, steps, potential, relax
 
-    params_path = Path('params.json')
     try:
         with params_path.open('r', encoding='utf-8') as f:
             params = json.load(f)
