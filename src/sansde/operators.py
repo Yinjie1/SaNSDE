@@ -16,7 +16,8 @@ from ase.calculators.calculator import Calculator
 from ase.calculators.lj import LennardJones
 from ase.optimize import BFGS
 from ase.optimize.optimize import Optimizer
-from pop import Population
+
+from sansde.pop import Population
 
 with contextlib.suppress(Exception):
     from pymatgen.core import Molecule

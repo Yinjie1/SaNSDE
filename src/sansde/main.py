@@ -21,7 +21,7 @@ except ImportError:
     ZBLCalculator = None  # type: ignore[assignment]
 
 # from ase.calculators.lj import LennardJones
-from operators import (
+from sansde.operators import (
     crossover,
     local_optimize,
     local_transformation,
@@ -30,7 +30,7 @@ from operators import (
     select,
     sphere_cut_splice,
 )
-from pop import Population
+from sansde.pop import Population
 
 # 初始化参数: 默认值内联, 可由运行目录下的 params.json 覆盖, 缺失的键保持默认值.
 param_file = Path('params.json')

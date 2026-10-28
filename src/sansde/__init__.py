@@ -1,4 +1,4 @@
-from operators import (
+from sansde.operators import (
     crossover,
     local_optimize,
     local_transformation,
@@ -7,7 +7,7 @@ from operators import (
     select,
     sphere_cut_splice,
 )
-from pop import Population
+from sansde.pop import Population
 
 __all__ = [
     'Population',
