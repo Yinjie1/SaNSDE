@@ -272,7 +272,8 @@ class Population:
 
         在当前目录'./Populations/'(如不存在则新建)下输出一个 JSON 文件.
         团簇以 ASE JSON 格式(Atoms 对象)存入 ``clusters`` 列表.
-        当 xyz=True 时, 会同时输出同名的多帧 xyz 文件, 并在 comment 记录能量.
+        当 xyz=True 时, 会同时输出同名的多帧 extxyz 文件,
+        包含能量、力、pbc 以及 info 中的其他字段.
 
         Parameters
         ----------
@@ -285,7 +286,7 @@ class Population:
                生成 "{name}_YYYYMMddhhmmss.json" 以避免覆盖.
             4) 当 xyz=True 时, xyz 文件名与最终 JSON 同名(不含扩展名).
         xyz : bool, optional
-            是否同时导出包含所有团簇的多帧 xyz 文件. Default False.
+            是否同时导出包含所有团簇的多帧 extxyz 文件. Default False.
 
         Returns
         -------
@@ -306,18 +307,16 @@ class Population:
             summary_path = base_dir / f"{name}.json"
             print(f'Duplicate file found. New export name: {name}!')
 
-        # Optional xyz snapshot
+        # Optional extxyz snapshot: 只用 info/arrays 里已有的 energy/forces,
+        # 不读取或重算 calculator; 缺失的字段留空.
         if xyz:
             xyz_path = base_dir / f"{name}.xyz"
-            from ase.io.xyz import write_xyz
+            from ase.io.extxyz import write_extxyz
             try:
                 with xyz_path.open('w', encoding='utf-8') as f:
-                    for i, cluster in enumerate(self._clusters):
-                        energy = self.energies[i]
-                        comment_str = str(energy) if energy is not None else ""
-                        write_xyz(f, [cluster], comment=comment_str)
+                    write_extxyz(f, self._clusters, write_results=False)
             except Exception as e:  # noqa: BLE001
-                print(f"Warning: Failed to write xyz file {xyz_path}: {e}")
+                print(f"Warning: Failed to write extxyz file {xyz_path}: {e}")
         
         min_e = None
         min_idx = None
