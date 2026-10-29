@@ -11,7 +11,6 @@ import numpy as np
 from ase import Atoms
 from ase.calculators.mixing import SumCalculator
 from ase.io import read
-from ase.io.extxyz import write_extxyz
 from ase.optimize import BFGS
 from deepmd.calculator import DP
 
@@ -405,11 +404,8 @@ def main(atom: int) -> None:
             )
             break
 
-    # 5) 导出最终结果.
-    best_dir.mkdir(parents=True, exist_ok=True)
-    best_path = best_dir / f"{element}{atom}_best.xyz"
-    with best_path.open('w', encoding='utf-8') as f:
-        write_extxyz(f, [pop.best_cluster], write_results=False)
+    # 5) 导出最终结果: 候选列表写入 best/ 的 extxyz.
+    pop.dump_xyz(f"{element}{atom}_best", candidate=True, dir=best_dir)
     print(f"atom={atom} final_snapshot={snapshot_path}")
 
 
