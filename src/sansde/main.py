@@ -155,7 +155,7 @@ def append_stats_row(
     gen : int
         Generation index.
     pop : Population
-        Selected population of the current generation.
+        Selected population; its ``candidate`` list is written.
     best_energy : float
         Lowest energy of the generation.
     best_pg : str | None
@@ -169,28 +169,26 @@ def append_stats_row(
     stagnation_count : int
         Consecutive generations without structural change.
     candidate_size : int
-        Number of ranked entries written (best + sub-optimal).
+        Number of candidate entries written (best + sub-optimal).
     elapsed_time : float
         Total program run time in seconds.
     """
-    ranked = sorted(
-        (
-            cluster
-            for cluster in pop
-            if cluster.info.get('energy') is not None
-            and np.isfinite(float(cluster.info['energy']))
-        ),
-        key=lambda cluster: float(cluster.info['energy']),
-    )[:candidate_size]
-    energies = [float(cluster.info['energy']) for cluster in ranked]
-    point_groups = [
+    candidates = list(pop.candidate)
+    candidate_energies = [
+        float(cluster.info['energy'])
+        if cluster.info.get('energy') is not None
+        else None
+        for cluster in candidates
+    ]
+    candidate_pgs = [
         "" if cluster.info.get('PG') is None else str(cluster.info['PG'])
-        for cluster in ranked
+        for cluster in candidates
     ]
 
     n_sub = max(candidate_size - 1, 0)
-    sub_energies = energies[1:1 + n_sub]
-    sub_pgs = point_groups[1:1 + n_sub]
+    # candidate[0] 是当前候选最优, 之后是次优候选.
+    sub_energies = candidate_energies[1:1 + n_sub]
+    sub_pgs = candidate_pgs[1:1 + n_sub]
 
     header = ["symbol", "atoms", "gen", "e_best"]
     header.extend(f"e_cand{i}" for i in range(1, n_sub + 1))
@@ -199,7 +197,10 @@ def append_stats_row(
     header.extend(["S", "fp", "p", "CRm", "best_streak", "time"])
 
     row = [symbol, atom, gen, f"{best_energy:.8f}"]
-    row.extend(f"{energy:.8f}" for energy in sub_energies)
+    row.extend(
+        "" if energy is None else f"{energy:.8f}"
+        for energy in sub_energies
+    )
     row.extend([""] * (n_sub - len(sub_energies)))
     row.append("" if best_drop is None else f"{best_drop:.8f}")
     row.append("" if best_pg is None else str(best_pg))
@@ -338,7 +339,8 @@ def main(atom: int) -> None:
             similarity_value = f"{similarity:.6f}"
             # 点群改变或相似性 S < 0.9: 结构明显变化, 停滞计数清零.
             # 0.9 <= S < 0.95 时, 仅当最优能量变化超过 ediff 才清零.
-            if (
+            # 更优的唯一标准是能量降低; 结构判据只用于排除数值噪声.
+            if diff < 0 and (
                 current_pg != prev_pg
                 or similarity < similarity_reset
                 or (similarity < similarity_energy_reset and abs(diff) > ediff)
