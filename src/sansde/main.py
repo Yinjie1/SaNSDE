@@ -146,7 +146,7 @@ def append_stats_row(
     The CSV is created on first write and appended afterwards. At most three
     clusters are reported (``e_best`` plus two sub-optimal candidates), so the
     number of sub-optimal columns is ``min(candidate_size - 1, 2)``. When more
-    candidates are available, only the lowest-energy ones are written.
+    candidates are available, the first ones in the candidate list are written.
 
     Parameters
     ----------
@@ -178,22 +178,9 @@ def append_stats_row(
     """
     candidates = list(pop.candidate)
     n_sub = min(max(candidate_size - 1, 0), 2)
-    # candidate[0] 是当前候选最优, 之后是次优候选; 只保留能量最低的至多两个.
-    sub_candidates = sorted(
-        candidates[1:],
-        key=lambda cluster: (
-            cluster.info.get('energy') is None,
-            float(cluster.info['energy'])
-            if cluster.info.get('energy') is not None
-            else float('inf'),
-        ),
-    )[:n_sub]
-    sub_energies = [
-        float(cluster.info['energy'])
-        if cluster.info.get('energy') is not None
-        else None
-        for cluster in sub_candidates
-    ]
+    # candidate[0] 是当前候选最优, 按列表顺序直接取前两个次优候选.
+    sub_candidates = candidates[1:1 + n_sub]
+    sub_energies = [float(cluster.info['energy']) for cluster in sub_candidates]
     sub_pgs = [
         "" if cluster.info.get('PG') is None else str(cluster.info['PG'])
         for cluster in sub_candidates
@@ -270,6 +257,9 @@ def main(atom: int) -> None:
                 else:
                     cluster.info['energy'] = float('inf')
                     cluster.arrays['forces'] = np.zeros((len(cluster), 3))
+            # 重算能量后候选列表可能不再按能量升序, 重新排序以保证
+            # candidate[0] 是当前最优候选.
+            pop.candidate.sort(key=lambda cluster: float(cluster.info['energy']))
         else:
             pop = Population(symbol=expected_symbol)
     else:
