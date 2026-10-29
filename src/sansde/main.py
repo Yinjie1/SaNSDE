@@ -168,7 +168,8 @@ def main(atom: int) -> None:
         init_path = init_dir / f"{element}{atom}.xyz"
         if init_path.is_file():
             print(f"load structure {element}{atom}...")
-            cluster = read(init_path)
+            # best.xyz 现在是候选列表的多帧文件, 第一帧为候选最优.
+            cluster = read(init_path, index=0)
             # 用当前势(DP 或 DP+ZBL)重算能量和力, 不信任文件里可能来自旧势的数据.
             cluster.calc = potential
             try:
