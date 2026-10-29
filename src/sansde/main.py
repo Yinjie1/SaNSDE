@@ -126,6 +126,7 @@ def load_config(params_path: Path) -> None:
 
 
 stats_path = Path("opt_stat.csv")
+run_start: float | None = None
 
 
 def append_stats_row(
@@ -136,8 +137,10 @@ def append_stats_row(
     best_energy: float,
     best_pg: str | None,
     best_drop: float | None,
+    similarity: float | None,
     stagnation_count: int,
     candidate_size: int,
+    elapsed_time: float,
 ) -> None:
     """Append one generation's statistics to the run CSV.
 
@@ -161,10 +164,15 @@ def append_stats_row(
     best_drop : float | None
         Best-energy decrease relative to the previous generation.
         ``None`` on the first generation.
+    similarity : float | None
+        Similarity between the current and previous best cluster.
+        ``None`` on the first generation.
     stagnation_count : int
         Consecutive generations without structural change.
     candidate_size : int
         Number of ranked entries written (best + sub-optimal).
+    elapsed_time : float
+        Total program run time in seconds.
     """
     ranked = sorted(
         (
@@ -189,7 +197,7 @@ def append_stats_row(
     header.extend(f"e_cand{i}" for i in range(1, n_sub + 1))
     header.extend(["delta_e", "PG"])
     header.extend(f"PG_cand{i}" for i in range(1, n_sub + 1))
-    header.extend(["fp", "p", "CRm", "best_streak"])
+    header.extend(["S", "fp", "p", "CRm", "best_streak", "time"])
 
     row = [symbol, atom, gen, f"{best_energy:.8f}"]
     row.extend(f"{energy:.8f}" for energy in sub_energies)
@@ -198,11 +206,13 @@ def append_stats_row(
     row.append("" if best_pg is None else str(best_pg))
     row.extend(sub_pgs)
     row.extend([""] * (n_sub - len(sub_pgs)))
+    row.append("" if similarity is None else f"{similarity:.6f}")
     row.extend([
         f"{pop.fp:.6f}",
         f"{pop.p:.6f}",
         f"{pop.crm:.6f}",
         stagnation_count,
+        f"{elapsed_time:.4f}",
     ])
 
     write_header = not stats_path.exists() or stats_path.stat().st_size == 0
@@ -316,6 +326,7 @@ def main(atom: int) -> None:
             pop_next.add_candidate(best_cluster, candidate_size=candidate_size)
         current_best = float(best_cluster.info['energy'])
         current_pg = best_cluster.info.get('PG')
+        similarity_current: float | None = None
         if prev_best is None or prev_best_cluster is None:
             stagnation_count = 0
             delta = "NA"
@@ -324,6 +335,7 @@ def main(atom: int) -> None:
             diff = current_best - prev_best
             delta = f"{diff:.6f}"
             similarity = similarity_function(best_cluster, prev_best_cluster)
+            similarity_current = similarity
             similarity_value = f"{similarity:.6f}"
             # 点群改变或相似性 S < 0.9: 结构明显变化, 停滞计数清零.
             # 0.9 <= S < 0.95 时, 仅当最优能量变化超过 ediff 才清零.
@@ -345,7 +357,7 @@ def main(atom: int) -> None:
             else:
                 stagnation_count += 1
 
-        # 每代写一行统计到工作目录的 optimization.csv.
+        # 每代写一行统计到统计 CSV.
         append_stats_row(
             symbol=f"{element}{atom}",
             atom=atom,
@@ -354,8 +366,12 @@ def main(atom: int) -> None:
             best_energy=current_best,
             best_pg=current_pg,
             best_drop=None if prev_best is None else prev_best - current_best,
+            similarity=similarity_current,
             stagnation_count=stagnation_count,
             candidate_size=candidate_size,
+            elapsed_time=time.perf_counter() - (
+                run_start if run_start is not None else system_start
+            ),
         )
         elapsed = time.perf_counter() - tick
 
@@ -406,8 +422,10 @@ def run(params_path: Path) -> None:
     params_path : pathlib.Path
         Parameter JSON file passed to ``load_config``.
     """
-    global stats_path
+    global run_start, stats_path
 
+    program_start = time.perf_counter()
+    run_start = program_start
     load_config(params_path)
     # CSV 与参数文件同名(31.json -> 31.csv); 没有可用 JSON 时用 opt_stat.csv.
     if params_path.is_file():
@@ -417,7 +435,6 @@ def run(params_path: Path) -> None:
     # 每次运行重新生成统计文件, 避免上次运行的内容混在一起.
     if stats_path.exists():
         stats_path.unlink()
-    program_start = time.perf_counter()
     for atom in range(atom_min, atom_max + 1):
         main(atom)
     total_elapsed = time.perf_counter() - program_start
