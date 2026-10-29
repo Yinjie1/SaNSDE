@@ -30,12 +30,13 @@ MIN_ATOM_DISTANCE = 0.5
 def compute_point_group(
     cluster: Atoms,
     tolerance: float = 0.3,
-    timeout: float = 30.0,
+    timeout: float = 5.0,
 ) -> str | None:
     """计算团簇点群(熊夫利符号), 失败或超时返回 None.
 
     pymatgen 的 ``PointGroupAnalyzer`` 在近简并结构上可能长时间生成对称操作,
-    这里用 ``SIGALRM`` 限制单次计算时长, 超时后放弃计算并发出警告.
+    这里用 ``SIGALRM`` 限制单次计算时长. 首次超时后用 2 倍 tolerance 重试;
+    仍然超时则放弃计算、返回 None 并发出警告.
 
     Parameters
     ----------
@@ -43,13 +44,14 @@ def compute_point_group(
         待计算点群的团簇.
     tolerance : float, optional
         传给 pymatgen ``PointGroupAnalyzer`` 的坐标容差. Default 0.3.
+        首次超时后会用 ``2 * tolerance`` 重试一次.
     timeout : float, optional
-        单次点群计算允许的最长时间(秒). Default 5.0.
+        每次点群计算允许的最长时间(秒). Default 5.0.
 
     Returns
     -------
     str | None
-        点群熊夫利符号; pymatgen 不可用、计算失败或超时时返回 None.
+        点群熊夫利符号; pymatgen 不可用、计算失败或两次尝试均超时时返回 None.
     """
     try:
         molecule = Molecule(cluster.get_chemical_symbols(), cluster.get_positions())
@@ -60,23 +62,29 @@ def compute_point_group(
         raise TimeoutError
 
     previous_handler = signal.signal(signal.SIGALRM, handle_timeout)
-    signal.setitimer(signal.ITIMER_REAL, timeout)
     try:
-        return str(
-            PointGroupAnalyzer(molecule, tolerance=tolerance)
-            .get_pointgroup()
-            .sch_symbol
-        )
-    except TimeoutError:
-        print(
-            f"Warning: PointGroupAnalyzer timed out after {timeout}s, "
-            "point group set to None."
-        )
-        return None
-    except Exception:  # noqa: BLE001
-        return None
+        for attempt, current_tolerance in enumerate((tolerance, tolerance * 2), 1):
+            signal.setitimer(signal.ITIMER_REAL, timeout)
+            try:
+                return str(
+                    PointGroupAnalyzer(molecule, tolerance=current_tolerance)
+                    .get_pointgroup()
+                    .sch_symbol
+                )
+            except TimeoutError:
+                if attempt == 2:
+                    print(
+                        f"Warning: PointGroupAnalyzer timed out after {timeout}s "
+                        f"with tolerance {current_tolerance}; "
+                        "point group set to None."
+                    )
+                    return None
+                # 第一次超时: 用 2 倍 tolerance 重试.
+            except Exception:  # noqa: BLE001
+                return None
+            finally:
+                signal.setitimer(signal.ITIMER_REAL, 0)
     finally:
-        signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, previous_handler)
 
 
