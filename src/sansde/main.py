@@ -103,6 +103,34 @@ def load_config(params_path: Path) -> None:
     fmax = float(params.get('fmax', 0.05))
     steps = int(params.get('steps', 300))
 
+    # 输出全部初始化参数, 便于确认本次运行配置.
+    print("initialized parameters:")
+    for name, value in (
+        ("element", element),
+        ("a", a),
+        ("atom_min", atom_min),
+        ("atom_max", atom_max),
+        ("init_dir", init_dir),
+        ("init_pop_dir", init_pop_dir),
+        ("best_dir", best_dir),
+        ("keep_snapshots", keep_snapshots),
+        ("pop_dir", pop_dir),
+        ("pop_size", pop_size),
+        ("generations", generations),
+        ("stagnation_limit", stagnation_limit),
+        ("ediff", ediff),
+        ("similarity_reset", similarity_reset),
+        ("similarity_energy_reset", similarity_energy_reset),
+        ("candidate_size", candidate_size),
+        ("DP_MODEL", DP_MODEL),
+        ("use_zbl", use_zbl),
+        ("ZBL_CUTOFF", ZBL_CUTOFF),
+        ("ZBL_SKIN", ZBL_SKIN),
+        ("fmax", fmax),
+        ("steps", steps),
+    ):
+        print(f"  {name} = {value}")
+
     pes = DP(model=DP_MODEL)
     if use_zbl:
         zbl = ZBLCalculator(cutoff=ZBL_CUTOFF, skin=ZBL_SKIN)
