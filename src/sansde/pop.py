@@ -8,6 +8,7 @@ from typing import Self, overload
 
 import numpy as np
 from ase import Atoms
+from ase.io.extxyz import write_extxyz
 from ase.io.jsonio import read_json, write_json
 from ase.io.trajectory import Trajectory
 
@@ -311,7 +312,6 @@ class Population:
         # 不读取或重算 calculator; 缺失的字段留空.
         if xyz:
             xyz_path = base_dir / f"{name}.xyz"
-            from ase.io.extxyz import write_extxyz
             try:
                 with xyz_path.open('w', encoding='utf-8') as f:
                     write_extxyz(f, self._clusters, write_results=False)
@@ -396,26 +396,21 @@ class Population:
         return traj_path.resolve()
 
     def dump_xyz(self, name: str | None = None) -> Path:
-        """导出当前最优团簇到 xyz 轨迹文件(.xyz).
+        """导出候选团簇列表到 extxyz 文件(.xyz).
 
-        使用 ase.io.xyz 写入 ./Trajectories/ 下的 xyz 轨迹文件.
-        若文件已存在则追加写入新帧.
-        xyz 的 comment 行写入最优团簇的能量(若存在 cluster.info['energy']),
-        无能量时 comment 为空.
+        按 ``candidate`` 列表顺序写入所有候选团簇(最优在前), 文件会被覆盖.
+        只使用 ``info``/``arrays`` 中已有的能量和力, 不读取或重算计算器.
 
         Parameters
         ----------
         name : str, optional
-            轨迹文件名(不含扩展名). 默认使用 "{symbol}_best".
+            文件名(不含扩展名). 默认使用 "{symbol}_best".
 
         Returns
         -------
         pathlib.Path
-            导出 xyz 轨迹文件的完整绝对路径.
+            导出 extxyz 文件的完整绝对路径.
         """
-        from ase.io.xyz import write_xyz
-
-        best_cluster = self.best_cluster
 
         base_dir = Path("./Trajectories")
         base_dir.mkdir(parents=True, exist_ok=True)
@@ -427,11 +422,8 @@ class Population:
 
         xyz_path = base_dir / f"{base_name}.xyz"
 
-        energy_value = best_cluster.info.get('energy')
-        comment_str = str(energy_value) if energy_value is not None else ""
-
-        with xyz_path.open('a', encoding='utf-8') as f:
-            write_xyz(f, [best_cluster], comment=comment_str)
+        with xyz_path.open('w', encoding='utf-8') as f:
+            write_extxyz(f, self._candidate, write_results=False)
 
         return xyz_path.resolve()
 
