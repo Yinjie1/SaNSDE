@@ -143,8 +143,10 @@ def append_stats_row(
 ) -> None:
     """Append one generation's statistics to the run CSV.
 
-    The CSV is created on first write and appended afterwards. The number of
-    sub-optimal columns is ``candidate_size - 1``.
+    The CSV is created on first write and appended afterwards. At most three
+    clusters are reported (``e_best`` plus two sub-optimal candidates), so the
+    number of sub-optimal columns is ``min(candidate_size - 1, 2)``. When more
+    candidates are available, only the lowest-energy ones are written.
 
     Parameters
     ----------
@@ -169,26 +171,33 @@ def append_stats_row(
     stagnation_count : int
         Consecutive generations without structural change.
     candidate_size : int
-        Number of candidate entries written (best + sub-optimal).
+        Requested number of candidate entries (best + sub-optimal). The output
+        is capped at three entries in total.
     elapsed_time : float
         Total program run time in seconds.
     """
     candidates = list(pop.candidate)
-    candidate_energies = [
+    n_sub = min(max(candidate_size - 1, 0), 2)
+    # candidate[0] 是当前候选最优, 之后是次优候选; 只保留能量最低的至多两个.
+    sub_candidates = sorted(
+        candidates[1:],
+        key=lambda cluster: (
+            cluster.info.get('energy') is None,
+            float(cluster.info['energy'])
+            if cluster.info.get('energy') is not None
+            else float('inf'),
+        ),
+    )[:n_sub]
+    sub_energies = [
         float(cluster.info['energy'])
         if cluster.info.get('energy') is not None
         else None
-        for cluster in candidates
+        for cluster in sub_candidates
     ]
-    candidate_pgs = [
+    sub_pgs = [
         "" if cluster.info.get('PG') is None else str(cluster.info['PG'])
-        for cluster in candidates
+        for cluster in sub_candidates
     ]
-
-    n_sub = max(candidate_size - 1, 0)
-    # candidate[0] 是当前候选最优, 之后是次优候选.
-    sub_energies = candidate_energies[1:1 + n_sub]
-    sub_pgs = candidate_pgs[1:1 + n_sub]
 
     header = ["symbol", "atoms", "gen", "e_best"]
     header.extend(f"e_cand{i}" for i in range(1, n_sub + 1))
