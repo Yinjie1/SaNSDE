@@ -268,10 +268,15 @@ class Population:
         self._candidate.insert(0, candidate_copy)
         del self._candidate[candidate_size:]
 
-    def export(self, name: str | None = None, xyz: bool = False) -> Path:
+    def export(
+        self,
+        name: str | None = None,
+        xyz: bool = False,
+        dir: str | Path = "./Populations",
+    ) -> Path:
         """导出种群数据到文件系统.
 
-        在当前目录'./Populations/'(如不存在则新建)下输出一个 JSON 文件.
+        在 dir 指定的目录(默认 './Populations/', 不存在则新建)下输出一个 JSON 文件.
         团簇以 ASE JSON 格式(Atoms 对象)存入 ``clusters`` 列表.
         当 xyz=True 时, 会同时输出同名的多帧 extxyz 文件,
         包含能量、力、pbc 以及 info 中的其他字段.
@@ -288,6 +293,8 @@ class Population:
             4) 当 xyz=True 时, xyz 文件名与最终 JSON 同名(不含扩展名).
         xyz : bool, optional
             是否同时导出包含所有团簇的多帧 extxyz 文件. Default False.
+        dir : str | pathlib.Path, optional
+            输出目录. Default "./Populations".
 
         Returns
         -------
@@ -297,7 +304,7 @@ class Population:
         if name is None:
             name = self.symbol if self.symbol else "Population"
 
-        base_dir = Path("./Populations")
+        base_dir = Path(dir)
         base_dir.mkdir(parents=True, exist_ok=True)
 
         # Check for duplicate JSON filename
@@ -399,6 +406,7 @@ class Population:
         self,
         name: str | None = None,
         candidate: bool = False,
+        dir: str | Path = "./Trajectories",
     ) -> Path:
         """导出团簇到 extxyz 文件(.xyz).
 
@@ -414,13 +422,15 @@ class Population:
             文件名(不含扩展名). 默认使用 "{symbol}_best".
         candidate : bool, optional
             是否导出整个候选列表而不是当前最优团簇. Default False.
+        dir : str | pathlib.Path, optional
+            输出目录. Default "./Trajectories".
 
         Returns
         -------
         pathlib.Path
             导出 extxyz 文件的完整绝对路径.
         """
-        base_dir = Path("./Trajectories")
+        base_dir = Path(dir)
         base_dir.mkdir(parents=True, exist_ok=True)
 
         if name is None:
