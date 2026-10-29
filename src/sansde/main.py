@@ -206,13 +206,13 @@ def append_stats_row(
     row.append("" if best_pg is None else str(best_pg))
     row.extend(sub_pgs)
     row.extend([""] * (n_sub - len(sub_pgs)))
-    row.append("" if similarity is None else f"{similarity:.6f}")
+    row.append("" if similarity is None else f"{similarity:.2f}")
     row.extend([
         f"{pop.fp:.6f}",
         f"{pop.p:.6f}",
         f"{pop.crm:.6f}",
         stagnation_count,
-        f"{elapsed_time:.4f}",
+        f"{elapsed_time:.0f}",
     ])
 
     write_header = not stats_path.exists() or stats_path.stat().st_size == 0
@@ -339,8 +339,7 @@ def main(atom: int) -> None:
             similarity_value = f"{similarity:.6f}"
             # 点群改变或相似性 S < 0.9: 结构明显变化, 停滞计数清零.
             # 0.9 <= S < 0.95 时, 仅当最优能量变化超过 ediff 才清零.
-            # 更优的唯一标准是能量降低; 结构判据只用于排除数值噪声.
-            if diff < 0 and (
+            if (
                 current_pg != prev_pg
                 or similarity < similarity_reset
                 or (similarity < similarity_energy_reset and abs(diff) > ediff)
