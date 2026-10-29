@@ -395,23 +395,31 @@ class Population:
 
         return traj_path.resolve()
 
-    def dump_xyz(self, name: str | None = None) -> Path:
-        """导出候选团簇列表到 extxyz 文件(.xyz).
+    def dump_xyz(
+        self,
+        name: str | None = None,
+        candidate: bool = False,
+    ) -> Path:
+        """导出团簇到 extxyz 文件(.xyz).
 
-        按 ``candidate`` 列表顺序写入所有候选团簇(最优在前), 文件会被覆盖.
+        ``candidate=False`` 时只写当前最优团簇, 文件已存在则追加, 用于记录
+        最优团簇演化轨迹. ``candidate=True`` 时按顺序写出整个 ``candidate``
+        列表, 并覆盖同名文件.
+
         只使用 ``info``/``arrays`` 中已有的能量和力, 不读取或重算计算器.
 
         Parameters
         ----------
         name : str, optional
             文件名(不含扩展名). 默认使用 "{symbol}_best".
+        candidate : bool, optional
+            是否导出整个候选列表而不是当前最优团簇. Default False.
 
         Returns
         -------
         pathlib.Path
             导出 extxyz 文件的完整绝对路径.
         """
-
         base_dir = Path("./Trajectories")
         base_dir.mkdir(parents=True, exist_ok=True)
 
@@ -422,8 +430,15 @@ class Population:
 
         xyz_path = base_dir / f"{base_name}.xyz"
 
-        with xyz_path.open('w', encoding='utf-8') as f:
-            write_extxyz(f, self._candidate, write_results=False)
+        if candidate:
+            mode = 'w'
+            clusters = self._candidate
+        else:
+            mode = 'a'
+            clusters = [self.best_cluster]
+
+        with xyz_path.open(mode, encoding='utf-8') as f:
+            write_extxyz(f, clusters, write_results=False)
 
         return xyz_path.resolve()
 
