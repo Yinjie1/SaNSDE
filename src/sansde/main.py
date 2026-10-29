@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import csv
 import functools
 import json
 import time
@@ -122,6 +123,94 @@ def load_config(params_path: Path) -> None:
         fmax=fmax,
         steps=steps,
     )
+
+
+stats_path = Path("opt_stat.csv")
+
+
+def append_stats_row(
+    symbol: str,
+    atom: int,
+    gen: int,
+    pop: Population,
+    best_energy: float,
+    best_pg: str | None,
+    best_drop: float | None,
+    stagnation_count: int,
+    candidate_size: int,
+) -> None:
+    """Append one generation's statistics to the run CSV.
+
+    The CSV is created on first write and appended afterwards. The number of
+    sub-optimal columns is ``candidate_size - 1``.
+
+    Parameters
+    ----------
+    symbol : str
+        Cluster chemical formula, e.g. ``"Au13"``.
+    atom : int
+        Number of atoms in the cluster.
+    gen : int
+        Generation index.
+    pop : Population
+        Selected population of the current generation.
+    best_energy : float
+        Lowest energy of the generation.
+    best_pg : str | None
+        Point group of the best cluster.
+    best_drop : float | None
+        Best-energy decrease relative to the previous generation.
+        ``None`` on the first generation.
+    stagnation_count : int
+        Consecutive generations without structural change.
+    candidate_size : int
+        Number of ranked entries written (best + sub-optimal).
+    """
+    ranked = sorted(
+        (
+            cluster
+            for cluster in pop
+            if cluster.info.get('energy') is not None
+            and np.isfinite(float(cluster.info['energy']))
+        ),
+        key=lambda cluster: float(cluster.info['energy']),
+    )[:candidate_size]
+    energies = [float(cluster.info['energy']) for cluster in ranked]
+    point_groups = [
+        "" if cluster.info.get('PG') is None else str(cluster.info['PG'])
+        for cluster in ranked
+    ]
+
+    n_sub = max(candidate_size - 1, 0)
+    sub_energies = energies[1:1 + n_sub]
+    sub_pgs = point_groups[1:1 + n_sub]
+
+    header = ["symbol", "atoms", "gen", "e_best"]
+    header.extend(f"e_cand{i}" for i in range(1, n_sub + 1))
+    header.extend(["delta_e", "PG"])
+    header.extend(f"PG_cand{i}" for i in range(1, n_sub + 1))
+    header.extend(["fp", "p", "CRm", "best_streak"])
+
+    row = [symbol, atom, gen, f"{best_energy:.8f}"]
+    row.extend(f"{energy:.8f}" for energy in sub_energies)
+    row.extend([""] * (n_sub - len(sub_energies)))
+    row.append("" if best_drop is None else f"{best_drop:.8f}")
+    row.append("" if best_pg is None else str(best_pg))
+    row.extend(sub_pgs)
+    row.extend([""] * (n_sub - len(sub_pgs)))
+    row.extend([
+        f"{pop.fp:.6f}",
+        f"{pop.p:.6f}",
+        f"{pop.crm:.6f}",
+        stagnation_count,
+    ])
+
+    write_header = not stats_path.exists() or stats_path.stat().st_size == 0
+    with stats_path.open("a", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        if write_header:
+            writer.writerow(header)
+        writer.writerow(row)
 
 
 def main(atom: int) -> None:
@@ -255,6 +344,19 @@ def main(atom: int) -> None:
                 )
             else:
                 stagnation_count += 1
+
+        # 每代写一行统计到工作目录的 optimization.csv.
+        append_stats_row(
+            symbol=f"{element}{atom}",
+            atom=atom,
+            gen=gen,
+            pop=pop_next,
+            best_energy=current_best,
+            best_pg=current_pg,
+            best_drop=None if prev_best is None else prev_best - current_best,
+            stagnation_count=stagnation_count,
+            candidate_size=candidate_size,
+        )
         elapsed = time.perf_counter() - tick
 
         print(
@@ -268,7 +370,7 @@ def main(atom: int) -> None:
         prev_best = current_best
         prev_pg = current_pg
         prev_best_cluster = best_cluster.copy()
-        pop.dump(f"{element}{atom}_best")
+        # pop.dump(f"{element}{atom}_best")
         pop.dump_xyz(f"{element}{atom}_best")
         snapshot_path = pop.export(name=f"{element}{atom}_gen{gen}")
 
@@ -304,7 +406,17 @@ def run(params_path: Path) -> None:
     params_path : pathlib.Path
         Parameter JSON file passed to ``load_config``.
     """
+    global stats_path
+
     load_config(params_path)
+    # CSV 与参数文件同名(31.json -> 31.csv); 没有可用 JSON 时用 opt_stat.csv.
+    if params_path.is_file():
+        stats_path = params_path.with_suffix(".csv")
+    else:
+        stats_path = Path("opt_stat.csv")
+    # 每次运行重新生成统计文件, 避免上次运行的内容混在一起.
+    if stats_path.exists():
+        stats_path.unlink()
     program_start = time.perf_counter()
     for atom in range(atom_min, atom_max + 1):
         main(atom)
