@@ -11,7 +11,7 @@ import numpy as np
 from ase import Atoms
 from ase.calculators.mixing import SumCalculator
 from ase.io import read
-from ase.io.xyz import write_xyz
+from ase.io.extxyz import write_extxyz
 from ase.optimize import BFGS
 from deepmd.calculator import DP
 
@@ -408,9 +408,8 @@ def main(atom: int) -> None:
     # 5) 导出最终结果.
     best_dir.mkdir(parents=True, exist_ok=True)
     best_path = best_dir / f"{element}{atom}_best.xyz"
-    best_energy = float(pop.best_cluster.info['energy'])
     with best_path.open('w', encoding='utf-8') as f:
-        write_xyz(f, [pop.best_cluster], comment=str(best_energy))
+        write_extxyz(f, [pop.best_cluster], write_results=False)
     print(f"atom={atom} final_snapshot={snapshot_path}")
 
 
