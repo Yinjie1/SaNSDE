@@ -194,8 +194,9 @@ def local_optimize(pop: Population | Atoms,
     steps : int, optional
         最大优化步数. Default 100.
     deepcopy : bool, optional
-        是否深拷贝输入对象后再优化. Default True.
-        为 False 时直接使用输入对象引用进行后续流程.
+        是否深拷贝 Population 输入后再优化. Default True.
+        为 False 时直接使用输入 Population 的引用进行后续流程.
+        Atoms 输入始终通过 ``Atoms.copy()`` 复制.
         
     Returns
     -------
@@ -216,7 +217,7 @@ def local_optimize(pop: Population | Atoms,
         is_single = False
     elif isinstance(pop, Atoms):
         new_clusters = Population()
-        new_clusters.add_cluster(pop, deepcopy=deepcopy)
+        new_clusters.add_cluster(pop)
         is_single = True
     else:
         raise TypeError("pop must be a Population or an ase.Atoms object")
@@ -389,7 +390,7 @@ def random_cluster(pop: Population,
         raise TypeError("local_optimize should return Atoms when input is Atoms")
     
     # Add to pop
-    pop.add_cluster(optimized_cluster, deepcopy=False)
+    pop.add_cluster(optimized_cluster)
     
     # Update energy and forces
     energy_value = optimized_cluster.info.get('energy')
@@ -563,9 +564,9 @@ def mutate(pop: Population, a: float = 4, n: int = 10, debug: bool = False) -> P
         if min_pair_distance(new_positions) < MIN_ATOM_DISTANCE:
             new_positions = pop[i].get_positions()
 
-        # 记录本个体突变标签到 mut 属性(0/1).
+        # 记录本个体突变标签到 info['mut'] (0/1).
         temp_clusters[i].set_positions(new_positions)
-        setattr(temp_clusters[i], 'mut', mut_tag)  # noqa: B010
+        temp_clusters[i].info['mut'] = mut_tag
         temp_clusters[i].info['energy'] = None
         temp_clusters[i].arrays.pop('forces', None)
 
@@ -615,9 +616,9 @@ def crossover(pop1: Population, pop2: Population) -> Population:
             positions=trial_positions,
         )
         # 记录本个体交叉率 cr,供 select 在成功样本上更新 crm.
-        setattr(trial_cluster, 'cr', cross_rate)  # noqa: B010
+        trial_cluster.info['cr'] = cross_rate
         # 传递 mut_tag,供 select 统计对应策略成功/失败并更新 p.
-        setattr(trial_cluster, 'mut', getattr(pop2[i], 'mut', None))  # noqa: B010
+        trial_cluster.info['mut'] = pop2[i].info.get('mut')
 
         temp_clusters.add_cluster(trial_cluster)
 
@@ -735,16 +736,16 @@ def sphere_cut_splice(
             raise TypeError("relax must return Atoms when input is Atoms")
 
         # 与 crossover 一致: 传递 mut_tag 供后续 select 更新 p/crm.
-        mut_tag = getattr(cluster_b, 'mut', None)
+        mut_tag = cluster_b.info.get('mut')
         if mut_tag is not None:
-            setattr(relaxed_a, 'mut', mut_tag)  # noqa: B010
-            setattr(relaxed_b, 'mut', mut_tag)  # noqa: B010
+            relaxed_a.info['mut'] = mut_tag
+            relaxed_b.info['mut'] = mut_tag
 
         # cr 生命周期透传: 供 select 在成功样本上更新 crm.
-        cross_rate = getattr(cluster_b, 'cr', None)
+        cross_rate = cluster_b.info.get('cr')
         if cross_rate is not None:
-            setattr(relaxed_a, 'cr', cross_rate)  # noqa: B010
-            setattr(relaxed_b, 'cr', cross_rate)  # noqa: B010
+            relaxed_a.info['cr'] = cross_rate
+            relaxed_b.info['cr'] = cross_rate
 
         energy_a = relaxed_a.info.get('energy')
         energy_b = relaxed_b.info.get('energy')
@@ -782,7 +783,7 @@ def sphere_cut_splice(
         for winner in winners:
             if len(temp_clusters) >= target_size:
                 break
-            temp_clusters.add_cluster(winner, deepcopy=False)
+            temp_clusters.add_cluster(winner)
 
     return temp_clusters
 
@@ -848,14 +849,14 @@ def local_transformation(
             raise ValueError("base energy completion failed in local_transformation")
 
         # 传递 mut_tag: local_transformation 前后保持策略标签不丢失.
-        mut_tag = getattr(source_pop[i], 'mut', None)
+        mut_tag = source_pop[i].info.get('mut')
         if mut_tag is not None:
-            setattr(base_candidate, 'mut', mut_tag)  # noqa: B010
+            base_candidate.info['mut'] = mut_tag
 
         # cr 生命周期透传: local_transformation 前后保持交叉率标签不丢失.
-        cross_rate = getattr(source_pop[i], 'cr', None)
+        cross_rate = source_pop[i].info.get('cr')
         if cross_rate is not None:
-            setattr(base_candidate, 'cr', cross_rate)  # noqa: B010
+            base_candidate.info['cr'] = cross_rate
 
         perturbed_cluster = copy.deepcopy(source_pop[i])
         positions = perturbed_cluster.get_positions().copy()
@@ -871,12 +872,12 @@ def local_transformation(
             raise ValueError("relax result must contain energy for local_transformation")
 
         if mut_tag is not None:
-            setattr(relaxed_perturbed, 'mut', mut_tag)  # noqa: B010
+            relaxed_perturbed.info['mut'] = mut_tag
         if cross_rate is not None:
-            setattr(relaxed_perturbed, 'cr', cross_rate)  # noqa: B010
+            relaxed_perturbed.info['cr'] = cross_rate
 
         winner = relaxed_perturbed if float(energy_perturbed) < float(base_energy) else base_candidate
-        output_pop.add_cluster(winner, deepcopy=False)
+        output_pop.add_cluster(winner)
 
     return output_pop
 
@@ -972,13 +973,13 @@ def select(
         pop2_energy_values.append(float(energy_value))
 
     # mut_tag 生命周期终点: select 在此消费 mut_tag,用于统计并更新 p.
-    # 选择环节要求 pop2 含 mut_tag 信息,否则无法按策略统计并更新 p.
+    # 选择环节要求 pop2 的 info 含 mut_tag,否则无法按策略统计并更新 p.
     for i in range(len(pop2_candidates)):
         pop2_candidate = pop2_candidates[i]
         if pop2_candidate is None:
             raise ValueError(f"pop2 candidate missing at index {i}")
-        if getattr(pop2_candidate, 'mut', None) is None:
-            raise ValueError(f"pop2 is missing mut_tag at index {i}")
+        if pop2_candidate.info.get('mut') is None:
+            raise ValueError(f"pop2 is missing mut_tag in info at index {i}")
 
     for i in range(len(pop1_candidates)):
         pop1_candidate = pop1_candidates[i]
@@ -990,14 +991,14 @@ def select(
 
         energy1 = pop1_energy_values[i]
         energy2 = pop2_energy_values[i]
-        mut_tag = getattr(pop2_candidate, 'mut', None)
+        mut_tag = pop2_candidate.info.get('mut')
 
         choose_pop2 = energy2 < energy1
 
         if choose_pop2:
-            temp_clusters.add_cluster(pop2_candidate, deepcopy=True)
+            temp_clusters.add_cluster(pop2_candidate)
             # 成功个体记录 cr 和能量改变量,用于后续更新 crm.
-            current_cr = getattr(pop2_candidate, 'cr', None)
+            current_cr = pop2_candidate.info.get('cr')
             if current_cr is not None:
                 cr_rec.append(float(current_cr))
                 delta_rec.append(float(energy1 - energy2))
@@ -1006,7 +1007,7 @@ def select(
             elif mut_tag == 1:
                 ns2 += 1
         else:
-            temp_clusters.add_cluster(pop1_candidate, deepcopy=True)
+            temp_clusters.add_cluster(pop1_candidate)
             if mut_tag == 0:
                 nf1 += 1
             elif mut_tag == 1:

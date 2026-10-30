@@ -1,7 +1,6 @@
 """pop.py
 python 3.13.12
 """
-import copy
 from datetime import datetime
 from pathlib import Path
 from typing import Self, overload
@@ -142,7 +141,7 @@ class Population:
             sub_pop._p = self._p
             sub_pop._crm = self._crm
             for cluster in self._clusters[index]:
-                sub_pop.add_cluster(cluster, deepcopy=True)
+                sub_pop.add_cluster(cluster)
             return sub_pop
         return self._clusters[index]
 
@@ -208,7 +207,7 @@ class Population:
 
         return self._clusters[best_index]
 
-    def add_cluster(self, cluster: Atoms, deepcopy: bool = True):
+    def add_cluster(self, cluster: Atoms):
         """导入一个团簇对象(Atoms类型)到_clusters列表末尾.
 
         必须确保种群中所有团簇化学式相同.
@@ -220,8 +219,7 @@ class Population:
         cluster : Atoms
             ASE Atoms 对象, 代表一个团簇.
             其化学式必须与种群设定的 symbol 一致.
-        deepcopy : bool, optional
-            是否在添加时对 cluster 做深拷贝. Default True.
+            添加时使用 ``Atoms.copy()`` 复制, 不复制计算器.
 
         Returns
         -------
@@ -231,7 +229,7 @@ class Population:
         if not isinstance(cluster, Atoms):
             raise TypeError("Cluster must be an ase.Atoms object")
 
-        cluster_to_add = copy.deepcopy(cluster) if deepcopy else cluster
+        cluster_to_add = cluster.copy()
         # 平移质心到原点
         cluster_to_add.set_center_of_mass([0.0, 0.0, 0.0])
 
