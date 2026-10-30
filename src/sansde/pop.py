@@ -86,6 +86,11 @@ class Population:
     导入种群:
     >>> pop_new = Population()
     >>> pop_new.import_population(filename=json_path)
+
+    复制种群:
+    >>> pop_copy = pop.copy()
+    >>> pop_copy is pop
+    False
     """
     def __init__(self, symbol: str | None = None):
         self._clusters: list[Atoms] = []
@@ -147,6 +152,26 @@ class Population:
 
     def __len__(self) -> int:
         return len(self._clusters)
+
+    def copy(self) -> Self:
+        """返回当前种群及其团簇的独立副本.
+
+        团簇使用 ``Atoms.copy()`` 复制, 因此不会复制 ASE 计算器.
+        种群的 fp/p/crm, 团簇的坐标, info, arrays 以及候选列表都会保留.
+
+        Returns
+        -------
+        Population
+            与当前种群状态一致的新种群对象.
+        """
+        new_pop = Population(symbol=self._symbol)
+        new_pop._fp = self._fp
+        new_pop._p = self._p
+        new_pop._crm = self._crm
+        # 直接复制列表, 避免 add_cluster 重新平移团簇质心.
+        new_pop._clusters = [cluster.copy() for cluster in self._clusters]
+        new_pop._candidate = [cluster.copy() for cluster in self._candidate]
+        return new_pop
 
     @property
     def num(self) -> int:
