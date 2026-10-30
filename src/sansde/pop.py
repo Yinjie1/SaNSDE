@@ -601,6 +601,34 @@ class Clusters(MultiAtoms):
     is replaced in place.
     """
 
+    def sort(self, element: str = "auto") -> None:
+        """Sort clusters in place by the count of a given element.
+
+        Parameters
+        ----------
+        element : str, optional
+            Element symbol to count. If ``"auto"``, use the element of the
+            first atom in the first cluster. Default is ``"auto"``.
+
+        Raises
+        ------
+        ValueError
+            If the cluster list is empty or the element does not exist in any
+            cluster.
+        """
+        if not self._clusters:
+            raise ValueError("Cannot sort an empty cluster list")
+        if element == "auto":
+            element = self._clusters[0][0].symbol
+        if not any(
+            element in cluster.get_chemical_symbols()
+            for cluster in self._clusters
+        ):
+            raise ValueError(f"Element {element} does not exist in any cluster")
+        self._clusters.sort(
+            key=lambda cluster: cluster.get_chemical_symbols().count(element)
+        )
+
     def add_cluster(self, cluster: Atoms, replace: bool = False) -> None:
         """Add a cluster and enforce unique chemical formulas.
 
