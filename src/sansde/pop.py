@@ -65,9 +65,8 @@ class MultiAtoms:
 
     def __getitem__(self, index: int | slice) -> Atoms | Self:
         if isinstance(index, slice):
-            sub_atoms = type(self)()
-            for cluster in self._clusters[index]:
-                sub_atoms.add_cluster(cluster)
+            sub_atoms = MultiAtoms()
+            sub_atoms._clusters = self._clusters[index]
             return sub_atoms
         return self._clusters[index]
 
