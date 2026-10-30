@@ -288,6 +288,8 @@ def main(atom: int) -> None:
             # 重算能量后候选列表可能不再按能量升序, 重新排序以保证
             # candidate[0] 是当前最优候选.
             pop.candidate.sort(key=lambda cluster: float(cluster.info['energy']))
+            # 候选数超过 candidate_size 时, 保留能量最低的 candidate_size 个.
+            del pop.candidate[candidate_size:]
         else:
             pop = Population(symbol=expected_symbol)
     else:
