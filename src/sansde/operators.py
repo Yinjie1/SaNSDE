@@ -30,12 +30,13 @@ def compute_point_group(
     cluster: Atoms,
     tolerance: float = 0.3,
     timeout: float = 5.0,
+    matrix_tolerance: float = 0.1,
 ) -> str | None:
     """计算团簇点群(熊夫利符号), 失败或超时返回 None.
 
     pymatgen 的 ``PointGroupAnalyzer`` 在近简并结构上可能长时间生成对称操作,
-    这里用 ``SIGALRM`` 限制单次计算时长. 首次超时后用 2 倍 tolerance 重试;
-    仍然超时则放弃计算、返回 None 并发出警告.
+    这里用 ``SIGALRM`` 限制单次计算时长. 首次超时后同时用 2 倍 tolerance
+    和 2 倍 matrix_tolerance 重试; 仍然超时则放弃计算、返回 None 并发出警告.
 
     Parameters
     ----------
@@ -46,6 +47,9 @@ def compute_point_group(
         首次超时后会用 ``2 * tolerance`` 重试一次.
     timeout : float, optional
         每次点群计算允许的最长时间(秒). Default 5.0.
+    matrix_tolerance : float, optional
+        传给 pymatgen ``PointGroupAnalyzer`` 的矩阵闭包容差. Default 0.1.
+        首次超时后会用 ``2 * matrix_tolerance`` 重试一次.
 
     Returns
     -------
@@ -62,23 +66,32 @@ def compute_point_group(
 
     previous_handler = signal.signal(signal.SIGALRM, handle_timeout)
     try:
-        for attempt, current_tolerance in enumerate((tolerance, tolerance * 2), 1):
+        attempts = (
+            (tolerance, matrix_tolerance),
+            (tolerance * 2, matrix_tolerance * 2),
+        )
+        for attempt, (current_tolerance, current_matrix_tolerance) in enumerate(attempts, 1):
             signal.setitimer(signal.ITIMER_REAL, timeout)
             try:
                 return str(
-                    PointGroupAnalyzer(molecule, tolerance=current_tolerance)
+                    PointGroupAnalyzer(
+                        molecule,
+                        tolerance=current_tolerance,
+                        matrix_tolerance=current_matrix_tolerance,
+                    )
                     .get_pointgroup()
                     .sch_symbol
                 )
             except TimeoutError:
+                outcome = "point group set to None." if attempt == 2 else "retrying..."
+                print(
+                    f"Warning: PointGroupAnalyzer timed out after {timeout}s "
+                    f"with tolerance {current_tolerance} and "
+                    f"matrix_tolerance {current_matrix_tolerance}; {outcome}"
+                )
                 if attempt == 2:
-                    print(
-                        f"Warning: PointGroupAnalyzer timed out after {timeout}s "
-                        f"with tolerance {current_tolerance}; "
-                        "point group set to None."
-                    )
                     return None
-                # 第一次超时: 用 2 倍 tolerance 重试.
+                # 第一次超时: 同时放宽 tolerance 和 matrix_tolerance 重试.
             except Exception:  # noqa: BLE001
                 return None
             finally:
