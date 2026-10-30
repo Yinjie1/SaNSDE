@@ -385,6 +385,10 @@ def main(atom: int) -> None:
                 )
             else:
                 stagnation_count += 1
+                # 结构变化判据不满足: 用本代最优替换候选首位,
+                # 不新增候选, 避免插入后截断导致候选列表整体移位.
+                if pop_next.candidate:
+                    pop_next.candidate[0] = best_cluster.copy()
 
         # 每代写一行统计到统计 CSV.
         append_stats_row(
