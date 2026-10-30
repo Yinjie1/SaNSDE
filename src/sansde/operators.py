@@ -5,7 +5,6 @@ mutation, crossover, and selection. The operators act on ``Population``
 instances while keeping the population container free of algorithmic code.
 """
 import contextlib
-import copy
 import functools
 import signal
 from collections.abc import Callable
@@ -169,8 +168,7 @@ def local_optimize(pop: Population | Atoms,
                    potential: Calculator | None = None,
                    optimizer: type[Optimizer] = BFGS,
                    fmax: float = 0.05, 
-                   steps: int = 100,
-                   deepcopy: bool = True) -> Population | Atoms:
+                   steps: int = 100) -> Population | Atoms:
     """进行局域优化(结构弛豫)
     
     对种群中的所有团簇或单个团簇进行结构优化, 返回优化后的新对象.
@@ -193,10 +191,6 @@ def local_optimize(pop: Population | Atoms,
         收敛判据, 最大力阈值 (eV/Ang). Default 0.05.
     steps : int, optional
         最大优化步数. Default 100.
-    deepcopy : bool, optional
-        是否深拷贝 Population 输入后再优化. Default True.
-        为 False 时直接使用输入 Population 的引用进行后续流程.
-        Atoms 输入始终通过 ``Atoms.copy()`` 复制.
         
     Returns
     -------
@@ -213,7 +207,7 @@ def local_optimize(pop: Population | Atoms,
         raise ValueError("potential must be an ASE calculator object, None is not allowed")
 
     if isinstance(pop, Population):
-        new_clusters = copy.deepcopy(pop) if deepcopy else pop
+        new_clusters = pop.copy()
         is_single = False
     elif isinstance(pop, Atoms):
         new_clusters = Population()
@@ -478,7 +472,7 @@ def mutate(pop: Population, a: float = 4, n: int = 10, debug: bool = False) -> P
     if n <= 0:
         raise ValueError("n must be > 0")
 
-    temp_clusters = copy.deepcopy(pop)
+    temp_clusters = pop.copy()
 
     # 选取当前最优个体索引(最低能量),要求所有个体能量都已就绪
     energies = pop.energies
@@ -667,8 +661,8 @@ def sphere_cut_splice(
         raise ValueError("sphere_cut_splice requires explicit relax callable")
 
     def splice_one(cluster_a: Atoms, cluster_b: Atoms) -> Atoms | None:
-        work_a = copy.deepcopy(cluster_a)
-        work_b = copy.deepcopy(cluster_b)
+        work_a = cluster_a.copy()
+        work_b = cluster_b.copy()
 
         # 这里按需求使用质心(center of mass)移动到原点,不使用几何中心.
         work_a.set_center_of_mass([0.0, 0.0, 0.0])
@@ -717,8 +711,8 @@ def sphere_cut_splice(
             selected_indices_b.sort(key=lambda i: dist_b[i], reverse=True)
             swap_pairs.extend(zip(outer_indices_a, selected_indices_b))
 
-        trial_a = copy.deepcopy(work_a)
-        trial_b = copy.deepcopy(work_b)
+        trial_a = work_a.copy()
+        trial_b = work_b.copy()
         trial_pos_a = trial_a.get_positions().copy()
         trial_pos_b = trial_b.get_positions().copy()
 
@@ -828,7 +822,7 @@ def local_transformation(
 
     for i, base_energy in enumerate(base_energy_values):
         if base_energy is None:
-            base_cluster = copy.deepcopy(source_pop[i])
+            base_cluster = source_pop[i].copy()
             relaxed_base = relax(base_cluster)
             if not isinstance(relaxed_base, Atoms):
                 raise TypeError("relax must return Atoms when input is Atoms")
@@ -838,7 +832,7 @@ def local_transformation(
             base_energy_values[i] = float(relaxed_energy)
             base_candidates[i] = relaxed_base
         else:
-            base_candidate = copy.deepcopy(source_pop[i])
+            base_candidate = source_pop[i].copy()
             base_candidate.info['energy'] = float(base_energy)
             base_candidates[i] = base_candidate
 
@@ -858,7 +852,7 @@ def local_transformation(
         if cross_rate is not None:
             base_candidate.info['cr'] = cross_rate
 
-        perturbed_cluster = copy.deepcopy(source_pop[i])
+        perturbed_cluster = source_pop[i].copy()
         positions = perturbed_cluster.get_positions().copy()
         noise = np.random.uniform(-r, r, size=positions.shape)
         perturbed_cluster.set_positions(positions + noise)
@@ -921,7 +915,7 @@ def select(
 
     for i, energy_value in enumerate(pop1_energies_raw):
         if energy_value is None:
-            relaxed_cluster = relax(copy.deepcopy(pop1[i]))
+            relaxed_cluster = relax(pop1[i].copy())
             if not isinstance(relaxed_cluster, Atoms):
                 raise TypeError("relax must return Atoms when input is Atoms")
             relaxed_energy = relaxed_cluster.info.get('energy')
@@ -930,7 +924,7 @@ def select(
             pop1_energies_raw[i] = float(relaxed_energy)
             pop1_candidates[i] = relaxed_cluster
         else:
-            preserved_cluster = copy.deepcopy(pop1[i])
+            preserved_cluster = pop1[i].copy()
             preserved_cluster.info['energy'] = float(energy_value)
             pop1_candidates[i] = preserved_cluster
 
@@ -940,7 +934,7 @@ def select(
 
     for i, energy_value in enumerate(pop2_energies_raw):
         if energy_value is None:
-            relaxed_cluster = relax(copy.deepcopy(pop2[i]))
+            relaxed_cluster = relax(pop2[i].copy())
             if not isinstance(relaxed_cluster, Atoms):
                 raise TypeError("relax must return Atoms when input is Atoms")
             relaxed_energy = relaxed_cluster.info.get('energy')
@@ -949,7 +943,7 @@ def select(
             pop2_energies_raw[i] = float(relaxed_energy)
             pop2_candidates[i] = relaxed_cluster
         else:
-            preserved_cluster = copy.deepcopy(pop2[i])
+            preserved_cluster = pop2[i].copy()
             preserved_cluster.info['energy'] = float(energy_value)
             pop2_candidates[i] = preserved_cluster
 

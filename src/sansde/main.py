@@ -304,7 +304,7 @@ def main(atom: int) -> None:
                 energy_value = float(cluster.get_potential_energy())
                 force_value = np.asarray(cluster.get_forces(), dtype=float)
             finally:
-                cluster.calc = None  # 摘掉计算器: add_cluster 会 deepcopy, DP 不可深拷贝
+                cluster.calc = None  # 摘掉计算器, 避免进入后续种群流程
             if np.isfinite(energy_value):
                 cluster.info['energy'] = energy_value
                 cluster.arrays['forces'] = force_value
