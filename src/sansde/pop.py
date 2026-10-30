@@ -1,6 +1,7 @@
 """pop.py
 python 3.13.12
 """
+from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
 from typing import Self, overload
@@ -12,88 +13,143 @@ from ase.io.jsonio import read_json, write_json
 from ase.io.trajectory import Trajectory
 
 
-class Population:
-    """种群对象
-    
-    包含一组Atoms团簇对象, 管理其能量和力. 
-    种群中所有团簇必须具有相同的化学式(symbol).
+class MultiAtoms:
+    """多个 Atoms 团簇的列表式容器.
 
-    Parameters
-    ----------
-    symbol : str | None = None
-        团簇的化学式 (e.g., "Au13"). 如果未指定, 将在添加第一个团簇时自动设定.
+    容器只负责保存团簇, 不限制团簇化学式是否相同.
 
     Attributes
     ----------
     clusters : list[Atoms]
-        当前种群中的团簇列表.
-    candidate : list[Atoms]
-        历史候选团簇列表, 按能量升序排列(最优在前), 长度由
-        ``add_candidate`` 的 candidate_size 参数控制.
+        当前容器中的团簇列表.
+    symbols : list[str]
+        按团簇顺序返回的化学式列表.
+    energies : list[float | None]
+        从 ``cluster.info['energy']`` 读取的能量列表.
+    forces : list[list[list[float]] | None]
+        从 ``cluster.arrays['forces']`` 读取的力列表.
+    PGs : list[str | None]
+        从 ``cluster.info['PG']`` 读取的点群列表.
+
+    Examples
+    --------
+    >>> multi = MultiAtoms()
+    >>> multi.add_cluster(cluster)
+    >>> multi[0]
+    >>> multi[::2]
+    >>> multi.symbols
+    """
+
+    def __init__(self) -> None:
+        self._clusters: list[Atoms] = []
+
+    @property
+    def clusters(self) -> list[Atoms]:
+        return self._clusters
+
+    @property
+    def symbols(self) -> list[str]:
+        return [cluster.get_chemical_formula() for cluster in self._clusters]
+
+    def __iter__(self) -> Iterator[Atoms]:
+        return iter(self._clusters)
+
+    def __len__(self) -> int:
+        return len(self._clusters)
+
+    @overload
+    def __getitem__(self, index: int) -> Atoms: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> Self: ...
+
+    def __getitem__(self, index: int | slice) -> Atoms | Self:
+        if isinstance(index, slice):
+            sub_atoms = type(self)()
+            for cluster in self._clusters[index]:
+                sub_atoms.add_cluster(cluster)
+            return sub_atoms
+        return self._clusters[index]
+
+    @property
+    def energies(self) -> list[float | None]:
+        return [
+            float(cluster.info['energy']) if 'energy' in cluster.info else None
+            for cluster in self._clusters
+        ]
+
+    @property
+    def forces(self) -> list[list[list[float]] | None]:
+        return [
+            cluster.arrays['forces'].tolist() if 'forces' in cluster.arrays else None
+            for cluster in self._clusters
+        ]
+
+    @property
+    def PGs(self) -> list[str | None]:
+        return [cluster.info.get('PG') for cluster in self._clusters]
+
+    def copy(self) -> Self:
+        """Return an independent copy of this cluster container.
+
+        Clusters are copied with ``Atoms.copy()``; calculators are not copied.
+        """
+        new_atoms = type(self)()
+        new_atoms._clusters = [cluster.copy() for cluster in self._clusters]
+        return new_atoms
+
+    def add_cluster(self, cluster: Atoms) -> None:
+        """添加团簇到容器末尾.
+
+        Parameters
+        ----------
+        cluster : Atoms
+            待添加的团簇. 添加时使用 ``Atoms.copy()`` 复制, 不复制计算器.
+        """
+        if not isinstance(cluster, Atoms):
+            raise TypeError("Cluster must be an ase.Atoms object")
+        self._clusters.append(cluster.copy())
+
+
+class Population(MultiAtoms):
+    """带进化状态的 MultiAtoms 子类.
+
+    继承 MultiAtoms 的团簇容器功能, 额外维护候选列表和自适应参数.
+    种群中所有团簇必须具有相同的化学式.
+
+    Parameters
+    ----------
+    symbol : str | None = None
+        种群化学式 (e.g., "Au13"). 未指定时在添加第一个团簇时自动设置.
+
+    Attributes
+    ----------
     symbol : str | None
         种群化学式. 仅允许在未设置时初始化一次.
-    num : int
-        单个团簇的原子数. 当 symbol 未设置时为 0.
+    candidate : list[Atoms]
+        历史候选团簇列表.
     fp : float
         变异缩放因子采样分布的选择概率参数.
     p : float
         变异策略选择概率参数.
     crm : float
         交叉率中心参数.
-    energies : list[float | None]
-        按需从 ``cluster.info['energy']`` 读取的能量列表.
-        若某团簇缺失该键, 对应位置为 None.
-    forces : list[list[list[float]] | None]
-        按需从 ``cluster.arrays['forces']`` 读取的力列表.
-        若某团簇缺失该键, 对应位置为 None.
-    PGs : list[str | None]
-        按需从 ``cluster.info['PG']`` 读取的点群(熊夫利符号)列表.
-        若某团簇缺失该键, 对应位置为 None.
+    num : int
+        单个团簇的原子数. 当 symbol 未设置时为 0.
     best_cluster : Atoms
-        当前最低能量团簇. 空种群或全体缺失能量时抛 ValueError.
+        Lowest-energy cluster in the population.
 
     Examples
     --------
-    初始化种群:
     >>> pop = Population(symbol="Au13")
-
-    添加团簇:
-    >>> cluster = Atoms('Au13', positions=...)
     >>> pop.add_cluster(cluster)
-
-    切片:
-    >>> sub_pop = pop[::2]
-    >>> isinstance(sub_pop, Population)
-    True
-
-    索引:
-    >>> first_cluster = pop[0]
-
-    迭代:
-    >>> for cluster in pop:
-    ...     print(cluster.get_chemical_formula())
-
-    最优团簇:
-    >>> best = pop.best_cluster
-    >>> best_energy = best.info['energy']
-
-    导出种群:
-    >>> json_path = pop.export(name="Gen_1")
-
-    导出最优团簇轨迹:
-    >>> traj_path = pop.dump(name="Au13_best")
-
-    导入种群:
-    >>> pop_new = Population()
-    >>> pop_new.import_population(filename=json_path)
-
-    复制种群:
-    >>> pop_copy = pop.copy()
-    >>> pop_copy is pop
-    False
+    >>> pop[::2]
+    >>> pop.symbol
+    'Au13'
     """
+
     def __init__(self, symbol: str | None = None):
-        self._clusters: list[Atoms] = []
+        super().__init__()
         self._symbol: str | None = symbol
         self._fp: float = 0.5
         self._p: float = 0.5
@@ -101,8 +157,29 @@ class Population:
         self._candidate: list[Atoms] = []
 
     @property
-    def clusters(self) -> list[Atoms]:
-        return self._clusters
+    def best_cluster(self) -> Atoms:
+        """Return the cluster with the lowest energy.
+
+        Raises
+        ------
+        ValueError
+            If the population is empty or no cluster has a valid energy.
+        """
+        if not self._clusters:
+            raise ValueError(
+                f"{type(self).__name__} is empty, best_cluster is unavailable"
+            )
+        valid_energies: list[tuple[int, float]] = [
+            (index, energy)
+            for index, energy in enumerate(self.energies)
+            if energy is not None
+        ]
+        if not valid_energies:
+            raise ValueError(
+                f"No valid energy in {type(self).__name__}, "
+                "best_cluster is unavailable"
+            )
+        return self._clusters[min(valid_energies, key=lambda item: item[1])[0]]
 
     @property
     def candidate(self) -> list[Atoms]:
@@ -130,8 +207,11 @@ class Population:
             raise ValueError("symbol已经被设置!")
         self._symbol = value
 
-    def __iter__(self):
-        return iter(self._clusters)
+    @property
+    def num(self) -> int:
+        if self._symbol is None:
+            return 0
+        return len(Atoms(self._symbol))
 
     @overload
     def __getitem__(self, index: int) -> Atoms: ...
@@ -148,21 +228,38 @@ class Population:
             for cluster in self._clusters[index]:
                 sub_pop.add_cluster(cluster)
             return sub_pop
-        return self._clusters[index]
+        return super().__getitem__(index)
 
-    def __len__(self) -> int:
-        return len(self._clusters)
+    def add_cluster(self, cluster: Atoms) -> None:
+        """添加团簇并校验化学式.
+
+        若种群 symbol 未设置, 用第一个团簇自动设置;
+        后续团簇化学式必须与种群 symbol 一致.
+        添加后会将团簇质心平移到原点.
+
+        Parameters
+        ----------
+        cluster : Atoms
+            待添加的团簇.
+        """
+        if not isinstance(cluster, Atoms):
+            raise TypeError("Cluster must be an ase.Atoms object")
+        current_symbol = cluster.get_chemical_formula()
+        if self._symbol is None:
+            self.symbol = current_symbol
+        elif current_symbol != self._symbol:
+            raise ValueError(
+                f"Cluster symbol {current_symbol} does not match "
+                f"population symbol {self._symbol}"
+            )
+        super().add_cluster(cluster)
+        self._clusters[-1].set_center_of_mass([0.0, 0.0, 0.0])
 
     def copy(self) -> Self:
         """返回当前种群及其团簇的独立副本.
 
         团簇使用 ``Atoms.copy()`` 复制, 因此不会复制 ASE 计算器.
         种群的 fp/p/crm, 团簇的坐标, info, arrays 以及候选列表都会保留.
-
-        Returns
-        -------
-        Population
-            与当前种群状态一致的新种群对象.
         """
         new_pop = Population(symbol=self._symbol)
         new_pop._fp = self._fp
@@ -173,101 +270,6 @@ class Population:
         new_pop._candidate = [cluster.copy() for cluster in self._candidate]
         return new_pop
 
-    @property
-    def num(self) -> int:
-        if self._symbol is None:
-            return 0
-        # 根据化学式symbol推出一个团簇的原子数(int)
-        temp = Atoms(self._symbol)
-        return len(temp)
-
-    @property
-    def energies(self) -> list[float | None]:
-        """按需从团簇 info 提取能量,缺失时返回 None."""
-        energies: list[float | None] = []
-        for cluster in self:
-            energy_value = cluster.info.get('energy')
-            if energy_value is not None:
-                energy_value = float(energy_value)
-            energies.append(energy_value)
-        return energies
-
-    @property
-    def forces(self) -> list[list[list[float]] | None]:
-        """按需从团簇 arrays 提取力,缺失时返回 None."""
-        forces: list[list[list[float]] | None] = []
-        for cluster in self:
-            force_value = cluster.arrays.get('forces')
-            if force_value is not None:
-                force_value = np.asarray(force_value, dtype=float).tolist()
-            forces.append(force_value)
-        return forces
-
-    @property
-    def PGs(self) -> list[str | None]:
-        """按需从团簇 info 提取点群(熊夫利符号), 缺失时返回 None."""
-        point_groups: list[str | None] = []
-        for cluster in self:
-            point_groups.append(cluster.info.get('PG'))
-        return point_groups
-
-    @property
-    def best_cluster(self) -> Atoms:
-        """返回当前最优团簇, 即最低能量团簇."""
-        if len(self._clusters) == 0:
-            raise ValueError("Population is empty, best_cluster is unavailable")
-
-        energies = self.energies
-        best_index: int | None = None
-        best_energy: float | None = None
-        for i, energy_value in enumerate(energies):
-            if energy_value is None:
-                continue
-            if best_energy is None or energy_value < best_energy:
-                best_energy = energy_value
-                best_index = i
-
-        if best_index is None:
-            raise ValueError("No valid energy in population, best_cluster is unavailable")
-
-        return self._clusters[best_index]
-
-    def add_cluster(self, cluster: Atoms):
-        """导入一个团簇对象(Atoms类型)到_clusters列表末尾.
-
-        必须确保种群中所有团簇化学式相同.
-        在添加前会将团簇质心平移到原点.
-        若种群 symbol 为空, 则在添加第一个团簇时自动设置.
-
-        Parameters
-        ----------
-        cluster : Atoms
-            ASE Atoms 对象, 代表一个团簇.
-            其化学式必须与种群设定的 symbol 一致.
-            添加时使用 ``Atoms.copy()`` 复制, 不复制计算器.
-
-        Returns
-        -------
-        None
-            该方法原地修改种群对象, 无返回值.
-        """
-        if not isinstance(cluster, Atoms):
-            raise TypeError("Cluster must be an ase.Atoms object")
-
-        cluster_to_add = cluster.copy()
-        # 平移质心到原点
-        cluster_to_add.set_center_of_mass([0.0, 0.0, 0.0])
-
-        current_symbol = cluster_to_add.get_chemical_formula()
-        
-        if self._symbol is None:
-            self.symbol = current_symbol 
-        else:
-            # 必须确保种群中所有团簇化学式相同
-            if current_symbol != self._symbol:
-                raise ValueError(f"Cluster symbol {current_symbol} does not match population symbol {self._symbol}")
-
-        self._clusters.append(cluster_to_add)
 
     def add_candidate(self, cluster: Atoms, candidate_size: int = 2) -> None:
         """把团簇加入候选列表首位, 并保持列表长度不超过 candidate_size.
