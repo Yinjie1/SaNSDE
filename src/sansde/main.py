@@ -293,9 +293,9 @@ def main(atom: int) -> None:
         else:
             pop = Population(symbol=expected_symbol)
     else:
-        init_path = init_dir / f"{element}{atom}.xyz"
-        if init_path.is_file():
-            print(f"load structure {element}{atom}...")
+        init_path = next(init_dir.glob(f"{element}{atom}*.xyz"), None)
+        if init_path is not None:
+            print(f"load structure {element}{atom} from {init_path}...")
             # best.xyz 是候选列表的多帧文件, 第一帧仍作为初始种群结构.
             # 其余帧全部恢复到候选列表.
             init_frames = read(init_path, index=':')
