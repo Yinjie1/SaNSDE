@@ -280,7 +280,7 @@ def local_optimize(pop: Population | Atoms,
 # 局域优化偏函数:固定常用参数,供 select 等流程直接复用
 relax = functools.partial(
     local_optimize,
-    cell=[15, 15, 15],
+    cell=None,
     potential=LennardJones(),
     optimizer=BFGS,
     fmax=0.05,

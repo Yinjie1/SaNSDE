@@ -296,22 +296,33 @@ def main(atom: int) -> None:
         init_path = init_dir / f"{element}{atom}.xyz"
         if init_path.is_file():
             print(f"load structure {element}{atom}...")
-            # best.xyz 现在是候选列表的多帧文件, 第一帧为候选最优.
-            cluster = read(init_path, index=0)
-            # 用当前势(DP 或 DP+ZBL)重算能量和力, 不信任文件里可能来自旧势的数据.
-            cluster.calc = potential
-            try:
-                energy_value = float(cluster.get_potential_energy())
-                force_value = np.asarray(cluster.get_forces(), dtype=float)
-            finally:
-                cluster.calc = None  # 摘掉计算器, 避免进入后续种群流程
-            if np.isfinite(energy_value):
-                cluster.info['energy'] = energy_value
-                cluster.arrays['forces'] = force_value
-            else:
-                cluster.info['energy'] = float('inf')
-                cluster.arrays['forces'] = np.zeros((len(cluster), 3))
-            pop.add_cluster(cluster)
+            # best.xyz 是候选列表的多帧文件, 第一帧仍作为初始种群结构.
+            # 其余帧全部恢复到候选列表.
+            init_frames = read(init_path, index=':')
+            if isinstance(init_frames, Atoms):
+                init_frames = [init_frames]
+            for frame in init_frames:
+                # 用当前势(DP 或 DP+ZBL)重算能量和力, 不信任文件里可能来自旧势的数据.
+                frame.calc = potential
+                try:
+                    energy_value = float(frame.get_potential_energy())
+                    force_value = np.asarray(frame.get_forces(), dtype=float)
+                finally:
+                    frame.calc = None  # 摘掉计算器, 避免进入后续种群流程
+                if np.isfinite(energy_value):
+                    frame.info['energy'] = energy_value
+                    frame.arrays['forces'] = force_value
+                else:
+                    frame.info['energy'] = float('inf')
+                    frame.arrays['forces'] = np.zeros((len(frame), 3))
+            pop.add_cluster(init_frames[0])
+            # 先把所有帧加入候选, 再按能量升序排序; 第一帧加入种群不受排序影响.
+            # 暂时不截断, 避免排序前丢失低能量结构.
+            for frame in init_frames:
+                pop.add_candidate(frame, candidate_size=len(init_frames))
+            pop.candidate.sort(key=lambda cluster: float(cluster.info['energy']))
+            # 排序后再按 candidate_size 截断.
+            del pop.candidate[candidate_size:]
             init_loaded = True
 
     if not init_from_pop:
