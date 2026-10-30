@@ -249,22 +249,32 @@ class Population:
     def add_candidate(self, cluster: Atoms, candidate_size: int = 2) -> None:
         """把团簇加入候选列表首位, 并保持列表长度不超过 candidate_size.
 
+        必须确保候选团簇与种群化学式相同.
+        若种群 symbol 为空, 则在添加第一个候选团簇时自动设置.
+
         Parameters
         ----------
         cluster : Atoms
-            待加入候选列表的团簇.
+            待加入候选列表的团簇. 其化学式必须与种群设定的 symbol 一致.
         candidate_size : int, optional
             候选列表的最大长度. Default 2, 即只保留最优和次优团簇.
-
-        Returns
-        -------
-        None
-            该方法原地修改候选列表, 无返回值.
         """
+        if not isinstance(cluster, Atoms):
+            raise TypeError("Cluster must be an ase.Atoms object")
         if candidate_size < 0:
             raise ValueError("candidate_size must be >= 0")
+
         candidate_copy = cluster.copy()
         candidate_copy.calc = None
+        current_symbol = candidate_copy.get_chemical_formula()
+        if self._symbol is None:
+            self.symbol = current_symbol
+        elif current_symbol != self._symbol:
+            raise ValueError(
+                f"Cluster symbol {current_symbol} does not match "
+                f"population symbol {self._symbol}"
+            )
+
         self._candidate.insert(0, candidate_copy)
         del self._candidate[candidate_size:]
 
