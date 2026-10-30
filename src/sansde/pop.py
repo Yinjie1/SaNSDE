@@ -67,7 +67,7 @@ class MultiAtoms:
         if isinstance(index, slice):
             sub_atoms = MultiAtoms()
             sub_atoms._clusters = self._clusters[index]
-            return sub_atoms
+            return sub_atoms # type: ignore
         return self._clusters[index]
 
     @property
@@ -226,7 +226,7 @@ class Population(MultiAtoms):
             sub_pop._crm = self._crm
             for cluster in self._clusters[index]:
                 sub_pop.add_cluster(cluster)
-            return sub_pop
+            return sub_pop # type: ignore
         return super().__getitem__(index)
 
     def add_cluster(self, cluster: Atoms) -> None:
@@ -267,7 +267,7 @@ class Population(MultiAtoms):
         # 直接复制列表, 避免 add_cluster 重新平移团簇质心.
         new_pop._clusters = [cluster.copy() for cluster in self._clusters]
         new_pop._candidate = [cluster.copy() for cluster in self._candidate]
-        return new_pop
+        return new_pop # type: ignore
 
 
     def add_candidate(self, cluster: Atoms, candidate_size: int = 2) -> None:
@@ -432,7 +432,7 @@ class Population(MultiAtoms):
             write_kwargs['forces'] = np.array(force_value, dtype=float)
 
         with Trajectory(traj_path, mode) as traj:
-            traj.write(export_cluster, **write_kwargs)
+            traj.write(export_cluster, **write_kwargs) # type: ignore
 
         return traj_path.resolve()
 
@@ -517,7 +517,7 @@ class Population(MultiAtoms):
 
         try:
             with json_path.open('r', encoding='utf-8') as f:
-                data = read_json(f)
+                data: dict = read_json(f) # type: ignore
         except (OSError, ValueError) as e:
             print(f"Failed to read JSON file: {e}")
             return
