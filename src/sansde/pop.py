@@ -596,9 +596,8 @@ class Population(MultiAtoms):
 class Clusters(MultiAtoms):
     """A cluster container with unique chemical formulas.
 
-    Each chemical formula may appear at most once. Adding a duplicate raises
-    ``ValueError`` unless ``replace=True``, in which case the existing cluster
-    is replaced in place.
+    1. Chemical formulas must be unique.
+    2. Clusters are ordered by the atom count of a specified element.
     """
 
     def sort(self, element: str = "auto", reverse: bool = False) -> None:
@@ -632,7 +631,12 @@ class Clusters(MultiAtoms):
             reverse=reverse,
         )
 
-    def add_cluster(self, cluster: Atoms, replace: bool = False) -> None:
+    def add_cluster(
+        self,
+        cluster: Atoms,
+        replace: bool = False,
+        sort: bool = True,
+    ) -> None:
         """Add a cluster and enforce unique chemical formulas.
 
         Parameters
@@ -642,6 +646,8 @@ class Clusters(MultiAtoms):
         replace : bool, optional
             If True, replace the existing cluster with the same chemical
             formula instead of raising ``ValueError``. Default False.
+        sort : bool, optional
+            If True, sort the clusters after adding. Default True.
 
         Raises
         ------
@@ -658,6 +664,10 @@ class Clusters(MultiAtoms):
             if not replace:
                 raise ValueError(f"Cluster formula should be unique in Clusters, {formula} already exists")
             self._clusters[index] = cluster.copy()
+            if sort:
+                self.sort()
             return
 
         super().add_cluster(cluster)
+        if sort:
+            self.sort()
