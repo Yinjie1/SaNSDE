@@ -69,6 +69,10 @@ def main(argv: list[str] | None = None) -> None:
             # start_new_session=True 相当于 setsid, 终端退出后子进程继续运行
             start_new_session=True,
         )
+    # 记录后台任务 pid, 每行一个, 便于后续批量管理.
+    pid_path = Path("pid")
+    with pid_path.open("a", encoding="utf-8") as pid_file:
+        pid_file.write(f"{process.pid}\n")
     print(f"started background process pid={process.pid}, log={log_path}")
     return
 
