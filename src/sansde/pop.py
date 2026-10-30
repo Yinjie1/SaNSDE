@@ -601,7 +601,7 @@ class Clusters(MultiAtoms):
     is replaced in place.
     """
 
-    def sort(self, element: str = "auto") -> None:
+    def sort(self, element: str = "auto", reverse: bool = False) -> None:
         """Sort clusters in place by the count of a given element.
 
         Parameters
@@ -609,6 +609,8 @@ class Clusters(MultiAtoms):
         element : str, optional
             Element symbol to count. If ``"auto"``, use the element of the
             first atom in the first cluster. Default is ``"auto"``.
+        reverse : bool, optional
+            If True, sort in descending order. Default is False.
 
         Raises
         ------
@@ -626,7 +628,8 @@ class Clusters(MultiAtoms):
         ):
             raise ValueError(f"Element {element} does not exist in any cluster")
         self._clusters.sort(
-            key=lambda cluster: cluster.get_chemical_symbols().count(element)
+            key=lambda cluster: cluster.get_chemical_symbols().count(element),
+            reverse=reverse,
         )
 
     def add_cluster(self, cluster: Atoms, replace: bool = False) -> None:
