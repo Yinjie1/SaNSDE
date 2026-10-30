@@ -293,14 +293,16 @@ def main(atom: int) -> None:
         else:
             pop = Population(symbol=expected_symbol)
     else:
-        init_path = next(init_dir.glob(f"{element}{atom}*.xyz"), None)
-        if init_path is not None:
-            print(f"load structure {element}{atom} from {init_path}...")
+        for init_path in init_dir.glob(f"{expected_symbol}*.xyz"):
+            # 相同化学式的 xyz 只有一个, 只读取第一个化学式匹配的文件.
+            init_frames = read(init_path, index=':')
+            # 同一个 xyz 中所有帧化学式相同, 只检查第一帧.
+            if init_frames[0].get_chemical_formula() != expected_symbol: # type: ignore
+                print(f"skip structure {init_path}: symbol mismatch")
+                continue
+            print(f"load structure {expected_symbol} from {init_path}...")
             # best.xyz 是候选列表的多帧文件, 第一帧仍作为初始种群结构.
             # 其余帧全部恢复到候选列表.
-            init_frames = read(init_path, index=':')
-            if isinstance(init_frames, Atoms):
-                init_frames = [init_frames]
             for frame in init_frames:
                 # 用当前势(DP 或 DP+ZBL)重算能量和力, 不信任文件里可能来自旧势的数据.
                 frame.calc = potential
@@ -324,6 +326,7 @@ def main(atom: int) -> None:
             # 排序后再按 candidate_size 截断.
             del pop.candidate[candidate_size:]
             init_loaded = True
+            break
 
     if not init_from_pop:
         remaining = pop_size - 1 if init_loaded else pop_size
