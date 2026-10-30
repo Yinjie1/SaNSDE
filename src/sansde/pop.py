@@ -265,7 +265,7 @@ class Population:
         else:
             # 必须确保种群中所有团簇化学式相同
             if current_symbol != self._symbol:
-                 raise ValueError(f"Cluster symbol {current_symbol} does not match population symbol {self._symbol}")
+                raise ValueError(f"Cluster symbol {current_symbol} does not match population symbol {self._symbol}")
 
         self._clusters.append(cluster_to_add)
 
@@ -319,11 +319,11 @@ class Population:
         name : str, optional
             导出名称(不含扩展名).
             命名规则:
-            1) 当 name 为 None 时, 默认使用种群 symbol; 若 symbol 为空则使用 "Population".
-            2) JSON 文件名固定为 "{name}.json".
-            3) 当 "{name}.json" 已存在时, 自动追加时间戳后缀,
-               生成 "{name}_YYYYMMddhhmmss.json" 以避免覆盖.
-            4) 当 xyz=True 时, xyz 文件名与最终 JSON 同名(不含扩展名).
+            (1) 当 name 为 None 时, 默认使用种群 symbol; 若 symbol 为空则使用 "Population".
+            (2) JSON 文件名固定为 "{name}.json".
+            (3) 当 "{name}.json" 已存在时, 自动追加时间戳后缀,
+                生成 "{name}_YYYYMMddhhmmss.json" 以避免覆盖.
+            (4) 当 xyz=True 时, xyz 文件名与最终 JSON 同名(不含扩展名).
         xyz : bool, optional
             是否同时导出包含所有团簇的多帧 extxyz 文件. Default False.
         dir : str | pathlib.Path, optional
@@ -502,8 +502,8 @@ class Population:
         """
         json_path = Path(filename)
         if not json_path.is_file():
-             print(f"JSON file {json_path} not found.")
-             return
+            print(f"JSON file {json_path} not found.")
+            return
 
         if len(self) > 0:
             if not confirm:
@@ -523,11 +523,11 @@ class Population:
             
         # Set population attributes from JSON
         if self._symbol is None:
-             self._symbol = data.get('symbol')
+            self._symbol = data.get('symbol')
         
         if self._symbol != data.get('symbol'):
-             print(f"Warning: JSON symbol ({data.get('symbol')}) does not match population symbol ({self._symbol})")
-             # Proceeding anyway, but this is a potential issue if user intends strict type checking
+            print(f"Warning: JSON symbol ({data.get('symbol')}) does not match population symbol ({self._symbol})")
+            # Proceeding anyway, but this is a potential issue if user intends strict type checking
 
         # Load adaptive parameters if present; keep current values when missing.
         fp_value = data.get('fp')
@@ -581,12 +581,12 @@ class Population:
                 forces = c_data.get('forces')
                 
                 if energy is not None:
-                     cluster.info['energy'] = float(energy)
+                    cluster.info['energy'] = float(energy)
                 if forces is not None:
-                     cluster.arrays['forces'] = np.asarray(forces, dtype=float)
+                    cluster.arrays['forces'] = np.asarray(forces, dtype=float)
                 point_group = c_data.get('PG')
                 if point_group is not None:
-                     cluster.info['PG'] = point_group
+                    cluster.info['PG'] = point_group
                 
             except Exception as e:  # noqa: BLE001
                 print(f"Error loading cluster from JSON: {e}")
