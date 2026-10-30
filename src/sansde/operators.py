@@ -176,12 +176,14 @@ def similarity_function(atoms_a: Atoms, atoms_b: Atoms) -> float:
 
 # 作用于种群
 
-def local_optimize(pop: Population | Atoms, 
-                   cell: list[float] | np.ndarray | None = None, 
-                   potential: Calculator | None = None,
-                   optimizer: type[Optimizer] = BFGS,
-                   fmax: float = 0.05, 
-                   steps: int = 100) -> Population | Atoms:
+def local_optimize(
+    pop: Population | Atoms, 
+    cell: list[float] | np.ndarray | None = None, 
+    potential: Calculator | None = None,
+    optimizer: type[Optimizer] = BFGS,
+    fmax: float = 0.05, 
+    steps: int = 100
+    ) -> Population | Atoms:
     """进行局域优化(结构弛豫)
     
     对种群中的所有团簇或单个团簇进行结构优化, 返回优化后的新对象.
@@ -301,11 +303,13 @@ relax = functools.partial(
 )
 
 
-def random_cluster(pop: Population, 
-                   a: float, 
-                   delta: float, 
-                   relax: Callable[[Population | Atoms], Population | Atoms],
-                   is_2d: bool = False) -> None:
+def random_cluster(
+    pop: Population, 
+    a: float, 
+    delta: float, 
+    relax: Callable[[Population | Atoms], Population | Atoms],
+    is_2d: bool = False
+    ) -> None:
     """随机生成一个团簇并添加进种群.
     
     使用生长法随机生成团簇初始坐标, 并进行局域优化后加入种群.
@@ -336,9 +340,9 @@ def random_cluster(pop: Population,
     n_atoms = pop.num
     if n_atoms == 0:
         if pop.symbol:
-             n_atoms = len(Atoms(pop.symbol))
+            n_atoms = len(Atoms(pop.symbol))
         else:
-             raise ValueError("Population symbol not set, cannot determine cluster size.")
+            raise ValueError("Population symbol not set, cannot determine cluster size.")
 
     # Radius limit for random growth.
     if is_2d:

@@ -14,22 +14,23 @@ from ase.io.trajectory import Trajectory
 
 
 class MultiAtoms:
-    """多个 Atoms 团簇的列表式容器.
+    """List-like container for multiple Atoms clusters.
 
-    容器只负责保存团簇, 不限制团簇化学式是否相同.
+    The container only stores clusters and does not require the chemical
+    formulas to be identical.
 
     Attributes
     ----------
     clusters : list[Atoms]
-        当前容器中的团簇列表.
+        Clusters currently held in the container.
     symbols : list[str]
-        按团簇顺序返回的化学式列表.
+        Chemical formula list in cluster order.
     energies : list[float | None]
-        从 ``cluster.info['energy']`` 读取的能量列表.
+        Energies read from ``cluster.info['energy']``.
     forces : list[list[list[float]] | None]
-        从 ``cluster.arrays['forces']`` 读取的力列表.
+        Forces read from ``cluster.arrays['forces']``.
     PGs : list[str | None]
-        从 ``cluster.info['PG']`` 读取的点群列表.
+        Point groups read from ``cluster.info['PG']``.
 
     Examples
     --------
@@ -98,12 +99,13 @@ class MultiAtoms:
         return new_atoms
 
     def add_cluster(self, cluster: Atoms) -> None:
-        """添加团簇到容器末尾.
+        """Append a cluster to the end of the container.
 
         Parameters
         ----------
         cluster : Atoms
-            待添加的团簇. 添加时使用 ``Atoms.copy()`` 复制, 不复制计算器.
+            Cluster to add. It is stored as an ``Atoms.copy()``; the
+            calculator is not copied.
         """
         if not isinstance(cluster, Atoms):
             raise TypeError("Cluster must be an ase.Atoms object")
@@ -111,30 +113,33 @@ class MultiAtoms:
 
 
 class Population(MultiAtoms):
-    """带进化状态的 MultiAtoms 子类.
+    """MultiAtoms subclass with evolutionary state.
 
-    继承 MultiAtoms 的团簇容器功能, 额外维护候选列表和自适应参数.
-    种群中所有团簇必须具有相同的化学式.
+    Inherits the cluster container functionality of MultiAtoms and additionally
+    maintains the candidate list and adaptive parameters.
+    All clusters in the population must share the same chemical formula.
 
     Parameters
     ----------
     symbol : str | None = None
-        种群化学式 (e.g., "Au13"). 未指定时在添加第一个团簇时自动设置.
+        Population chemical formula (e.g., "Au13"). When not specified, it is
+        set automatically from the first added cluster.
 
     Attributes
     ----------
     symbol : str | None
-        种群化学式. 仅允许在未设置时初始化一次.
+        Population chemical formula. It can only be initialized once.
     candidate : list[Atoms]
-        历史候选团簇列表.
+        History of candidate clusters.
     fp : float
-        变异缩放因子采样分布的选择概率参数.
+        Selection probability parameter of the mutation scale factor sampling
+        distribution.
     p : float
-        变异策略选择概率参数.
+        Selection probability parameter of the mutation strategy.
     crm : float
-        交叉率中心参数.
+        Center parameter of the crossover rate.
     num : int
-        单个团簇的原子数. 当 symbol 未设置时为 0.
+        Number of atoms in a single cluster. It is 0 when symbol is not set.
     best_cluster : Atoms
         Lowest-energy cluster in the population.
 
@@ -203,7 +208,7 @@ class Population(MultiAtoms):
     @symbol.setter
     def symbol(self, value: str):
         if self._symbol is not None:
-            raise ValueError("symbol已经被设置!")
+            raise ValueError("symbol has already been set!")
         self._symbol = value
 
     @property
@@ -230,16 +235,16 @@ class Population(MultiAtoms):
         return super().__getitem__(index)
 
     def add_cluster(self, cluster: Atoms) -> None:
-        """添加团簇并校验化学式.
+        """Add a cluster and validate its chemical formula.
 
-        若种群 symbol 未设置, 用第一个团簇自动设置;
-        后续团簇化学式必须与种群 symbol 一致.
-        添加后会将团簇质心平移到原点.
+        If the population symbol is not set, it is set from the first cluster;
+        otherwise the cluster formula must match the population symbol.
+        The center of mass of the added cluster is translated to the origin.
 
         Parameters
         ----------
         cluster : Atoms
-            待添加的团簇.
+            Cluster to add.
         """
         if not isinstance(cluster, Atoms):
             raise TypeError("Cluster must be an ase.Atoms object")
@@ -255,33 +260,39 @@ class Population(MultiAtoms):
         self._clusters[-1].set_center_of_mass([0.0, 0.0, 0.0])
 
     def copy(self) -> Self:
-        """返回当前种群及其团簇的独立副本.
+        """Return an independent copy of this population and its clusters.
 
-        团簇使用 ``Atoms.copy()`` 复制, 因此不会复制 ASE 计算器.
-        种群的 fp/p/crm, 团簇的坐标, info, arrays 以及候选列表都会保留.
+        Clusters are copied with ``Atoms.copy()``, so ASE calculators are not
+        copied. The population fp/p/crm, cluster coordinates, info, arrays and
+        the candidate list are all preserved.
         """
         new_pop = Population(symbol=self._symbol)
         new_pop._fp = self._fp
         new_pop._p = self._p
         new_pop._crm = self._crm
-        # 直接复制列表, 避免 add_cluster 重新平移团簇质心.
+        # Copy the list directly to avoid add_cluster translating the cluster
+        # center of mass again.
         new_pop._clusters = [cluster.copy() for cluster in self._clusters]
         new_pop._candidate = [cluster.copy() for cluster in self._candidate]
         return new_pop # type: ignore
 
 
     def add_candidate(self, cluster: Atoms, candidate_size: int = 2) -> None:
-        """把团簇加入候选列表首位, 并保持列表长度不超过 candidate_size.
+        """Insert a cluster at the front of the candidate list, keeping the
+        list length at most candidate_size.
 
-        必须确保候选团簇与种群化学式相同.
-        若种群 symbol 为空, 则在添加第一个候选团簇时自动设置.
+        The candidate cluster must have the same chemical formula as the
+        population. If the population symbol is empty, it is set when the first
+        candidate cluster is added.
 
         Parameters
         ----------
         cluster : Atoms
-            待加入候选列表的团簇. 其化学式必须与种群设定的 symbol 一致.
+            Cluster to add to the candidate list. Its chemical formula must match
+            the population symbol.
         candidate_size : int, optional
-            候选列表的最大长度. Default 2, 即只保留最优和次优团簇.
+            Maximum length of the candidate list. Default 2, meaning only the
+            best and the second best clusters are kept.
         """
         if not isinstance(cluster, Atoms):
             raise TypeError("Cluster must be an ase.Atoms object")
@@ -308,32 +319,38 @@ class Population(MultiAtoms):
         xyz: bool = False,
         dir: str | Path = "./Populations",
     ) -> Path:
-        """导出种群数据到文件系统.
+        """Export population data to the file system.
 
-        在 dir 指定的目录(默认 './Populations/', 不存在则新建)下输出一个 JSON 文件.
-        团簇以 ASE JSON 格式(Atoms 对象)存入 ``clusters`` 列表.
-        当 xyz=True 时, 会同时输出同名的多帧 extxyz 文件,
-        包含能量、力、pbc 以及 info 中的其他字段.
+        Writes a JSON file under the directory given by dir (default
+        './Populations/', created if it does not exist).
+        Clusters are stored in the ``clusters`` list in ASE JSON format
+        (Atoms objects). When xyz=True, a multi-frame extxyz file with the
+        same name is also written, containing energies, forces, pbc and the
+        other fields in info.
 
         Parameters
         ----------
         name : str, optional
-            导出名称(不含扩展名).
-            命名规则:
-            (1) 当 name 为 None 时, 默认使用种群 symbol; 若 symbol 为空则使用 "Population".
-            (2) JSON 文件名固定为 "{name}.json".
-            (3) 当 "{name}.json" 已存在时, 自动追加时间戳后缀,
-                生成 "{name}_YYYYMMddhhmmss.json" 以避免覆盖.
-            (4) 当 xyz=True 时, xyz 文件名与最终 JSON 同名(不含扩展名).
+            Export name (without extension).
+            Naming rules:
+            (1) When name is None, the population symbol is used; if the symbol
+                is empty, "Population" is used.
+            (2) The JSON file name is always "{name}.json".
+            (3) When "{name}.json" already exists, a timestamp suffix is appended
+                automatically, producing "{name}_YYYYMMddhhmmss.json" to avoid
+                overwriting.
+            (4) When xyz=True, the xyz file name matches the final JSON name
+                (without extension).
         xyz : bool, optional
-            是否同时导出包含所有团簇的多帧 extxyz 文件. Default False.
+            Whether to also export a multi-frame extxyz file containing all
+            clusters. Default False.
         dir : str | pathlib.Path, optional
-            输出目录. Default "./Populations".
+            Output directory. Default "./Populations".
 
         Returns
         -------
         pathlib.Path
-            导出 JSON 文件的完整绝对路径.
+            Full absolute path of the exported JSON file.
         """
         if name is None:
             name = self.symbol if self.symbol else "Population"
@@ -349,8 +366,9 @@ class Population(MultiAtoms):
             summary_path = base_dir / f"{name}.json"
             print(f'Duplicate file found. New export name: {name}!')
 
-        # Optional extxyz snapshot: 只用 info/arrays 里已有的 energy/forces,
-        # 不读取或重算 calculator; 缺失的字段留空.
+        # Optional extxyz snapshot: only use the energy/forces already present in
+        # info/arrays; do not read or recompute the calculator. Missing fields
+        # are left empty.
         if xyz:
             xyz_path = base_dir / f"{name}.xyz"
             try:
@@ -377,7 +395,7 @@ class Population(MultiAtoms):
             "CRm": self.crm,
             "min_energy": min_e,
             "min_energy_index": min_idx,
-            # 每个团簇直接以 ASE JSON 格式(Atoms)存入列表.
+            # Each cluster is stored directly in the list in ASE JSON format (Atoms).
             "clusters": self._clusters,
             "candidate": self._candidate,
         }
@@ -388,24 +406,26 @@ class Population(MultiAtoms):
         return summary_path.resolve()
 
     def dump(self, name: str | None = None) -> Path:
-        """导出当前最优团簇到 ASE 轨迹文件(.traj).
+        """Export the current best cluster to an ASE trajectory file (.traj).
 
-        使用 ASE Trajectory 接口写入 ./Trajectories/ 下的轨迹文件.
-        若文件已存在则追加写入新帧.
-        能量与力仅从团簇的 ASE 原生容器读取:
-        - 若存在 cluster.info['energy'], 则写入 energy.
-        - 若存在 cluster.arrays['forces'], 则写入 forces.
-        - 不会触发额外计算; 缺失字段则不写入.
+        The trajectory file is written under ./Trajectories/ via the ASE
+        Trajectory interface. If the file already exists, new frames are
+        appended.
+        Energy and forces are read only from the native ASE containers of the
+        cluster:
+        - If cluster.info['energy'] exists, energy is written.
+        - If cluster.arrays['forces'] exists, forces are written.
+        - No extra computation is triggered; missing fields are not written.
 
         Parameters
         ----------
         name : str, optional
-            轨迹文件名(不含扩展名). 默认使用 "{symbol}_best".
+            Trajectory file name (without extension). Defaults to "{symbol}_best".
 
         Returns
         -------
         pathlib.Path
-            导出轨迹文件的完整绝对路径.
+            Full absolute path of the exported trajectory file.
         """
         best_cluster = self.best_cluster
 
@@ -442,27 +462,30 @@ class Population(MultiAtoms):
         candidate: bool = False,
         dir: str | Path = "./Trajectories",
     ) -> Path:
-        """导出团簇到 extxyz 文件(.xyz).
+        """Export clusters to an extxyz file (.xyz).
 
-        ``candidate=False`` 时只写当前最优团簇, 文件已存在则追加, 用于记录
-        最优团簇演化轨迹. ``candidate=True`` 时按顺序写出整个 ``candidate``
-        列表, 并覆盖同名文件.
+        With ``candidate=False`` only the current best cluster is written, and
+        the file is appended if it already exists, which records the evolution
+        of the best cluster. With ``candidate=True`` the whole ``candidate``
+        list is written in order and the file with the same name is overwritten.
 
-        只使用 ``info``/``arrays`` 中已有的能量和力, 不读取或重算计算器.
+        Only the energies and forces already present in ``info``/``arrays`` are
+        used; the calculator is neither read nor recomputed.
 
         Parameters
         ----------
         name : str, optional
-            文件名(不含扩展名). 默认使用 "{symbol}_best".
+            File name (without extension). Defaults to "{symbol}_best".
         candidate : bool, optional
-            是否导出整个候选列表而不是当前最优团簇. Default False.
+            Whether to export the whole candidate list instead of the current
+            best cluster. Default False.
         dir : str | pathlib.Path, optional
-            输出目录. Default "./Trajectories".
+            Output directory. Default "./Trajectories".
 
         Returns
         -------
         pathlib.Path
-            导出 extxyz 文件的完整绝对路径.
+            Full absolute path of the exported extxyz file.
         """
         base_dir = Path(dir)
         base_dir.mkdir(parents=True, exist_ok=True)
@@ -487,19 +510,21 @@ class Population(MultiAtoms):
         return xyz_path.resolve()
 
     def import_population(self, filename: str | Path, confirm: bool = False):
-        """从JSON文件导入种群数据.
+        """Import population data from a JSON file.
 
-        直接读取指定的JSON文件.
-        ``clusters`` 中的 ASE JSON (Atoms) 直接重建为 Atoms 对象;
-        同时兼容旧版手写 dict 格式.
-        如果种群非空, 需要设置 confirm=True 才能覆盖现有数据.
+        The specified JSON file is read directly.
+        ASE JSON (Atoms) entries in ``clusters`` are rebuilt as Atoms objects;
+        the legacy hand-written dict format is also supported.
+        If the population is not empty, confirm=True is required to overwrite
+        the existing data.
 
         Parameters
         ----------
         filename : str | pathlib.Path
-            JSON文件的完整路径.
+            Full path of the JSON file.
         confirm : bool, optional
-            是否确认覆盖当前种群数据. Default False.
+            Whether to confirm overwriting the current population data.
+            Default False.
         """
         json_path = Path(filename)
         if not json_path.is_file():
@@ -556,12 +581,13 @@ class Population(MultiAtoms):
         
         for c_data in clusters_data:
             if isinstance(c_data, Atoms):
-                # ASE JSON 快照: 能量/点群在 info, 力在 arrays 中, 直接收编.
+                # ASE JSON snapshot: energy/point group are in info, forces are in
+                # arrays; adopt directly.
                 self._clusters.append(c_data)
                 continue
 
             try:
-                # 兼容旧版手写 dict 格式.
+                # Compatible with the legacy hand-written dict format.
                 # Reconstruct Atoms object
                 symbol = c_data.get('symbol')
                 positions = c_data.get('positions')
