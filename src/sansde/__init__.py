@@ -7,9 +7,10 @@ from sansde.operators import (
     select,
     sphere_cut_splice,
 )
-from sansde.pop import Population
+from sansde.pop import Clusters, Population
 
 __all__ = [
+    'Clusters',
     'Population',
     'crossover',
     'local_optimize',

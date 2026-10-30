@@ -591,3 +591,42 @@ class Population(MultiAtoms):
                 
             except Exception as e:  # noqa: BLE001
                 print(f"Error loading cluster from JSON: {e}")
+
+
+class Clusters(MultiAtoms):
+    """A cluster container with unique chemical formulas.
+
+    Each chemical formula may appear at most once. Adding a duplicate raises
+    ``ValueError`` unless ``replace=True``, in which case the existing cluster
+    is replaced in place.
+    """
+
+    def add_cluster(self, cluster: Atoms, replace: bool = False) -> None:
+        """Add a cluster and enforce unique chemical formulas.
+
+        Parameters
+        ----------
+        cluster : Atoms
+            Cluster to add. The stored object is an ``Atoms.copy()``.
+        replace : bool, optional
+            If True, replace the existing cluster with the same chemical
+            formula instead of raising ``ValueError``. Default False.
+
+        Raises
+        ------
+        TypeError
+            If ``cluster`` is not an ``Atoms`` object.
+        ValueError
+            If a cluster with the same chemical formula already exists and
+            ``replace`` is False.
+        """
+        formula = cluster.get_chemical_formula()
+        for index, existing in enumerate(self._clusters):
+            if existing.get_chemical_formula() != formula:
+                continue
+            if not replace:
+                raise ValueError(f"Cluster formula should be unique in Clusters, {formula} already exists")
+            self._clusters[index] = cluster.copy()
+            return
+
+        super().add_cluster(cluster)
