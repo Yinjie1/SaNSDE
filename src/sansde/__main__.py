@@ -4,6 +4,7 @@ Usage:
     sansde --opt params.json            # 默认后台运行, 日志写到 params.log
     sansde --opt params.json --fg       # 前台运行
     sansde xyz2vasp -i gen1 gen2 --cell 15 15 15 -c -o tasks
+    sansde xyz2vasp --frame 3 -s 0.99 0.98
     python -m sansde --opt params.json --fg
 """
 import argparse
@@ -42,6 +43,25 @@ def main(argv: list[str] | None = None) -> None:
         default=[Path("best")],
         metavar="XYZ_DIR",
         help="directories containing xyz files (default: best)",
+    )
+    export.add_argument(
+        "--frame",
+        "--flame",
+        dest="frame",
+        type=int,
+        default=3,
+        metavar="N",
+        help="frames read from each xyz file (default: 3)",
+    )
+    export.add_argument(
+        "-s",
+        "--similarity",
+        nargs=2,
+        type=float,
+        default=(0.99, 0.98),
+        metavar=("S", "S_C1"),
+        help="similarity thresholds for non-C1 and C1 point groups "
+        "(default: 0.99 0.98)",
     )
     export.add_argument(
         "--cell",
@@ -89,7 +109,13 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     if args.command == "xyz2vasp":
-        clusters = merge_xyz_directories(args.input, n=3)
+        s, s_c1 = args.similarity
+        clusters = merge_xyz_directories(
+            args.input,
+            n=args.frame,
+            s=s,
+            s_c1=s_c1,
+        )
         print(f"loaded {len(clusters)} clusters from {len(args.input)} input path(s)")
         elements = sorted(
             {symbol for cluster in clusters for symbol in cluster.get_chemical_symbols()}
