@@ -3,6 +3,7 @@
 Usage:
     sansde --opt params.json            # 默认后台运行, 日志写到 params.log
     sansde --opt params.json --fg       # 前台运行
+    sansde xyz2vasp -i gen1 gen2 --cell 15 15 15 -c -o tasks
     python -m sansde --opt params.json --fg
 """
 import argparse
@@ -10,6 +11,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from sansde.io import merge_xyz_directories, write_vasp_tasks
 from sansde.main import run
 
 
@@ -26,6 +28,51 @@ def main(argv: list[str] | None = None) -> None:
     None
     """
     parser = argparse.ArgumentParser(prog="sansde")
+    subparsers = parser.add_subparsers(dest="command")
+
+    export = subparsers.add_parser(
+        "xyz2vasp",
+        help="export xyz directories to VASP task directories",
+    )
+    export.add_argument(
+        "-i",
+        "--input",
+        nargs="+",
+        type=Path,
+        default=[Path("best")],
+        metavar="XYZ_DIR",
+        help="directories containing xyz files (default: best)",
+    )
+    export.add_argument(
+        "--cell",
+        nargs=3,
+        type=float,
+        metavar=("A", "B", "C"),
+        help="orthorhombic cell lengths in Angstrom; overrides cluster cells",
+    )
+    export.add_argument(
+        "-c",
+        "--compress",
+        action="store_true",
+        help="pack the output into a .tgz file and remove the directory",
+    )
+    export.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=None,
+        metavar="OUT",
+        help="output directory name (default: relax.<elements>)",
+    )
+    export.add_argument(
+        "-t",
+        "--template",
+        type=Path,
+        default=Path("input"),
+        metavar="DIR",
+        help="VASP input template directory (default: input)",
+    )
+
     parser.add_argument(
         "--opt",
         type=Path,
@@ -40,6 +87,29 @@ def main(argv: list[str] | None = None) -> None:
         help="run in the foreground (default: run in the background)",
     )
     args = parser.parse_args(argv)
+
+    if args.command == "xyz2vasp":
+        clusters = merge_xyz_directories(args.input, n=3)
+        print(f"loaded {len(clusters)} clusters from {len(args.input)} input path(s)")
+        elements = sorted(
+            {symbol for cluster in clusters for symbol in cluster.get_chemical_symbols()}
+        )
+        output = (
+            args.output
+            if args.output is not None
+            else Path(f"relax.{''.join(elements)}")
+        )
+        cell = args.cell if args.cell is not None else [None, None, None]
+        tasks = write_vasp_tasks(
+            clusters,
+            output,
+            args.template,
+            *cell,
+            pack=args.compress,
+        )
+        print(f"wrote {len(tasks)} VASP tasks to {output}")
+        return
+
     if args.opt is None:
         parser.error("missing --opt PARAMS")
 
