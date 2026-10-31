@@ -748,3 +748,15 @@ class Clusters(MultiAtoms):
         if sort:
             self.sort()
         return self.symbols.index(formula)
+
+    def merge(self, clusters: Self) -> None:
+        """Merge all clusters from another container.
+
+        Parameters
+        ----------
+        clusters : Self
+            Clusters to add one by one.
+        """
+        for cluster in clusters:
+            self.add_cluster(cluster)
+
