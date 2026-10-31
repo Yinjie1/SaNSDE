@@ -1,7 +1,7 @@
 """pop.py
 python 3.13.12
 """
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from datetime import datetime
 from pathlib import Path
 from typing import Self, overload
@@ -38,6 +38,7 @@ class MultiAtoms:
     >>> multi.add_cluster(cluster)
     >>> multi[0]
     >>> multi[::2]
+    >>> multi[0] = cluster
     >>> del multi[0]
     >>> multi.symbols
     """
@@ -74,6 +75,28 @@ class MultiAtoms:
 
     def __delitem__(self, index: int | slice) -> None:
         del self._clusters[index]
+
+    @overload
+    def __setitem__(self, index: int, value: Atoms) -> None: ...
+
+    @overload
+    def __setitem__(self, index: slice, value: Iterable[Atoms]) -> None: ...
+
+    def __setitem__(
+        self,
+        index: int | slice,
+        value: Atoms | Iterable[Atoms],
+    ) -> None:
+        if isinstance(index, slice):
+            clusters = list(value)
+            for cluster in clusters:
+                if not isinstance(cluster, Atoms):
+                    raise TypeError("Cluster must be an ase.Atoms object")
+            self._clusters[index] = clusters # type: ignore
+            return
+        if not isinstance(value, Atoms):
+            raise TypeError("Cluster must be an ase.Atoms object")
+        self._clusters[index] = value
 
     @property
     def energies(self) -> list[float | None]:
