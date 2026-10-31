@@ -9,7 +9,7 @@ from pathlib import Path
 from ase import Atoms
 from ase.io import iread, write
 
-from sansde.pop import MultiAtoms
+from sansde.pop import Clusters, MultiAtoms
 
 __all__ = [
     "merge_multi_atoms",
@@ -17,6 +17,11 @@ __all__ = [
     "read_xyz_frames",
     "write_vasp_tasks",
 ]
+
+LARGE_CLUSTER_ATOM_COUNT: int = 40
+LARGE_CLUSTER_CELL_LENGTH: float = 20.0
+LARGE_CLUSTER_UNIQUE: bool = True
+DEFAULT_CELL_LENGTH: float = 15.0
 
 
 def _normalize_frame(frame: Atoms) -> None:
@@ -89,6 +94,7 @@ def merge_multi_atoms(
     items: Sequence[MultiAtoms],
     s: float = 0.99,
     s_c1: float = 0.98,
+    large_unique: bool = LARGE_CLUSTER_UNIQUE,
 ) -> MultiAtoms:
     """Merge MultiAtoms containers and remove duplicates.
 
@@ -100,6 +106,10 @@ def merge_multi_atoms(
         Similarity threshold for non-C1 point groups. Default is 0.99.
     s_c1 : float, optional
         Similarity threshold for C1 point groups. Default is 0.98.
+    large_unique : bool, optional
+        If True, clusters with at least ``LARGE_CLUSTER_ATOM_COUNT`` atoms are
+        made unique per chemical formula, keeping the lowest-energy one.
+        Default is ``LARGE_CLUSTER_UNIQUE``.
 
     Returns
     -------
@@ -111,7 +121,27 @@ def merge_multi_atoms(
         for cluster in item:
             merged.add_cluster(cluster)
     merged.deduplicate(s=s, s_c1=s_c1)
-    return merged
+    if not large_unique:
+        return merged
+
+    unique = Clusters()
+    remaining = MultiAtoms()
+    for cluster in merged:
+        if len(cluster) < LARGE_CLUSTER_ATOM_COUNT:
+            remaining.add_cluster(cluster)
+            continue
+        index = unique.add_cluster(cluster, sort=False)
+        stored = unique[index]
+        energy_stored = stored.info.get('energy')
+        energy_cluster = cluster.info.get('energy')
+        if energy_cluster is not None and (
+            energy_stored is None
+            or float(energy_cluster) < float(energy_stored)
+        ):
+            unique.add_cluster(cluster, replace=True, sort=False)
+    for cluster in unique:
+        remaining.add_cluster(cluster)
+    return remaining
 
 
 def merge_xyz_directories(
@@ -119,6 +149,7 @@ def merge_xyz_directories(
     n: int = 3,
     s: float = 0.99,
     s_c1: float = 0.98,
+    large_unique: bool = LARGE_CLUSTER_UNIQUE,
 ) -> MultiAtoms:
     """Build and merge MultiAtoms from multiple xyz directories.
 
@@ -136,6 +167,10 @@ def merge_xyz_directories(
         Similarity threshold for non-C1 point groups. Default is 0.99.
     s_c1 : float, optional
         Similarity threshold for C1 point groups. Default is 0.98.
+    large_unique : bool, optional
+        If True, clusters with at least ``LARGE_CLUSTER_ATOM_COUNT`` atoms are
+        made unique per chemical formula, keeping the lowest-energy one.
+        Default is ``LARGE_CLUSTER_UNIQUE``.
 
     Returns
     -------
@@ -150,12 +185,12 @@ def merge_xyz_directories(
         container.deduplicate(s=s, s_c1=s_c1)
         containers.append(container)
 
-    return merge_multi_atoms(containers, s=s, s_c1=s_c1)
-
-
-LARGE_CLUSTER_ATOM_COUNT: int = 40
-LARGE_CLUSTER_CELL_LENGTH: float = 20.0
-DEFAULT_CELL_LENGTH: float = 15.0
+    return merge_multi_atoms(
+        containers,
+        s=s,
+        s_c1=s_c1,
+        large_unique=large_unique,
+    )
 
 
 def _write_poscar(
