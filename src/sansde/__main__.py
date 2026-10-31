@@ -8,9 +8,12 @@ Usage:
     python -m sansde --opt params.json --fg
 """
 import argparse
+import json
 import subprocess
 import sys
 from pathlib import Path
+
+from ase.io import write as ase_write
 
 from sansde.io import merge_xyz_directories, write_vasp_tasks
 from sansde.main import run
@@ -126,6 +129,38 @@ def main(argv: list[str] | None = None) -> None:
             else Path(f"relax.{''.join(elements)}")
         )
         cell = args.cell if args.cell is not None else [None, None, None]
+
+        work_dir = Path.cwd()
+        if clusters:
+            ase_write(work_dir / "merged.xyz", list(clusters), format="extxyz")
+        xyz_dir = work_dir / "merged_xyz"
+        json_dir = work_dir / "merged_json"
+        xyz_dir.mkdir(exist_ok=True)
+        json_dir.mkdir(exist_ok=True)
+        counts: dict[str, int] = {}
+        for cluster in clusters:
+            formula = cluster.get_chemical_formula()
+            index = counts.get(formula, 0)
+            counts[formula] = index + 1
+            ase_write(xyz_dir / f"{formula}.{index}.xyz", cluster, format="extxyz")
+            record = {
+                "symbols": cluster.get_chemical_symbols(),
+                "positions": cluster.get_positions().tolist(),
+                "cell": cluster.cell.array.tolist(),
+                "pbc": cluster.pbc.tolist(),
+                "info": {
+                    key: value.tolist() if hasattr(value, "tolist") else value
+                    for key, value in cluster.info.items()
+                },
+            }
+            (json_dir / f"{formula}.{index}.json").write_text(
+                json.dumps(record, indent=2)
+            )
+        print(
+            f"wrote merged.xyz, merged_xyz/ and merged_json/ "
+            f"({len(clusters)} frames)"
+        )
+
         tasks = write_vasp_tasks(
             clusters,
             output,
