@@ -81,8 +81,8 @@ def load_config(params_path: Path) -> None:
     generations = int(params.get('generations', 500))
     stagnation_limit = int(params.get('stagnation_limit', 10))
     ediff = float(params.get('ediff', 1e-5))
-    similarity_reset = float(params.get('similarity_reset', 0.9))
-    similarity_energy_reset = float(params.get('similarity_energy_reset', 0.95))
+    similarity_reset = float(params.get('similarity_reset', 0.95))
+    similarity_energy_reset = float(params.get('similarity_energy_reset', 0.98))
     candidate_size = int(params.get('candidate_size', 2))
 
     # 势能面
@@ -380,12 +380,11 @@ def main(atom: int) -> None:
             similarity = similarity_function(best_cluster, prev_best_cluster)
             similarity_current = similarity
             similarity_value = f"{similarity:.6f}"
-            # 点群改变或相似性 S < 0.9: 结构明显变化, 停滞计数清零.
-            # 0.9 <= S < 0.95 时, 仅当最优能量变化超过 ediff 才清零.
+            #  若结构变化判据满足, 停滞计数清零.
             if (
                 current_pg != prev_pg
                 or similarity < similarity_reset
-                or (similarity < similarity_energy_reset and abs(diff) > ediff)
+                or (similarity < similarity_energy_reset and abs(diff) > 10*ediff)
             ):
                 stagnation_count = 0
                 # 结构变化判据满足: 本代最优结构加入候选列表.

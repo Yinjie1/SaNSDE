@@ -662,7 +662,7 @@ class Clusters(MultiAtoms):
         cluster: Atoms,
         replace: bool = False,
         sort: bool = True,
-    ) -> None:
+    ) -> int:
         """Add a cluster and enforce unique chemical formulas.
 
         Parameters
@@ -671,29 +671,30 @@ class Clusters(MultiAtoms):
             Cluster to add. The stored object is an ``Atoms.copy()``.
         replace : bool, optional
             If True, replace the existing cluster with the same chemical
-            formula instead of raising ``ValueError``. Default False.
+            formula. Default False.
         sort : bool, optional
             If True, sort the clusters after adding. Default True.
 
-        Raises
-        ------
-        TypeError
-            If ``cluster`` is not an ``Atoms`` object.
-        ValueError
-            If a cluster with the same chemical formula already exists and
-            ``replace`` is False.
+        Returns
+        -------
+        int
+            Index of the cluster with the same chemical formula after adding
+            or replacing it.
         """
         formula = cluster.get_chemical_formula()
-        for index, existing in enumerate(self._clusters):
-            if existing.get_chemical_formula() != formula:
-                continue
-            if not replace:
-                raise ValueError(f"Cluster formula should be unique in Clusters, {formula} already exists")
-            self._clusters[index] = cluster.copy()
+        symbols = self.symbols
+        try:
+            index = symbols.index(formula)
+        except ValueError:
+            super().add_cluster(cluster)
             if sort:
                 self.sort()
-            return
+            return self.symbols.index(formula)
 
-        super().add_cluster(cluster)
+        if not replace:
+            print(f"Cluster formula should be unique in Clusters, formula {formula} already exists")
+            return index
+        self._clusters[index] = cluster.copy()
         if sort:
             self.sort()
+        return self.symbols.index(formula)
