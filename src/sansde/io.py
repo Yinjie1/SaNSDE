@@ -38,17 +38,18 @@ def read_xyz_frames(
     xyz_dir: str | Path,
     n: int = 3,
 ) -> list[Atoms]:
-    """Read up to ``n`` frames from the xyz files in a directory.
+    """Read up to ``n`` frames from each xyz file in a directory.
 
-    Files are processed in filename order, and frames are counted across all
-    ``.xyz`` and ``.extxyz`` files in the directory.
+    Files are processed in filename order. For every ``.xyz`` / ``.extxyz``
+    file at most ``n`` frames are read, so all structure files in the
+    directory contribute to the result.
 
     Parameters
     ----------
     xyz_dir : str | Path
         Directory containing xyz files, or a single xyz file.
     n : int, optional
-        Maximum number of frames to read. Default is 3.
+        Maximum number of frames read from each file. Default is 3.
 
     Returns
     -------
@@ -76,11 +77,11 @@ def read_xyz_frames(
 
     frames: list[Atoms] = []
     for file_path in files:
-        for frame in iread(file_path):
+        for count, frame in enumerate(iread(file_path), start=1):
             _normalize_frame(frame)
             frames.append(frame)
-            if len(frames) >= n:
-                return frames
+            if count >= n:
+                break
     return frames
 
 
