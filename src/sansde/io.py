@@ -151,6 +151,8 @@ def merge_xyz_directories(
     return merge_multi_atoms(containers, s=s, s_c1=s_c1)
 
 
+LARGE_CLUSTER_ATOM_COUNT: int = 40
+LARGE_CLUSTER_CELL_LENGTH: float = 20.0
 DEFAULT_CELL_LENGTH: float = 15.0
 
 
@@ -160,24 +162,33 @@ def _write_poscar(
     a: float | None,
     b: float | None,
     c: float | None,
+    large_cell: float,
+    default_cell: float,
 ) -> None:
     """Write a cluster as a POSCAR.
 
     When ``a``, ``b`` and ``c`` are all given, they define an orthorhombic
-    cell that overrides the cluster cell. Otherwise the cluster cell is kept;
-    if the cluster has no cell (zero volume), a cubic box with
-    ``DEFAULT_CELL_LENGTH`` is used. Atoms are sorted by chemical symbol so
-    that each species forms a single contiguous block, as required for a
-    matching concatenated POTCAR.
+    cell that overrides the cluster cell. Otherwise clusters with at least
+    ``LARGE_CLUSTER_ATOM_COUNT`` atoms get a cubic ``large_cell`` box, while
+    smaller clusters keep their own cell; if a small cluster has no cell
+    (zero volume), a cubic ``default_cell`` box is used. Atoms are sorted by
+    chemical symbol so that each species forms a single contiguous block, as
+    required for a matching concatenated POTCAR.
     """
     atoms = cluster.copy()
     if a is not None and b is not None and c is not None:
         atoms.cell = [[a, 0.0, 0.0], [0.0, b, 0.0], [0.0, 0.0, c]]
+    elif len(atoms) >= LARGE_CLUSTER_ATOM_COUNT:
+        atoms.cell = [
+            [large_cell, 0.0, 0.0],
+            [0.0, large_cell, 0.0],
+            [0.0, 0.0, large_cell],
+        ]
     elif atoms.cell.volume == 0.0:
         atoms.cell = [
-            [DEFAULT_CELL_LENGTH, 0.0, 0.0],
-            [0.0, DEFAULT_CELL_LENGTH, 0.0],
-            [0.0, 0.0, DEFAULT_CELL_LENGTH],
+            [default_cell, 0.0, 0.0],
+            [0.0, default_cell, 0.0],
+            [0.0, 0.0, default_cell],
         ]
     atoms.pbc = True
     write(path, atoms, format="vasp", direct=False, sort=True)
@@ -190,13 +201,15 @@ def _copy_template_files(src_dir: Path, dst_dir: Path) -> None:
             shutil.copy2(src_file, dst_dir / src_file.name)
 
 
-def _patch_job_name(script: Path, job_name: str) -> None:
-    """Replace the '#BSUB -J' job name line in a job script."""
+def _patch_job_script(script: Path, job_name: str, cores: int) -> None:
+    """Set the '#BSUB -J' job name and '#BSUB -n' core count in a job script."""
     lines: list[str] = script.read_text().splitlines(keepends=True)
     for index, line in enumerate(lines):
-        if line.strip().startswith("#BSUB -J"):
+        stripped = line.strip()
+        if stripped.startswith("#BSUB -J"):
             lines[index] = f"#BSUB -J {job_name}\n"
-            break
+        elif stripped.startswith("#BSUB -n"):
+            lines[index] = f"#BSUB -n {cores}\n"
     script.write_text("".join(lines))
 
 
@@ -240,17 +253,22 @@ def write_vasp_tasks(
     a: float | None = None,
     b: float | None = None,
     c: float | None = None,
+    large_cell: float = LARGE_CLUSTER_CELL_LENGTH,
+    default_cell: float = DEFAULT_CELL_LENGTH,
 ) -> list[Path]:
     """Write VASP task directories for the given clusters.
 
     Every cluster is written as a Cartesian POSCAR in a subdirectory named
     ``<formula>.<index>``, for example ``Au3.0`` and ``Au3.1``. When ``a``,
     ``b`` and ``c`` are all given, they define an orthorhombic cell that
-    overrides the cluster cell. Otherwise the cluster cell is kept; if the
-    cluster has no cell (zero volume), a cubic box with
-    :data:`DEFAULT_CELL_LENGTH` is used. All files from ``template_dir`` are
-    copied into each task directory, and ``.lsf`` scripts get their
-    ``#BSUB -J`` line renamed to the chemical formula.
+    overrides the cluster cell. Otherwise clusters with at least
+    ``LARGE_CLUSTER_ATOM_COUNT`` atoms get a cubic ``large_cell`` box, while
+    smaller clusters keep their own cell; if a small cluster has no cell
+    (zero volume), a cubic ``default_cell`` box is used. All files from
+    ``template_dir`` are copied into each task directory. In copied ``.lsf``
+    scripts, the ``#BSUB -J`` line is renamed to the chemical formula and the
+    ``#BSUB -n`` line is set to 12 for clusters with at most
+    ``LARGE_CLUSTER_ATOM_COUNT`` atoms and to 20 for larger clusters.
 
     A warning is printed when INCAR or KPOINTS is missing from
     ``template_dir``. When POTCAR is missing, ``vaspkit -task 103`` is
@@ -274,6 +292,11 @@ def write_vasp_tasks(
     c : float, optional
         Orthorhombic cell length along z in Angstrom. Only used when ``a``,
         ``b`` and ``c`` are all given.
+    large_cell : float, optional
+        Cubic cell length for clusters with at least
+        ``LARGE_CLUSTER_ATOM_COUNT`` atoms. Default is 20.0.
+    default_cell : float, optional
+        Cubic cell length for clusters without a cell. Default is 15.0.
 
     Returns
     -------
@@ -293,9 +316,8 @@ def write_vasp_tasks(
     ...     clusters,
     ...     "tasks",
     ...     "vasp_input",
-    ...     a=15.0,
-    ...     b=15.0,
-    ...     c=15.0,
+    ...     large_cell=20.0,
+    ...     default_cell=15.0,
     ... )
     """
     lengths = (a, b, c)
@@ -334,10 +356,19 @@ def write_vasp_tasks(
         counts[formula] = index + 1
         task_dir.mkdir()
 
-        _write_poscar(cluster, task_dir / "POSCAR", a, b, c)
+        _write_poscar(
+            cluster,
+            task_dir / "POSCAR",
+            a,
+            b,
+            c,
+            large_cell,
+            default_cell,
+        )
         _copy_template_files(template_path, task_dir)
+        cores = 12 if len(cluster) <= 40 else 20
         for script in task_dir.glob("*.lsf"):
-            _patch_job_name(script, formula)
+            _patch_job_script(script, formula, cores)
         if not has_potcar:
             _generate_potcar(task_dir)
         task_dirs.append(task_dir)
