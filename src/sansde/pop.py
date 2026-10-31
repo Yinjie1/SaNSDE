@@ -758,5 +758,13 @@ class Clusters(MultiAtoms):
             Clusters to add one by one.
         """
         for cluster in clusters:
-            self.add_cluster(cluster)
+            index = self.add_cluster(cluster, replace=False, sort=False)
+            existing = self._clusters[index]
+            energy_existing = existing.info.get('energy')
+            energy_cluster = cluster.info.get('energy')
+            if energy_cluster is not None and (
+                energy_existing is None
+                or float(energy_cluster) < float(energy_existing)
+            ):
+                self.add_cluster(cluster, replace=True)
 
