@@ -315,6 +315,11 @@ class Population(MultiAtoms):
             return sub_pop # type: ignore
         return super().__getitem__(index)
 
+    def __setitem__(self, index: int | slice, value: Atoms | Iterable[Atoms]) -> None:
+        raise TypeError(
+            "Population does not support item assignment; use add_cluster()"
+        )
+
     def add_cluster(self, cluster: Atoms) -> None:
         """Add a cluster and validate its chemical formula.
 
@@ -706,6 +711,11 @@ class Clusters(MultiAtoms):
     1. Chemical formulas must be unique.
     2. Clusters are ordered by the atom count of a specified element.
     """
+
+    def __setitem__(self, index: int | slice, value: Atoms | Iterable[Atoms]) -> None:
+        raise TypeError(
+            "Clusters does not support item assignment; use add_cluster() or merge()"
+        )
 
     def sort(self, element: str = "auto", reverse: bool = False) -> None:
         """Sort clusters in place by the count of a given element.
