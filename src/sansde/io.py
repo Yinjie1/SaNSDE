@@ -14,7 +14,6 @@ from sansde.pop import Clusters, MultiAtoms
 __all__ = [
     "merge_multi_atoms",
     "merge_xyz_directories",
-    "read_xyz_frames",
     "write_vasp_tasks",
 ]
 
@@ -37,57 +36,6 @@ def _normalize_frame(frame: Atoms) -> None:
     if forces is not None and frame.arrays.get('forces') is None:
         frame.arrays['forces'] = forces
     frame.calc = None
-
-
-def read_xyz_frames(
-    xyz_dir: str | Path,
-    n: int = 3,
-) -> list[Atoms]:
-    """Read up to ``n`` frames from each xyz file in a directory.
-
-    Files are processed in filename order. For every ``.xyz`` / ``.extxyz``
-    file at most ``n`` frames are read, so all structure files in the
-    directory contribute to the result.
-
-    Parameters
-    ----------
-    xyz_dir : str | Path
-        Directory containing xyz files, or a single xyz file.
-    n : int, optional
-        Maximum number of frames read from each file. Default is 3.
-
-    Returns
-    -------
-    list[Atoms]
-        Frames read from the directory, in file order.
-
-    Raises
-    ------
-    ValueError
-        If ``n`` is not positive.
-    FileNotFoundError
-        If ``xyz_dir`` does not exist.
-    """
-    if n <= 0:
-        raise ValueError("n must be positive")
-
-    path = Path(xyz_dir)
-    if not path.exists():
-        raise FileNotFoundError(f"xyz path does not exist: {path}")
-
-    if path.is_file():
-        files = [path]
-    else:
-        files = sorted([*path.glob("*.xyz"), *path.glob("*.extxyz")])
-
-    frames: list[Atoms] = []
-    for file_path in files:
-        for count, frame in enumerate(iread(file_path), start=1):
-            _normalize_frame(frame)
-            frames.append(frame)
-            if count >= n:
-                break
-    return frames
 
 
 def merge_multi_atoms(
@@ -151,18 +99,18 @@ def merge_xyz_directories(
     s_c1: float = 0.98,
     large_unique: bool = LARGE_CLUSTER_UNIQUE,
 ) -> MultiAtoms:
-    """Build and merge MultiAtoms from multiple xyz directories.
+    """Read xyz directories, deduplicate them, and return a MultiAtoms.
 
-    Each directory contributes up to ``n`` frames. The frames from one
-    directory are deduplicated before all directories are merged and
-    deduplicated again.
+    Each directory (or single xyz file) contributes up to ``n`` frames per
+    xyz file. The frames from one directory are deduplicated before all
+    directories are merged and deduplicated again.
 
     Parameters
     ----------
     xyz_dirs : Sequence[str | Path]
-        Directories containing xyz files.
+        Directories containing xyz files, or single xyz files.
     n : int, optional
-        Maximum number of frames read from each directory. Default is 3.
+        Maximum number of frames read from each file. Default is 3.
     s : float, optional
         Similarity threshold for non-C1 point groups. Default is 0.99.
     s_c1 : float, optional
@@ -176,12 +124,35 @@ def merge_xyz_directories(
     -------
     MultiAtoms
         Final merged and deduplicated container.
+
+    Raises
+    ------
+    ValueError
+        If ``n`` is not positive.
+    FileNotFoundError
+        If an input path does not exist.
     """
+    if n <= 0:
+        raise ValueError("n must be positive")
+
     containers: list[MultiAtoms] = []
     for xyz_dir in xyz_dirs:
+        path = Path(xyz_dir)
+        if not path.exists():
+            raise FileNotFoundError(f"xyz path does not exist: {path}")
+
+        if path.is_file():
+            files = [path]
+        else:
+            files = sorted([*path.glob("*.xyz"), *path.glob("*.extxyz")])
+
         container = MultiAtoms()
-        for frame in read_xyz_frames(xyz_dir, n=n):
-            container.add_cluster(frame)
+        for file_path in files:
+            for count, frame in enumerate(iread(file_path), start=1):
+                _normalize_frame(frame)
+                container.add_cluster(frame)
+                if count >= n:
+                    break
         container.deduplicate(s=s, s_c1=s_c1)
         containers.append(container)
 
