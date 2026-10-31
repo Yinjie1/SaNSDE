@@ -2,6 +2,7 @@
 
 import shutil
 import subprocess
+import tarfile
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 
@@ -255,6 +256,7 @@ def write_vasp_tasks(
     c: float | None = None,
     large_cell: float = LARGE_CLUSTER_CELL_LENGTH,
     default_cell: float = DEFAULT_CELL_LENGTH,
+    pack: bool = True,
 ) -> list[Path]:
     """Write VASP task directories for the given clusters.
 
@@ -269,6 +271,10 @@ def write_vasp_tasks(
     scripts, the ``#BSUB -J`` line is renamed to the chemical formula and the
     ``#BSUB -n`` line is set to 12 for clusters with at most
     ``LARGE_CLUSTER_ATOM_COUNT`` atoms and to 20 for larger clusters.
+
+    When ``pack`` is true, the task directories are packed into
+    ``<output_dir>.tgz`` and the original directory is removed. The input
+    xyz files are never touched.
 
     A warning is printed when INCAR or KPOINTS is missing from
     ``template_dir``. When POTCAR is missing, ``vaspkit -task 103`` is
@@ -297,11 +303,15 @@ def write_vasp_tasks(
         ``LARGE_CLUSTER_ATOM_COUNT`` atoms. Default is 20.0.
     default_cell : float, optional
         Cubic cell length for clusters without a cell. Default is 15.0.
+    pack : bool, optional
+        If ``True`` (default), pack the task directories into
+        ``<output_dir>.tgz`` and remove ``output_dir`` afterwards.
 
     Returns
     -------
     list[Path]
-        Paths of the created task directories.
+        Paths of the created task directories. When ``pack`` is true these
+        directories no longer exist because they have been archived.
 
     Raises
     ------
@@ -372,5 +382,12 @@ def write_vasp_tasks(
         if not has_potcar:
             _generate_potcar(task_dir)
         task_dirs.append(task_dir)
+
+    if pack and task_dirs:
+        archive_path = output_path.parent / f"{output_path.name}.tgz"
+        with tarfile.open(archive_path, "w:gz") as tar:
+            tar.add(output_path, arcname=output_path.name)
+        shutil.rmtree(output_path)
+        print(f"Packed {output_path} into {archive_path} and removed {output_path}")
 
     return task_dirs
