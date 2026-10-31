@@ -151,20 +151,34 @@ def merge_xyz_directories(
     return merge_multi_atoms(containers, s=s, s_c1=s_c1)
 
 
+DEFAULT_CELL_LENGTH: float = 15.0
+
+
 def _write_poscar(
     cluster: Atoms,
     path: Path,
-    a: float,
-    b: float,
-    c: float,
+    a: float | None,
+    b: float | None,
+    c: float | None,
 ) -> None:
-    """Write a cluster as a POSCAR inside an orthorhombic cell.
+    """Write a cluster as a POSCAR.
 
-    Atoms are sorted by chemical symbol so that each species forms a single
-    contiguous block, as required for a matching concatenated POTCAR.
+    When ``a``, ``b`` and ``c`` are all given, they define an orthorhombic
+    cell that overrides the cluster cell. Otherwise the cluster cell is kept;
+    if the cluster has no cell (zero volume), a cubic box with
+    ``DEFAULT_CELL_LENGTH`` is used. Atoms are sorted by chemical symbol so
+    that each species forms a single contiguous block, as required for a
+    matching concatenated POTCAR.
     """
     atoms = cluster.copy()
-    atoms.cell = [[a, 0.0, 0.0], [0.0, b, 0.0], [0.0, 0.0, c]]
+    if a is not None and b is not None and c is not None:
+        atoms.cell = [[a, 0.0, 0.0], [0.0, b, 0.0], [0.0, 0.0, c]]
+    elif atoms.cell.volume == 0.0:
+        atoms.cell = [
+            [DEFAULT_CELL_LENGTH, 0.0, 0.0],
+            [0.0, DEFAULT_CELL_LENGTH, 0.0],
+            [0.0, 0.0, DEFAULT_CELL_LENGTH],
+        ]
     atoms.pbc = True
     write(path, atoms, format="vasp", direct=False, sort=True)
 
@@ -223,15 +237,18 @@ def write_vasp_tasks(
     clusters: Iterable[Atoms],
     output_dir: str | Path,
     template_dir: str | Path,
-    a: float = 15.0,
-    b: float = 15.0,
-    c: float = 15.0,
+    a: float | None = None,
+    b: float | None = None,
+    c: float | None = None,
 ) -> list[Path]:
     """Write VASP task directories for the given clusters.
 
-    Every cluster is written as a Cartesian POSCAR inside an orthorhombic
-    cell ``(a, b, c)`` in a subdirectory named ``<formula>.<index>``, for
-    example ``Au3.0`` and ``Au3.1``. All files from ``template_dir`` are
+    Every cluster is written as a Cartesian POSCAR in a subdirectory named
+    ``<formula>.<index>``, for example ``Au3.0`` and ``Au3.1``. When ``a``,
+    ``b`` and ``c`` are all given, they define an orthorhombic cell that
+    overrides the cluster cell. Otherwise the cluster cell is kept; if the
+    cluster has no cell (zero volume), a cubic box with
+    :data:`DEFAULT_CELL_LENGTH` is used. All files from ``template_dir`` are
     copied into each task directory, and ``.lsf`` scripts get their
     ``#BSUB -J`` line renamed to the chemical formula.
 
@@ -249,11 +266,14 @@ def write_vasp_tasks(
     template_dir : str | Path
         Directory containing VASP input template files.
     a : float, optional
-        Cell length along x in Angstrom. Default is 15.0.
+        Orthorhombic cell length along x in Angstrom. Only used when ``a``,
+        ``b`` and ``c`` are all given.
     b : float, optional
-        Cell length along y in Angstrom. Default is 15.0.
+        Orthorhombic cell length along y in Angstrom. Only used when ``a``,
+        ``b`` and ``c`` are all given.
     c : float, optional
-        Cell length along z in Angstrom. Default is 15.0.
+        Orthorhombic cell length along z in Angstrom. Only used when ``a``,
+        ``b`` and ``c`` are all given.
 
     Returns
     -------
@@ -264,6 +284,8 @@ def write_vasp_tasks(
     ------
     FileNotFoundError
         If ``template_dir`` does not exist.
+    ValueError
+        If only some of ``a``, ``b`` and ``c`` are given.
 
     Examples
     --------
@@ -276,6 +298,12 @@ def write_vasp_tasks(
     ...     c=15.0,
     ... )
     """
+    lengths = (a, b, c)
+    if any(length is not None for length in lengths) and not all(
+        length is not None for length in lengths
+    ):
+        raise ValueError("a, b and c must be given together")
+
     template_path = Path(template_dir)
     if not template_path.is_dir():
         raise FileNotFoundError(f"VASP template directory not found: {template_path}")
