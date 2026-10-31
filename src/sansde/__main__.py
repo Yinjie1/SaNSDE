@@ -3,7 +3,7 @@
 Usage:
     sansde --opt params.json            # 默认后台运行, 日志写到 params.log
     sansde --opt params.json --fg       # 前台运行
-    sansde xyz2vasp -i gen1 gen2 --cell 15 15 15 -c -o tasks
+    sansde xyz2vasp -i gen1 gen2 --cell 15 15 15 90 90 90 -c -o tasks
     sansde xyz2vasp --frame 3 -s 0.99 0.98
     python -m sansde --opt params.json --fg
 """
@@ -68,10 +68,10 @@ def main(argv: list[str] | None = None) -> None:
     )
     export.add_argument(
         "--cell",
-        nargs=3,
+        nargs=6,
         type=float,
-        metavar=("A", "B", "C"),
-        help="orthorhombic cell lengths in Angstrom; overrides cluster cells",
+        metavar=("A", "B", "C", "ALPHA", "BETA", "GAMMA"),
+        help="cell vector lengths and angles; overrides cluster cells",
     )
     export.add_argument(
         "-c",
@@ -128,8 +128,6 @@ def main(argv: list[str] | None = None) -> None:
             if args.output is not None
             else Path(f"relax.{''.join(elements)}")
         )
-        cell = args.cell if args.cell is not None else [None, None, None]
-
         work_dir = Path.cwd()
         if clusters:
             ase_write(work_dir / "merged.xyz", list(clusters), format="extxyz")
@@ -165,7 +163,7 @@ def main(argv: list[str] | None = None) -> None:
             clusters,
             output,
             args.template,
-            *cell,
+            cell=args.cell,
             pack=args.compress,
         )
         print(f"wrote {len(tasks)} VASP tasks to {output}")

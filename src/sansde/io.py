@@ -18,9 +18,9 @@ __all__ = [
 ]
 
 LARGE_CLUSTER_ATOM_COUNT: int = 40
-LARGE_CLUSTER_CELL_LENGTH: float = 20.0
+LARGE_CLUSTER_CELL: tuple[float, ...] = (20.0, 20.0, 20.0, 90.0, 90.0, 90.0)
+DEFAULT_CELL: tuple[float, ...] = (15.0, 15.0, 15.0, 90.0, 90.0, 90.0)
 LARGE_CLUSTER_UNIQUE: bool = True
-DEFAULT_CELL_LENGTH: float = 15.0
 
 
 def _normalize_frame(frame: Atoms) -> None:
@@ -167,37 +167,29 @@ def merge_xyz_directories(
 def _write_poscar(
     cluster: Atoms,
     path: Path,
-    a: float | None,
-    b: float | None,
-    c: float | None,
-    large_cell: float,
-    default_cell: float,
+    cell: Sequence[float] | None,
+    large_cell: Sequence[float],
+    default_cell: Sequence[float],
 ) -> None:
     """Write a cluster as a POSCAR.
 
-    When ``a``, ``b`` and ``c`` are all given, they define an orthorhombic
-    cell that overrides the cluster cell. Otherwise clusters with at least
-    ``LARGE_CLUSTER_ATOM_COUNT`` atoms get a cubic ``large_cell`` box, while
-    smaller clusters keep their own cell; if a small cluster has no cell
-    (zero volume), a cubic ``default_cell`` box is used. Atoms are sorted by
-    chemical symbol so that each species forms a single contiguous block, as
-    required for a matching concatenated POTCAR.
+    ``cell``, ``large_cell`` and ``default_cell`` are six-element sequences
+    ``(a, b, c, alpha, beta, gamma)`` giving cell vector lengths in Angstrom
+    followed by the angles between them in degrees. When ``cell`` is given it
+    overrides the cluster cell. Otherwise clusters with at least
+    ``LARGE_CLUSTER_ATOM_COUNT`` atoms use ``large_cell``, while smaller
+    clusters keep their own cell; if a small cluster has no cell (zero
+    volume), ``default_cell`` is used. Atoms are sorted by chemical symbol so
+    that each species forms a single contiguous block, as required for a
+    matching concatenated POTCAR.
     """
     atoms = cluster.copy()
-    if a is not None and b is not None and c is not None:
-        atoms.cell = [[a, 0.0, 0.0], [0.0, b, 0.0], [0.0, 0.0, c]]
+    if cell is not None:
+        atoms.cell = list(cell)
     elif len(atoms) >= LARGE_CLUSTER_ATOM_COUNT:
-        atoms.cell = [
-            [large_cell, 0.0, 0.0],
-            [0.0, large_cell, 0.0],
-            [0.0, 0.0, large_cell],
-        ]
+        atoms.cell = list(large_cell)
     elif atoms.cell.volume == 0.0:
-        atoms.cell = [
-            [default_cell, 0.0, 0.0],
-            [0.0, default_cell, 0.0],
-            [0.0, 0.0, default_cell],
-        ]
+        atoms.cell = list(default_cell)
     atoms.pbc = True
     write(path, atoms, format="vasp", direct=False, sort=True)
 
@@ -258,25 +250,24 @@ def write_vasp_tasks(
     clusters: Iterable[Atoms],
     output_dir: str | Path,
     template_dir: str | Path,
-    a: float | None = None,
-    b: float | None = None,
-    c: float | None = None,
-    large_cell: float = LARGE_CLUSTER_CELL_LENGTH,
-    default_cell: float = DEFAULT_CELL_LENGTH,
+    cell: Sequence[float] | None = None,
+    large_cell: Sequence[float] = LARGE_CLUSTER_CELL,
+    default_cell: Sequence[float] = DEFAULT_CELL,
     pack: bool = True,
 ) -> list[Path]:
     """Write VASP task directories for the given clusters.
 
     Every cluster is written as a Cartesian POSCAR in a subdirectory named
-    ``<formula>.<index>``, for example ``Au3.0`` and ``Au3.1``. When ``a``,
-    ``b`` and ``c`` are all given, they define an orthorhombic cell that
+    ``<formula>.<index>``, for example ``Au3.0`` and ``Au3.1``. Cell
+    parameters are six-element sequences ``(a, b, c, alpha, beta, gamma)``
+    with lengths in Angstrom and angles in degrees. When ``cell`` is given it
     overrides the cluster cell. Otherwise clusters with at least
-    ``LARGE_CLUSTER_ATOM_COUNT`` atoms get a cubic ``large_cell`` box, while
-    smaller clusters keep their own cell; if a small cluster has no cell
-    (zero volume), a cubic ``default_cell`` box is used. All files from
-    ``template_dir`` are copied into each task directory. In copied ``.lsf``
-    scripts, the ``#BSUB -J`` line is renamed to the chemical formula and the
-    ``#BSUB -n`` line is set to 12 for clusters with at most
+    ``LARGE_CLUSTER_ATOM_COUNT`` atoms use ``large_cell``, while smaller
+    clusters keep their own cell; if a small cluster has no cell (zero
+    volume), ``default_cell`` is used. All files from ``template_dir`` are
+    copied into each task directory. In copied ``.lsf`` scripts, the
+    ``#BSUB -J`` line is renamed to the chemical formula and the ``#BSUB -n``
+    line is set to 12 for clusters with at most
     ``LARGE_CLUSTER_ATOM_COUNT`` atoms and to 20 for larger clusters.
 
     When ``pack`` is true, the task directories are packed into
@@ -296,20 +287,16 @@ def write_vasp_tasks(
         Directory in which the task subdirectories are created.
     template_dir : str | Path
         Directory containing VASP input template files.
-    a : float, optional
-        Orthorhombic cell length along x in Angstrom. Only used when ``a``,
-        ``b`` and ``c`` are all given.
-    b : float, optional
-        Orthorhombic cell length along y in Angstrom. Only used when ``a``,
-        ``b`` and ``c`` are all given.
-    c : float, optional
-        Orthorhombic cell length along z in Angstrom. Only used when ``a``,
-        ``b`` and ``c`` are all given.
-    large_cell : float, optional
-        Cubic cell length for clusters with at least
-        ``LARGE_CLUSTER_ATOM_COUNT`` atoms. Default is 20.0.
-    default_cell : float, optional
-        Cubic cell length for clusters without a cell. Default is 15.0.
+    cell : Sequence[float], optional
+        Six cell parameters ``(a, b, c, alpha, beta, gamma)`` that override
+        the cluster cell. Default is ``None`` (keep the cluster cell).
+    large_cell : Sequence[float], optional
+        Six cell parameters for clusters with at least
+        ``LARGE_CLUSTER_ATOM_COUNT`` atoms. Default is
+        ``(20, 20, 20, 90, 90, 90)``.
+    default_cell : Sequence[float], optional
+        Six cell parameters for clusters without a cell. Default is
+        ``(15, 15, 15, 90, 90, 90)``.
     pack : bool, optional
         If ``True`` (default), pack the task directories into
         ``<output_dir>.tgz`` and remove ``output_dir`` afterwards.
@@ -324,8 +311,6 @@ def write_vasp_tasks(
     ------
     FileNotFoundError
         If ``template_dir`` does not exist.
-    ValueError
-        If only some of ``a``, ``b`` and ``c`` are given.
 
     Examples
     --------
@@ -333,16 +318,9 @@ def write_vasp_tasks(
     ...     clusters,
     ...     "tasks",
     ...     "vasp_input",
-    ...     large_cell=20.0,
-    ...     default_cell=15.0,
+    ...     cell=(15.0, 15.0, 15.0, 90.0, 90.0, 90.0),
     ... )
     """
-    lengths = (a, b, c)
-    if any(length is not None for length in lengths) and not all(
-        length is not None for length in lengths
-    ):
-        raise ValueError("a, b and c must be given together")
-
     template_path = Path(template_dir)
     if not template_path.is_dir():
         raise FileNotFoundError(f"VASP template directory not found: {template_path}")
@@ -376,9 +354,7 @@ def write_vasp_tasks(
         _write_poscar(
             cluster,
             task_dir / "POSCAR",
-            a,
-            b,
-            c,
+            cell,
             large_cell,
             default_cell,
         )
