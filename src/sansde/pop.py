@@ -38,6 +38,7 @@ class MultiAtoms:
     >>> multi.add_cluster(cluster)
     >>> multi[0]
     >>> multi[::2]
+    >>> del multi[0]
     >>> multi.symbols
     """
 
@@ -70,6 +71,9 @@ class MultiAtoms:
             sub_atoms._clusters = self._clusters[index]
             return sub_atoms # type: ignore
         return self._clusters[index]
+
+    def __delitem__(self, index: int | slice) -> None:
+        del self._clusters[index]
 
     @property
     def energies(self) -> list[float | None]:
