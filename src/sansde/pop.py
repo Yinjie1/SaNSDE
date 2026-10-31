@@ -767,4 +767,3 @@ class Clusters(MultiAtoms):
                 or float(energy_cluster) < float(energy_existing)
             ):
                 self.add_cluster(cluster, replace=True)
-
