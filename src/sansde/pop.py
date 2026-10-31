@@ -154,10 +154,14 @@ class MultiAtoms:
             energy_cluster = cluster.info.get('energy')
             # If the new cluster has no energy, keep the existing duplicate.
             if energy_cluster is None:
+                print(f"Removed {formula}, PG={pg_cluster}")
                 continue
             # Prefer the cluster that has an energy value.
             if energy_existing is None or float(energy_cluster) < float(energy_existing):
+                print(f"Removed {formula}, PG={pg_existing}")
                 kept[duplicate_index] = cluster
+            else:
+                print(f"Removed {formula}, PG={pg_cluster}")
 
         self._clusters = kept
 
