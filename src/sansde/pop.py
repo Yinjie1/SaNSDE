@@ -112,7 +112,7 @@ class MultiAtoms:
         self._clusters.append(cluster.copy())
 
     def deduplicate(self, s: float = 0.99, s_c1: float = 0.98) -> None:
-        """Remove duplicate clusters with the same chemical formula.
+        """Remove identical clusters with the same chemical formula.
 
         Clusters are compared only when their chemical formulas match. Two
         clusters are treated as duplicates when their point groups are equal
@@ -152,10 +152,11 @@ class MultiAtoms:
             existing = kept[duplicate_index]
             energy_existing = existing.info.get('energy')
             energy_cluster = cluster.info.get('energy')
-            if energy_cluster is not None and (
-                energy_existing is None
-                or float(energy_cluster) < float(energy_existing)
-            ):
+            # If the new cluster has no energy, keep the existing duplicate.
+            if energy_cluster is None:
+                continue
+            # Prefer the cluster that has an energy value.
+            if energy_existing is None or float(energy_cluster) < float(energy_existing):
                 kept[duplicate_index] = cluster
 
         self._clusters = kept
