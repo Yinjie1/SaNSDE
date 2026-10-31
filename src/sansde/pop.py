@@ -111,6 +111,55 @@ class MultiAtoms:
             raise TypeError("Cluster must be an ase.Atoms object")
         self._clusters.append(cluster.copy())
 
+    def deduplicate(self, s: float = 0.99, s_c1: float = 0.98) -> None:
+        """Remove duplicate clusters with the same chemical formula.
+
+        Clusters are compared only when their chemical formulas match. Two
+        clusters are treated as duplicates when their point groups are equal
+        and their similarity is at least ``s``. For ``C1`` clusters, the
+        threshold is ``s_c1``. The lower-energy cluster is kept.
+
+        Parameters
+        ----------
+        s : float, optional
+            Similarity threshold for non-``C1`` point groups. Default 0.99.
+        s_c1 : float, optional
+            Similarity threshold for ``C1`` point groups. Default 0.98.
+        """
+        from sansde.operators import similarity_function
+
+        kept: list[Atoms] = []
+        for cluster in self._clusters:
+            formula = cluster.get_chemical_formula()
+            duplicate_index: int | None = None
+            for index, existing in enumerate(kept):
+                if existing.get_chemical_formula() != formula:
+                    continue
+                pg_existing = existing.info.get('PG')
+                pg_cluster = cluster.info.get('PG')
+                if pg_existing is None or pg_existing != pg_cluster:
+                    continue
+                threshold = s_c1 if pg_existing == 'C1' else s
+                if similarity_function(existing, cluster) < threshold:
+                    continue
+                duplicate_index = index
+                break
+
+            if duplicate_index is None:
+                kept.append(cluster)
+                continue
+
+            existing = kept[duplicate_index]
+            energy_existing = existing.info.get('energy')
+            energy_cluster = cluster.info.get('energy')
+            if energy_cluster is not None and (
+                energy_existing is None
+                or float(energy_cluster) < float(energy_existing)
+            ):
+                kept[duplicate_index] = cluster
+
+        self._clusters = kept
+
 
 class Population(MultiAtoms):
     """MultiAtoms subclass with evolutionary state.
