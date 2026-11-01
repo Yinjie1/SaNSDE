@@ -9,6 +9,7 @@ from pathlib import Path
 
 import numpy as np
 from ase import Atoms
+from ase.calculators.calculator import Calculator
 from ase.calculators.mixing import SumCalculator
 from ase.io import read
 from ase.optimize import BFGS
@@ -40,7 +41,7 @@ def load_config(params_path: Path) -> None:
     global init_dir, init_pop_dir, best_dir, keep_snapshots, pop_dir
     global pop_size, generations, stagnation_limit, ediff
     global similarity_reset, similarity_energy_reset, candidate_size
-    global DP_MODEL, use_zbl, ZBL_CUTOFF, ZBL_SKIN
+    global use_zbl, ZBL_CUTOFF, ZBL_SKIN
     global fmax, steps, potential, relax, ROUND
 
     try:
@@ -87,12 +88,12 @@ def load_config(params_path: Path) -> None:
     candidate_size = int(params.get('candidate_size', 2))
 
     # 势能面
-    # DP (+ 可选 ZBL) 势: DP 负责长程/成键描述, hiphive 的 ZBL 提供短程排斥, 避免
-    # 原子重叠. use_zbl=True 时两者能量/力由 SumCalculator 直接相加:
-    # E_total = E_DP + E_ZBL; use_zbl=False 时仅使用 DP.
-    # 注意: hiphive 的 ZBLCalculator 内部用 ASE NeighborList, 其有效作用距离约为
-    #   r_eff = cutoff + 2 * skin
-    DP_MODEL = Path(params.get('DP_MODEL', "/home/linyj/02-linyj/potentials/dp/Au3c.pth"))
+    # POTENTIAL 为实际使用的势函数, 测试时可改为 LJ:
+    #   POTENTIAL = LennardJones(epsilon=0.4443, sigma=2.6367)
+    # use_zbl=True 时在 POTENTIAL 上叠加 hiphive 的 ZBL 短程排斥, 由 SumCalculator
+    # 直接相加: E_total = E_POTENTIAL + E_ZBL; 注意 ZBL 的有效作用距离约为
+    # r_eff = cutoff + 2 * skin.
+    POTENTIAL: Calculator = DP(model=Path("/home/linyj/02-linyj/potentials/dp/Au3c.pth"))
     use_zbl = bool(params.get('use_zbl', True))
     ZBL_CUTOFF = float(params.get('ZBL_CUTOFF', 1.5))
     ZBL_SKIN = float(params.get('ZBL_SKIN', 0))
@@ -108,20 +109,15 @@ def load_config(params_path: Path) -> None:
     print("initialized parameters:")
     print(json.dumps(params, indent=2, ensure_ascii=False))
 
-    pes = DP(model=DP_MODEL)
     if use_zbl:
         zbl = ZBLCalculator(cutoff=ZBL_CUTOFF, skin=ZBL_SKIN)
-        potential = SumCalculator([pes, zbl])
+        potential = SumCalculator([POTENTIAL, zbl])
     else:
-        potential = pes
-
-    # LJ 势: 用于 N=3-5 小团簇的优化测试, 需要时取消下面注释并注释上面的混合势.
-    # potential = LennardJones(epsilon=0.4443, sigma=2.6367)
+        potential = POTENTIAL
 
     relax = functools.partial(
         local_optimize,
         cell=None,
-        # 当前使用上面的 DP(+ZBL) 势; 如需 LJ, 改为 potential=LennardJones(...).
         potential = potential, # type: ignore
         optimizer=BFGS,
         fmax=fmax,
