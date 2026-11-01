@@ -35,18 +35,7 @@ from sansde.pop import Population
 
 # 初始化参数: 默认值内联, 可由运行目录下的 params.json 覆盖, 缺失的键保持默认值.
 def load_config(params_path: Path) -> None:
-    """Load run configuration from a JSON file and build the potential.
-
-    Parameters
-    ----------
-    params_path : pathlib.Path
-        Parameter JSON file. A missing file keeps the built-in defaults.
-
-    Returns
-    -------
-    None
-        The configuration is stored in module-level names used by ``main``.
-    """
+    """Load run configuration from a JSON file and build the potential."""
     global params, element, a, atom_min, atom_max
     global init_dir, init_pop_dir, best_dir, keep_snapshots, pop_dir
     global pop_size, generations, stagnation_limit, ediff
@@ -105,31 +94,7 @@ def load_config(params_path: Path) -> None:
 
     # 输出全部初始化参数, 便于确认本次运行配置.
     print("initialized parameters:")
-    for name, value in (
-        ("element", element),
-        ("a", a),
-        ("atom_min", atom_min),
-        ("atom_max", atom_max),
-        ("init_dir", init_dir),
-        ("init_pop_dir", init_pop_dir),
-        ("best_dir", best_dir),
-        ("keep_snapshots", keep_snapshots),
-        ("pop_dir", pop_dir),
-        ("pop_size", pop_size),
-        ("generations", generations),
-        ("stagnation_limit", stagnation_limit),
-        ("ediff", ediff),
-        ("similarity_reset", similarity_reset),
-        ("similarity_energy_reset", similarity_energy_reset),
-        ("candidate_size", candidate_size),
-        ("DP_MODEL", DP_MODEL),
-        ("use_zbl", use_zbl),
-        ("ZBL_CUTOFF", ZBL_CUTOFF),
-        ("ZBL_SKIN", ZBL_SKIN),
-        ("fmax", fmax),
-        ("steps", steps),
-    ):
-        print(f"  {name} = {value}")
+    print(json.dumps(params, indent=2, ensure_ascii=False))
 
     pes = DP(model=DP_MODEL)
     if use_zbl:
@@ -175,34 +140,6 @@ def append_stats_row(
     clusters are reported (``e_best`` plus two sub-optimal candidates), so the
     number of sub-optimal columns is ``min(candidate_size - 1, 2)``. When more
     candidates are available, the first ones in the candidate list are written.
-
-    Parameters
-    ----------
-    symbol : str
-        Cluster chemical formula, e.g. ``"Au13"``.
-    atom : int
-        Number of atoms in the cluster.
-    gen : int
-        Generation index.
-    pop : Population
-        Selected population; its ``candidate`` list is written.
-    best_energy : float
-        Lowest energy of the generation.
-    best_pg : str | None
-        Point group of the best cluster.
-    best_drop : float | None
-        Best-energy decrease relative to the previous generation.
-        ``None`` on the first generation.
-    similarity : float | None
-        Similarity between the current and previous best cluster.
-        ``None`` on the first generation.
-    stagnation_count : int
-        Consecutive generations without structural change.
-    candidate_size : int
-        Requested number of candidate entries (best + sub-optimal). The output
-        is capped at three entries in total.
-    elapsed_time : float
-        Total program run time in seconds.
     """
     candidates = list(pop.candidate)
     n_sub = min(max(candidate_size - 1, 0), 2)
