@@ -41,7 +41,7 @@ def load_config(params_path: Path) -> None:
     global pop_size, generations, stagnation_limit, ediff
     global similarity_reset, similarity_energy_reset, candidate_size
     global DP_MODEL, use_zbl, ZBL_CUTOFF, ZBL_SKIN
-    global fmax, steps, potential, relax
+    global fmax, steps, potential, relax, ROUND
 
     try:
         with params_path.open('r', encoding='utf-8') as f:
@@ -64,6 +64,18 @@ def load_config(params_path: Path) -> None:
     best_dir = Path(params.get('best_dir', 'best'))
     keep_snapshots = int(params.get('keep_snapshots', 1))
     pop_dir = Path(params.get('pop_dir', 'Populations'))
+
+    # 优化轮数; ROUND > 1 时 init_dir/best_dir 按轮次自动生成, 忽略自定义值.
+    ROUND = int(params.get('ROUND', 1))
+    if ROUND > 1 and (
+        'init_dir' in params
+        or 'best_dir' in params
+        or init_pop_dir != Path('.')
+    ):
+        print(
+            "Warning: ROUND > 1 ignores custom "
+            "init_dir/best_dir/init_pop_dir"
+        )
 
     # 全局优化设置
     pop_size = int(params.get('pop_size', 12))
@@ -119,6 +131,7 @@ def load_config(params_path: Path) -> None:
 
 stats_path = Path("opt_stat.csv")
 run_start: float | None = None
+ROUND: int = 1
 
 
 def append_stats_row(
@@ -403,7 +416,7 @@ def run(params_path: Path) -> None:
     params_path : pathlib.Path
         Parameter JSON file passed to ``load_config``.
     """
-    global run_start, stats_path
+    global run_start, stats_path, init_dir, best_dir, init_pop_dir
 
     program_start = time.perf_counter()
     run_start = program_start
@@ -416,8 +429,22 @@ def run(params_path: Path) -> None:
     # 每次运行重新生成统计文件, 避免上次运行的内容混在一起.
     if stats_path.exists():
         stats_path.unlink()
-    for atom in range(atom_min, atom_max + 1):
-        main(atom)
+    for round_index in range(1, ROUND + 1):
+        if ROUND > 1:
+            # 第 1 轮从 init/ 读取, 之后各轮读取上一轮的 best{round-1}/.
+            init_dir = (
+                Path('init')
+                if round_index == 1
+                else Path(f'best{round_index - 1}')
+            )
+            best_dir = Path(f'best{round_index}')
+            init_pop_dir = Path('')
+            print(
+                f"round {round_index}/{ROUND}: "
+                f"init_dir={init_dir} best_dir={best_dir}"
+            )
+        for atom in range(atom_min, atom_max + 1):
+            main(atom)
     total_elapsed = time.perf_counter() - program_start
     print(f"program total_time_s={total_elapsed:.4f}")
 
