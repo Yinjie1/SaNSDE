@@ -1,10 +1,12 @@
 """Utilities for reading xyz directories and writing VASP task directories."""
 
+import json
 import shutil
 import subprocess
 import tarfile
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 from ase import Atoms
 from ase.io import iread, write
@@ -246,82 +248,123 @@ def _generate_potcar(task_dir: Path, timeout: float = 120.0) -> bool:
     return True
 
 
-def write_vasp_tasks(
-    clusters: Iterable[Atoms],
-    output_dir: str | Path,
-    template_dir: str | Path,
-    cell: Sequence[float] | None = None,
-    large_cell: Sequence[float] = LARGE_CLUSTER_CELL,
-    default_cell: Sequence[float] = DEFAULT_CELL,
-    pack: bool = True,
-) -> list[Path]:
-    """Write VASP task directories for the given clusters.
+def write_vasp_tasks(params: str | Path) -> list[Path]:
+    """Run the xyz2vasp pipeline from a JSON parameter file.
 
-    Every cluster is written as a Cartesian POSCAR in a subdirectory named
-    ``<formula>.<index>``, for example ``Au3.0`` and ``Au3.1``. Cell
-    parameters are six-element sequences ``(a, b, c, alpha, beta, gamma)``
-    with lengths in Angstrom and angles in degrees. When ``cell`` is given it
-    overrides the cluster cell. Otherwise clusters with at least
-    ``LARGE_CLUSTER_ATOM_COUNT`` atoms use ``large_cell``, while smaller
-    clusters keep their own cell; if a small cluster has no cell (zero
-    volume), ``default_cell`` is used. All files from ``template_dir`` are
-    copied into each task directory. In copied ``.lsf`` scripts, the
-    ``#BSUB -J`` line is renamed to the chemical formula and the ``#BSUB -n``
-    line is set to 12 for clusters with at most
-    ``LARGE_CLUSTER_ATOM_COUNT`` atoms and to 20 for larger clusters.
-
-    When ``pack`` is true, the task directories are packed into
-    ``<output_dir>.tgz`` and the original directory is removed. The input
-    xyz files are never touched.
-
-    A warning is printed when INCAR or KPOINTS is missing from
-    ``template_dir``. When POTCAR is missing, ``vaspkit -task 103`` is
-    executed in each task directory to generate it.
+    The JSON file drives the whole pipeline: the xyz input is read into a
+    :class:`~sansde.pop.MultiAtoms` and deduplicated, ``merged.xyz``,
+    ``merged_xyz/`` and ``merged_json/`` are written to the current directory,
+    and one VASP task directory is created per cluster.
 
     Parameters
     ----------
-    clusters : Iterable[Atoms]
-        Clusters to convert. A :class:`~sansde.pop.MultiAtoms` instance can
-        be passed directly.
-    output_dir : str | Path
-        Directory in which the task subdirectories are created.
-    template_dir : str | Path
-        Directory containing VASP input template files.
-    cell : Sequence[float], optional
-        Six cell parameters ``(a, b, c, alpha, beta, gamma)`` that override
-        the cluster cell. Default is ``None`` (keep the cluster cell).
-    large_cell : Sequence[float], optional
-        Six cell parameters for clusters with at least
-        ``LARGE_CLUSTER_ATOM_COUNT`` atoms. Default is
-        ``(20, 20, 20, 90, 90, 90)``.
-    default_cell : Sequence[float], optional
-        Six cell parameters for clusters without a cell. Default is
-        ``(15, 15, 15, 90, 90, 90)``.
-    pack : bool, optional
-        If ``True`` (default), pack the task directories into
-        ``<output_dir>.tgz`` and remove ``output_dir`` afterwards.
+    params : str | Path
+        JSON parameter file.
 
     Returns
     -------
     list[Path]
-        Paths of the created task directories. When ``pack`` is true these
-        directories no longer exist because they have been archived.
+        Paths of the created VASP task directories. When ``compress`` is true
+        these directories no longer exist because they have been archived.
 
     Raises
     ------
     FileNotFoundError
-        If ``template_dir`` does not exist.
+        If the template directory does not exist.
+    TypeError
+        If the JSON content is not an object.
 
     Examples
     --------
-    >>> tasks = write_vasp_tasks(
-    ...     clusters,
-    ...     "tasks",
-    ...     "vasp_input",
-    ...     cell=(15.0, 15.0, 15.0, 90.0, 90.0, 90.0),
-    ... )
+    >>> write_vasp_tasks("params.json")
+
+    ``params.json`` with default values:
+
+    .. code-block:: json
+
+        {
+            "input": "best",
+            "template": "input",
+            "frame": 3,
+            "similarity": [0.99, 0.98],
+            "cell": null,
+            "output": null,
+            "compress": false
+        }
+
+    ``cell`` is six values ``(a, b, c, alpha, beta, gamma)`` and overrides the
+    cluster cell when given. ``output`` defaults to ``relax.<elements>``.
     """
-    template_path = Path(template_dir)
+    settings: dict[str, Any] = json.loads(Path(params).read_text())
+    if not isinstance(settings, dict):
+        raise TypeError(f"JSON parameters must be an object: {params}")
+
+    input_value = settings.get("input", "best")
+    if isinstance(input_value, (str, Path)):
+        input_value = [input_value]
+    input_dirs = [Path(item) for item in input_value]
+
+    frame = int(settings.get("frame", 3))
+    similarity = settings.get("similarity", (0.99, 0.98))
+    s, s_c1 = (float(value) for value in similarity)
+    cell_value = settings.get("cell")
+    cell = (
+        [float(value) for value in cell_value]
+        if cell_value is not None
+        else None
+    )
+    compress = bool(settings.get("compress", False))
+    template_path = Path(str(settings.get("template", "input")))
+
+    clusters = merge_xyz_directories(
+        input_dirs,
+        n=frame,
+        s=s,
+        s_c1=s_c1,
+    )
+    print(f"loaded {len(clusters)} clusters from {len(input_dirs)} input path(s)")
+
+    work_dir = Path.cwd()
+    if clusters:
+        write(work_dir / "merged.xyz", list(clusters), format="extxyz")
+    xyz_dir = work_dir / "merged_xyz"
+    json_dir = work_dir / "merged_json"
+    xyz_dir.mkdir(exist_ok=True)
+    json_dir.mkdir(exist_ok=True)
+    counts: dict[str, int] = {}
+    for cluster in clusters:
+        formula = cluster.get_chemical_formula()
+        index = counts.get(formula, 0)
+        counts[formula] = index + 1
+        write(xyz_dir / f"{formula}.{index}.xyz", cluster, format="extxyz")
+        record = {
+            "symbols": cluster.get_chemical_symbols(),
+            "positions": cluster.get_positions().tolist(),
+            "cell": cluster.cell.array.tolist(),
+            "pbc": cluster.pbc.tolist(),
+            "info": {
+                key: value.tolist() if hasattr(value, "tolist") else value
+                for key, value in cluster.info.items()
+            },
+        }
+        (json_dir / f"{formula}.{index}.json").write_text(
+            json.dumps(record, indent=2)
+        )
+    print(
+        f"wrote merged.xyz, merged_xyz/ and merged_json/ "
+        f"({len(clusters)} frames)"
+    )
+
+    elements = sorted(
+        {symbol for cluster in clusters for symbol in cluster.get_chemical_symbols()}
+    )
+    output_value = settings.get("output")
+    output_path = (
+        Path(str(output_value))
+        if output_value is not None
+        else Path(f"relax.{''.join(elements)}")
+    )
+
     if not template_path.is_dir():
         raise FileNotFoundError(f"VASP template directory not found: {template_path}")
 
@@ -336,10 +379,9 @@ def write_vasp_tasks(
             f"{template_path}; trying 'vaspkit -task 103' in each task directory"
         )
 
-    output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    counts: dict[str, int] = {}
+    counts = {}
     task_dirs: list[Path] = []
     for cluster in clusters:
         formula = cluster.get_chemical_formula()
@@ -355,8 +397,8 @@ def write_vasp_tasks(
             cluster,
             task_dir / "POSCAR",
             cell,
-            large_cell,
-            default_cell,
+            LARGE_CLUSTER_CELL,
+            DEFAULT_CELL,
         )
         _copy_template_files(template_path, task_dir)
         cores = 12 if len(cluster) <= 40 else 20
@@ -366,11 +408,12 @@ def write_vasp_tasks(
             _generate_potcar(task_dir)
         task_dirs.append(task_dir)
 
-    if pack and task_dirs:
+    if compress and task_dirs:
         archive_path = output_path.parent / f"{output_path.name}.tgz"
         with tarfile.open(archive_path, "w:gz") as tar:
             tar.add(output_path, arcname=output_path.name)
         shutil.rmtree(output_path)
         print(f"Packed {output_path} into {archive_path} and removed {output_path}")
 
+    print(f"wrote {len(task_dirs)} VASP tasks to {output_path}")
     return task_dirs

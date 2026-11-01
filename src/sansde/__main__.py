@@ -3,97 +3,32 @@
 Usage:
     sansde --opt params.json            # 默认后台运行, 日志写到 params.log
     sansde --opt params.json --fg       # 前台运行
-    sansde xyz2vasp -i gen1 gen2 --cell 15 15 15 90 90 90 -c -o tasks
-    sansde xyz2vasp --frame 3 -s 0.99 0.98
+    sansde xyz2vasp params.json       # 参数全部来自 JSON
     python -m sansde --opt params.json --fg
 """
 import argparse
-import json
 import subprocess
 import sys
 from pathlib import Path
 
-from ase.io import write as ase_write
-
-from sansde.io import merge_xyz_directories, write_vasp_tasks
+from sansde.io import write_vasp_tasks
 from sansde.main import run
 
 
 def main(argv: list[str] | None = None) -> None:
-    """Parse command line arguments and dispatch the requested task.
-
-    Parameters
-    ----------
-    argv : list[str] | None, optional
-        Argument list. ``None`` uses ``sys.argv[1:]``.
-
-    Returns
-    -------
-    None
-    """
+    """Parse command line arguments and dispatch the requested task."""
     parser = argparse.ArgumentParser(prog="sansde")
     subparsers = parser.add_subparsers(dest="command")
 
     export = subparsers.add_parser(
         "xyz2vasp",
-        help="export xyz directories to VASP task directories",
+        help="export xyz directories to VASP task directories using JSON parameters",
     )
     export.add_argument(
-        "-i",
-        "--input",
-        nargs="+",
+        "json",
         type=Path,
-        default=[Path("best")],
-        metavar="XYZ_DIR",
-        help="directories containing xyz files (default: best)",
-    )
-    export.add_argument(
-        "--frame",
-        "--flame",
-        dest="frame",
-        type=int,
-        default=3,
-        metavar="N",
-        help="frames read from each xyz file (default: 3)",
-    )
-    export.add_argument(
-        "-s",
-        "--similarity",
-        nargs=2,
-        type=float,
-        default=(0.99, 0.98),
-        metavar=("S", "S_C1"),
-        help="similarity thresholds for non-C1 and C1 point groups "
-        "(default: 0.99 0.98)",
-    )
-    export.add_argument(
-        "--cell",
-        nargs=6,
-        type=float,
-        metavar=("A", "B", "C", "ALPHA", "BETA", "GAMMA"),
-        help="cell vector lengths and angles; overrides cluster cells",
-    )
-    export.add_argument(
-        "-c",
-        "--compress",
-        action="store_true",
-        help="pack the output into a .tgz file and remove the directory",
-    )
-    export.add_argument(
-        "-o",
-        "--output",
-        type=Path,
-        default=None,
-        metavar="OUT",
-        help="output directory name (default: relax.<elements>)",
-    )
-    export.add_argument(
-        "-t",
-        "--template",
-        type=Path,
-        default=Path("input"),
-        metavar="DIR",
-        help="VASP input template directory (default: input)",
+        metavar="PARAMS",
+        help="JSON parameter file, e.g. sansde xyz2vasp params.json",
     )
 
     parser.add_argument(
@@ -112,61 +47,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     if args.command == "xyz2vasp":
-        s, s_c1 = args.similarity
-        clusters = merge_xyz_directories(
-            args.input,
-            n=args.frame,
-            s=s,
-            s_c1=s_c1,
-        )
-        print(f"loaded {len(clusters)} clusters from {len(args.input)} input path(s)")
-        elements = sorted(
-            {symbol for cluster in clusters for symbol in cluster.get_chemical_symbols()}
-        )
-        output = (
-            args.output
-            if args.output is not None
-            else Path(f"relax.{''.join(elements)}")
-        )
-        work_dir = Path.cwd()
-        if clusters:
-            ase_write(work_dir / "merged.xyz", list(clusters), format="extxyz")
-        xyz_dir = work_dir / "merged_xyz"
-        json_dir = work_dir / "merged_json"
-        xyz_dir.mkdir(exist_ok=True)
-        json_dir.mkdir(exist_ok=True)
-        counts: dict[str, int] = {}
-        for cluster in clusters:
-            formula = cluster.get_chemical_formula()
-            index = counts.get(formula, 0)
-            counts[formula] = index + 1
-            ase_write(xyz_dir / f"{formula}.{index}.xyz", cluster, format="extxyz")
-            record = {
-                "symbols": cluster.get_chemical_symbols(),
-                "positions": cluster.get_positions().tolist(),
-                "cell": cluster.cell.array.tolist(),
-                "pbc": cluster.pbc.tolist(),
-                "info": {
-                    key: value.tolist() if hasattr(value, "tolist") else value
-                    for key, value in cluster.info.items()
-                },
-            }
-            (json_dir / f"{formula}.{index}.json").write_text(
-                json.dumps(record, indent=2)
-            )
-        print(
-            f"wrote merged.xyz, merged_xyz/ and merged_json/ "
-            f"({len(clusters)} frames)"
-        )
-
-        tasks = write_vasp_tasks(
-            clusters,
-            output,
-            args.template,
-            cell=args.cell,
-            pack=args.compress,
-        )
-        print(f"wrote {len(tasks)} VASP tasks to {output}")
+        write_vasp_tasks(args.json)
         return
 
     if args.opt is None:
