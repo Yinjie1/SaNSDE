@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 from ase import Atoms
 from ase.calculators.calculator import Calculator
+from ase.calculators.lj import LennardJones
 from ase.calculators.mixing import SumCalculator
 from ase.io import read
 from ase.optimize import BFGS
@@ -88,12 +89,22 @@ def load_config(params_path: Path) -> None:
     candidate_size = int(params.get('candidate_size', 2))
 
     # 势能面
-    # POTENTIAL 为实际使用的势函数, 测试时可改为 LJ:
-    #   POTENTIAL = LennardJones(epsilon=0.4443, sigma=2.6367)
-    # use_zbl=True 时在 POTENTIAL 上叠加 hiphive 的 ZBL 短程排斥, 由 SumCalculator
-    # 直接相加: E_total = E_POTENTIAL + E_ZBL; 注意 ZBL 的有效作用距离约为
+    # use_zbl=True 时在 POTENTIAL 上叠加 hiphive 的 ZBL 短程排斥
+    # E_total = E_POTENTIAL + E_ZBL; 注意 ZBL 的有效作用距离约为
     # r_eff = cutoff + 2 * skin.
-    POTENTIAL: Calculator = DP(model=Path("/home/linyj/02-linyj/potentials/dp/Au3c.pth"))
+    default_potential = 'DP(model=Path("/home/linyj/02-linyj/potentials/dp/Au3c.pth"))'
+    potential_spec = params.get('POTENTIAL', default_potential)
+    if isinstance(potential_spec, str):
+        potential_spec = eval(
+            potential_spec,
+            {'DP': DP, 'Path': Path, 'LennardJones': LennardJones},
+        )
+    if not isinstance(potential_spec, Calculator):
+        raise TypeError(
+            "POTENTIAL must be an ase Calculator or an expression that "
+            f"evaluates to one, got {type(potential_spec).__name__}"
+        )
+    POTENTIAL: Calculator = potential_spec
     use_zbl = bool(params.get('use_zbl', True))
     ZBL_CUTOFF = float(params.get('ZBL_CUTOFF', 1.5))
     ZBL_SKIN = float(params.get('ZBL_SKIN', 0))
