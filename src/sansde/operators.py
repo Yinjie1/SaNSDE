@@ -575,9 +575,10 @@ def mutate(pop: Population, a: float = 4, n: int = 10, debug: bool = False) -> P
         if min_pair_distance(new_positions) < MIN_ATOM_DISTANCE:
             new_positions = pop[i].get_positions()
 
-        # 记录本个体突变标签到 info['mut'] (0/1).
+        # Record the mutation tag and the sampled scaling factor.
         temp_clusters[i].set_positions(new_positions)
         temp_clusters[i].info['mut'] = mut_tag
+        temp_clusters[i].info['F'] = scale_factor
         temp_clusters[i].info['energy'] = None
         temp_clusters[i].arrays.pop('forces', None)
 
@@ -630,6 +631,8 @@ def crossover(pop1: Population, pop2: Population) -> Population:
         trial_cluster.info['cr'] = cross_rate
         # 传递 mut_tag,供 select 统计对应策略成功/失败并更新 p.
         trial_cluster.info['mut'] = pop2[i].info.get('mut')
+        # Propagate F for statistics and monitoring of both branches.
+        trial_cluster.info['F'] = pop2[i].info.get('F')
 
         temp_clusters.add_cluster(trial_cluster)
 
@@ -746,11 +749,15 @@ def sphere_cut_splice(
         if not isinstance(relaxed_a, Atoms) or not isinstance(relaxed_b, Atoms):
             raise TypeError("relax must return Atoms when input is Atoms")
 
-        # 与 crossover 一致: 传递 mut_tag 供后续 select 更新 p/crm.
+        # Propagate mut_tag and F like crossover does.
         mut_tag = cluster_b.info.get('mut')
         if mut_tag is not None:
             relaxed_a.info['mut'] = mut_tag
             relaxed_b.info['mut'] = mut_tag
+        f_value = cluster_b.info.get('F')
+        if f_value is not None:
+            relaxed_a.info['F'] = f_value
+            relaxed_b.info['F'] = f_value
 
         # cr 生命周期透传: 供 select 在成功样本上更新 crm.
         cross_rate = cluster_b.info.get('cr')
@@ -859,10 +866,13 @@ def local_transformation(
         if base_energy is None or base_candidate is None:
             raise ValueError("base energy completion failed in local_transformation")
 
-        # 传递 mut_tag: local_transformation 前后保持策略标签不丢失.
+        # Propagate mut_tag and F through local_transformation.
         mut_tag = source_pop[i].info.get('mut')
         if mut_tag is not None:
             base_candidate.info['mut'] = mut_tag
+        f_value = source_pop[i].info.get('F')
+        if f_value is not None:
+            base_candidate.info['F'] = f_value
 
         # cr 生命周期透传: local_transformation 前后保持交叉率标签不丢失.
         cross_rate = source_pop[i].info.get('cr')
@@ -884,6 +894,8 @@ def local_transformation(
 
         if mut_tag is not None:
             relaxed_perturbed.info['mut'] = mut_tag
+        if f_value is not None:
+            relaxed_perturbed.info['F'] = f_value
         if cross_rate is not None:
             relaxed_perturbed.info['cr'] = cross_rate
 
@@ -967,6 +979,7 @@ def select(
     cr_rec: list[float] = []
     delta_rec: list[float] = []
     ns1, ns2, nf1, nf2 = 0, 0, 0, 0
+    nsg, nfg, nsc, nfc = 0, 0, 0, 0
 
     # 选择环节要求两组种群都具备完整能量信息
     pop1_energies = pop1_energies_raw
@@ -1015,14 +1028,18 @@ def select(
                 delta_rec.append(float(energy1 - energy2))
             if mut_tag == 0:
                 ns1 += 1
+                nsg += 1
             elif mut_tag == 1:
                 ns2 += 1
+                nsc += 1
         else:
             temp_clusters.add_cluster(pop1_candidate)
             if mut_tag == 0:
                 nf1 += 1
+                nfg += 1
             elif mut_tag == 1:
                 nf2 += 1
+                nfc += 1
 
         # 个体通过选择后计算点群(熊夫利符号); 失败或超时记为 None.
         chosen_cluster = temp_clusters[-1]
@@ -1038,5 +1055,10 @@ def select(
     denominator = ns2 * (ns1 + nf1) + ns1 * (ns2 + nf2)
     if denominator > 0:
         temp_clusters._p = float((ns1 * (ns2 + nf2)) / denominator)
+
+    # Update fp from the success/failure counts of the Gaussian and Cauchy branches.
+    fp_denominator = nsc * (nsg + nfg) + nsg * (nsc + nfc)
+    if fp_denominator > 0:
+        temp_clusters._fp = float((nsg * (nsc + nfc)) / fp_denominator)
 
     return temp_clusters

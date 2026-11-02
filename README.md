@@ -17,7 +17,7 @@ Any ASE calculator can be used as the potential. The default is a DeePMD-kit mod
 
 - Python >= 3.10
 - `numpy`, `ase`
-- `pymatgen` (optional, for point group calculation)
+- `pymatgen` (for point group calculation)
 - `deepmd-kit` (optional, for DP potentials)
 - `hiphive` (optional, for the ZBL short-range term)
 
@@ -87,7 +87,7 @@ python -m sansde run params.json --fg
 
 Key points:
 
-- `EXPORT` is a dictionary of environment variables applied to the current process before `SCRIPTS`, for example thread limits for DP.
+- `EXPORT` is a dictionary of environment variables applied to the current process before `SCRIPTS`, for example thread limits for DP. [How to control the parallelism of a job?](https://docs.deepmodeling.com/projects/deepmd/en/stable/troubleshooting/howtoset_num_nodes.html)
 - `SCRIPTS` is a list of Python snippets executed in order before the other parameters are read; they can import calculators or modify `params`, e.g. `["from ase.calculators.lj import LennardJones"]`.
 - `POTENTIAL` must be an ASE `Calculator`. A string expression is also accepted, but it must evaluate to a calculator; it is evaluated in the module namespace where `DP`, `LennardJones` and any name imported by `SCRIPTS` are available. For a Lennard-Jones test use `"POTENTIAL": "LennardJones(epsilon=0.4443, sigma=2.6367)"`.
 - `USE_ZBL` adds the hiphive ZBL short-range repulsion on top of `POTENTIAL` with range `ZBL_CUTOFF + 2 * ZBL_SKIN`.
