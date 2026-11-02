@@ -10,18 +10,15 @@ from pathlib import Path
 import numpy as np
 from ase import Atoms
 from ase.calculators.calculator import Calculator
-from ase.calculators.lj import LennardJones
 from ase.calculators.mixing import SumCalculator
 from ase.io import read
 from ase.optimize import BFGS
-from deepmd.calculator import DP
 
 try:
     from hiphive.calculators.zbl import ZBLCalculator
 except ImportError:
     ZBLCalculator = None  # type: ignore[assignment]
 
-# from ase.calculators.lj import LennardJones
 from sansde.operators import (
     crossover,
     local_optimize,
@@ -53,6 +50,17 @@ def load_config(params_path: Path) -> None:
         print(f"load parameters from {params_path}")
     except FileNotFoundError:
         params = {}
+
+    # Optional Python snippets executed in order before any other parameter is
+    # read. They can import calculators or modify ``params``, for example:
+    # ["from ase.calculators.lj import LennardJones", "from deepmd.calculator import DP"]
+    SCRIPTS = params.get('SCRIPTS', [])
+    if not isinstance(SCRIPTS, list) or not all(
+        isinstance(script, str) for script in SCRIPTS
+    ):
+        raise TypeError("SCRIPTS must be a list of Python code strings")
+    for script in SCRIPTS:
+        exec(script, globals())  # noqa: S102, user-provided calculator setup
 
     # 体系配置
     element = str(params.get('element', 'Au'))
@@ -95,10 +103,7 @@ def load_config(params_path: Path) -> None:
     default_potential = 'DP(model=Path("/home/linyj/02-linyj/potentials/dp/Au3c.pth"))'
     potential_spec = params.get('POTENTIAL', default_potential)
     if isinstance(potential_spec, str):
-        potential_spec = eval(
-            potential_spec,
-            {'DP': DP, 'Path': Path, 'LennardJones': LennardJones},
-        )
+        potential_spec = eval(potential_spec, globals())
     if not isinstance(potential_spec, Calculator):
         raise TypeError(
             "POTENTIAL must be an ase Calculator or an expression that "
