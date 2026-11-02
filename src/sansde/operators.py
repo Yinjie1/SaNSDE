@@ -506,15 +506,16 @@ def mutate(pop: Population, a: float = 4, n: int = 10, debug: bool = False) -> P
     for i in range(len(pop)):
         # 采样缩放因子分支:按 fp 在高斯/柯西之间切换.
         use_gaussian = np.random.uniform(0.0, 1.0) < temp_clusters.fp
-        # mut_tag 在分布分支确定后立即确定: 0=Gaussian, 1=Cauchy.
-        mut_tag = 0 if use_gaussian else 1
+        # scale_factor_tag 在分布分支确定后立即确定: 0=Gaussian, 1=Cauchy.
+        scale_factor_tag = 0 if use_gaussian else 1
 
         # 从除 i 外的个体中采样互异索引
         candidate_indices = [idx for idx in range(len(pop)) if idx != i]
         index1, index2, index3 = np.random.choice(candidate_indices, size=3, replace=False)
 
-        # 按 p 在两种突变策略之间切换
+        # 按 p 在两种突变策略之间切换; 0=DE/rand/1, 1=DE/current-to-best/2.
         use_rand_strategy = np.random.uniform(0.0, 1.0) < temp_clusters.p
+        strategy_tag = 0 if use_rand_strategy else 1
 
         def build_positions(
             scale_factor: float,
@@ -575,9 +576,10 @@ def mutate(pop: Population, a: float = 4, n: int = 10, debug: bool = False) -> P
         if min_pair_distance(new_positions) < MIN_ATOM_DISTANCE:
             new_positions = pop[i].get_positions()
 
-        # Record the mutation tag and the sampled scaling factor.
+        # Record the distribution tag, strategy tag and the sampled scaling factor.
         temp_clusters[i].set_positions(new_positions)
-        temp_clusters[i].info['mut'] = mut_tag
+        temp_clusters[i].info['scale_factor_tag'] = scale_factor_tag
+        temp_clusters[i].info['strategy_tag'] = strategy_tag
         temp_clusters[i].info['F'] = scale_factor
         temp_clusters[i].info['energy'] = None
         temp_clusters[i].arrays.pop('forces', None)
@@ -629,9 +631,9 @@ def crossover(pop1: Population, pop2: Population) -> Population:
         )
         # 记录本个体交叉率 cr,供 select 在成功样本上更新 crm.
         trial_cluster.info['cr'] = cross_rate
-        # 传递 mut_tag,供 select 统计对应策略成功/失败并更新 p.
-        trial_cluster.info['mut'] = pop2[i].info.get('mut')
-        # Propagate F for statistics and monitoring of both branches.
+        # Propagate scale_factor_tag, strategy_tag and F so select can update p and fp.
+        trial_cluster.info['scale_factor_tag'] = pop2[i].info.get('scale_factor_tag')
+        trial_cluster.info['strategy_tag'] = pop2[i].info.get('strategy_tag')
         trial_cluster.info['F'] = pop2[i].info.get('F')
 
         temp_clusters.add_cluster(trial_cluster)
@@ -749,15 +751,19 @@ def sphere_cut_splice(
         if not isinstance(relaxed_a, Atoms) or not isinstance(relaxed_b, Atoms):
             raise TypeError("relax must return Atoms when input is Atoms")
 
-        # Propagate mut_tag and F like crossover does.
-        mut_tag = cluster_b.info.get('mut')
-        if mut_tag is not None:
-            relaxed_a.info['mut'] = mut_tag
-            relaxed_b.info['mut'] = mut_tag
+        # Propagate scale_factor_tag and F like crossover does.
+        scale_factor_tag = cluster_b.info.get('scale_factor_tag')
+        if scale_factor_tag is not None:
+            relaxed_a.info['scale_factor_tag'] = scale_factor_tag
+            relaxed_b.info['scale_factor_tag'] = scale_factor_tag
         f_value = cluster_b.info.get('F')
         if f_value is not None:
             relaxed_a.info['F'] = f_value
             relaxed_b.info['F'] = f_value
+        strategy_tag = cluster_b.info.get('strategy_tag')
+        if strategy_tag is not None:
+            relaxed_a.info['strategy_tag'] = strategy_tag
+            relaxed_b.info['strategy_tag'] = strategy_tag
 
         # cr 生命周期透传: 供 select 在成功样本上更新 crm.
         cross_rate = cluster_b.info.get('cr')
@@ -866,13 +872,16 @@ def local_transformation(
         if base_energy is None or base_candidate is None:
             raise ValueError("base energy completion failed in local_transformation")
 
-        # Propagate mut_tag and F through local_transformation.
-        mut_tag = source_pop[i].info.get('mut')
-        if mut_tag is not None:
-            base_candidate.info['mut'] = mut_tag
+        # Propagate scale_factor_tag and F through local_transformation.
+        scale_factor_tag = source_pop[i].info.get('scale_factor_tag')
+        if scale_factor_tag is not None:
+            base_candidate.info['scale_factor_tag'] = scale_factor_tag
         f_value = source_pop[i].info.get('F')
         if f_value is not None:
             base_candidate.info['F'] = f_value
+        strategy_tag = source_pop[i].info.get('strategy_tag')
+        if strategy_tag is not None:
+            base_candidate.info['strategy_tag'] = strategy_tag
 
         # cr 生命周期透传: local_transformation 前后保持交叉率标签不丢失.
         cross_rate = source_pop[i].info.get('cr')
@@ -892,10 +901,12 @@ def local_transformation(
         if energy_perturbed is None:
             raise ValueError("relax result must contain energy for local_transformation")
 
-        if mut_tag is not None:
-            relaxed_perturbed.info['mut'] = mut_tag
+        if scale_factor_tag is not None:
+            relaxed_perturbed.info['scale_factor_tag'] = scale_factor_tag
         if f_value is not None:
             relaxed_perturbed.info['F'] = f_value
+        if strategy_tag is not None:
+            relaxed_perturbed.info['strategy_tag'] = strategy_tag
         if cross_rate is not None:
             relaxed_perturbed.info['cr'] = cross_rate
 
@@ -996,14 +1007,17 @@ def select(
             raise ValueError(f"pop2 is missing energy at index {i}")
         pop2_energy_values.append(float(energy_value))
 
-    # mut_tag 生命周期终点: select 在此消费 mut_tag,用于统计并更新 p.
-    # 选择环节要求 pop2 的 info 含 mut_tag,否则无法按策略统计并更新 p.
+    # scale_factor_tag and strategy_tag are consumed here: scale_factor_tag tracks the F
+    # distribution (Gaussian/Cauchy) for fp, strategy_tag tracks the mutation
+    # strategy (rand/1 or current-to-best/2) for p.
     for i in range(len(pop2_candidates)):
         pop2_candidate = pop2_candidates[i]
         if pop2_candidate is None:
             raise ValueError(f"pop2 candidate missing at index {i}")
-        if pop2_candidate.info.get('mut') is None:
-            raise ValueError(f"pop2 is missing mut_tag in info at index {i}")
+        if pop2_candidate.info.get('scale_factor_tag') is None:
+            raise ValueError(f"pop2 is missing scale_factor_tag in info at index {i}")
+        if pop2_candidate.info.get('strategy_tag') is None:
+            raise ValueError(f"pop2 is missing strategy_tag in info at index {i}")
 
     for i in range(len(pop1_candidates)):
         pop1_candidate = pop1_candidates[i]
@@ -1015,7 +1029,8 @@ def select(
 
         energy1 = pop1_energy_values[i]
         energy2 = pop2_energy_values[i]
-        mut_tag = pop2_candidate.info.get('mut')
+        scale_factor_tag = pop2_candidate.info.get('scale_factor_tag')
+        strategy_tag = pop2_candidate.info.get('strategy_tag')
 
         choose_pop2 = energy2 < energy1
 
@@ -1026,19 +1041,23 @@ def select(
             if current_cr is not None:
                 cr_rec.append(float(current_cr))
                 delta_rec.append(float(energy1 - energy2))
-            if mut_tag == 0:
+            if strategy_tag == 0:
                 ns1 += 1
-                nsg += 1
-            elif mut_tag == 1:
+            elif strategy_tag == 1:
                 ns2 += 1
+            if scale_factor_tag == 0:
+                nsg += 1
+            elif scale_factor_tag == 1:
                 nsc += 1
         else:
             temp_clusters.add_cluster(pop1_candidate)
-            if mut_tag == 0:
+            if strategy_tag == 0:
                 nf1 += 1
-                nfg += 1
-            elif mut_tag == 1:
+            elif strategy_tag == 1:
                 nf2 += 1
+            if scale_factor_tag == 0:
+                nfg += 1
+            elif scale_factor_tag == 1:
                 nfc += 1
 
         # 个体通过选择后计算点群(熊夫利符号); 失败或超时记为 None.
@@ -1051,7 +1070,7 @@ def select(
     if cr_rec and sum(delta_rec) > 0:
         temp_clusters._crm = float(np.average(cr_rec, weights=delta_rec))
 
-    # 更新 p:按 mut_tag 两类策略的成功/失败统计更新选择概率.
+    # Update p from the success/failure counts of the two mutation strategies.
     denominator = ns2 * (ns1 + nf1) + ns1 * (ns2 + nf2)
     if denominator > 0:
         temp_clusters._p = float((ns1 * (ns2 + nf2)) / denominator)
