@@ -50,6 +50,11 @@ python -m sansde run params.json --fg
 
 ```json
 {
+    "EXPORT": {
+      "OMP_NUM_THREADS": "6",
+      "DP_INTRA_OP_PARALLELISM_THREADS": "6",
+      "DP_INTER_OP_PARALLELISM_THREADS": "6"
+    },
     "SCRIPTS": [
       "from ase.calculators.lj import LennardJones",
       "from deepmd.calculator import DP"
@@ -82,6 +87,7 @@ python -m sansde run params.json --fg
 
 Key points:
 
+- `EXPORT` is a dictionary of environment variables applied to the current process before `SCRIPTS`, for example thread limits for DP.
 - `SCRIPTS` is a list of Python snippets executed in order before the other parameters are read; they can import calculators or modify `params`, e.g. `["from ase.calculators.lj import LennardJones"]`.
 - `POTENTIAL` must be an ASE `Calculator`. A string expression is also accepted, but it must evaluate to a calculator; it is evaluated in the module namespace where `DP`, `LennardJones` and any name imported by `SCRIPTS` are available. For a Lennard-Jones test use `"POTENTIAL": "LennardJones(epsilon=0.4443, sigma=2.6367)"`.
 - `USE_ZBL` adds the hiphive ZBL short-range repulsion on top of `POTENTIAL` with range `ZBL_CUTOFF + 2 * ZBL_SKIN`.

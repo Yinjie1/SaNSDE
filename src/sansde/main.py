@@ -4,6 +4,7 @@ from __future__ import annotations
 import csv
 import functools
 import json
+import os
 import time
 from pathlib import Path
 
@@ -50,6 +51,14 @@ def load_config(params_path: Path) -> None:
         print(f"load parameters from {params_path}")
     except FileNotFoundError:
         params = {}
+
+    # Optional environment variables applied to the current process before
+    # SCRIPTS, for example {"OMP_NUM_THREADS": "6"}.
+    EXPORT = params.get('EXPORT', {})
+    if not isinstance(EXPORT, dict):
+        raise TypeError("EXPORT must be a dictionary of environment variables")
+    for name, value in EXPORT.items():
+        os.environ[str(name)] = str(value)
 
     # Optional Python snippets executed in order before any other parameter is
     # read. They can import calculators or modify ``params``, for example:
