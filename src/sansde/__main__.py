@@ -1,10 +1,10 @@
 """Command line entry point for the sansde package.
 
 Usage:
-    sansde --opt params.json            # 默认后台运行, 日志写到 params.log
-    sansde --opt params.json --fg       # 前台运行
+    sansde run params.json            # 默认后台运行, 日志写到 params.log
+    sansde run params.json --fg       # 前台运行
     sansde xyz2vasp params.json       # 参数全部来自 JSON
-    python -m sansde --opt params.json --fg
+    python -m sansde run params.json --fg
 """
 import argparse
 import subprocess
@@ -31,13 +31,17 @@ def main(argv: list[str] | None = None) -> None:
         help="JSON parameter file, e.g. sansde xyz2vasp params.json",
     )
 
-    parser.add_argument(
-        "--opt",
+    runner = subparsers.add_parser(
+        "run",
+        help="run the optimization with a params JSON file",
+    )
+    runner.add_argument(
+        "params",
         type=Path,
         metavar="PARAMS",
-        help="run the optimization with the given params JSON file",
+        help="JSON parameter file, e.g. sansde run params.json",
     )
-    parser.add_argument(
+    runner.add_argument(
         "--fg",
         "--foreground",
         dest="foreground",
@@ -50,24 +54,24 @@ def main(argv: list[str] | None = None) -> None:
         write_vasp_tasks(args.json)
         return
 
-    if args.opt is None:
-        parser.error("missing --opt PARAMS")
+    if args.command != "run":
+        parser.error("missing command")
 
     if args.foreground:
         # 显式前台: 直接在当前进程里跑, 输出留在终端.
-        run(args.opt)
+        run(args.params)
         return
 
     # 默认后台: 重新拉起一个脱离当前会话的子进程.
     # 子进程显式带 --fg, 避免再次进入后台分支.
-    log_path = args.opt.with_suffix(".log")
+    log_path = args.params.with_suffix(".log")
     command = [
         sys.executable,
         "-u",  # 日志不缓冲, 便于 tail 实时查看
         "-m",
         "sansde",
-        "--opt",
-        str(args.opt),
+        "run",
+        str(args.params),
         "--fg",
     ]
     with log_path.open("ab") as log_file:
