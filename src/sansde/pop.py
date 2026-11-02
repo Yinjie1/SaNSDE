@@ -244,6 +244,16 @@ class Population(MultiAtoms):
         self._p: float = 0.5
         self._crm: float = 0.5
         self._candidate: list[Atoms] = []
+        self._success_counts: dict[str, int] = {
+            'ns1': 0,
+            'ns2': 0,
+            'nf1': 0,
+            'nf2': 0,
+            'nsg': 0,
+            'nsc': 0,
+            'nfg': 0,
+            'nfc': 0,
+        }
 
     @property
     def best_cluster(self) -> Atoms:
@@ -285,6 +295,35 @@ class Population(MultiAtoms):
     @property
     def crm(self) -> float:
         return self._crm
+
+    def update_adaptive(self, adapt_fp: bool = True) -> None:
+        """Update p and fp from the accumulated success counts.
+
+        Counts are accumulated by :func:`~sansde.operators.select` over a
+        learning period and reset after this call.
+
+        Parameters
+        ----------
+        adapt_fp : bool, optional
+            If True (default), update fp from the Gaussian/Cauchy counts.
+            If False, fp is kept unchanged.
+        """
+        counts = self._success_counts
+        ns1, ns2 = counts['ns1'], counts['ns2']
+        nf1, nf2 = counts['nf1'], counts['nf2']
+        denominator = ns2 * (ns1 + nf1) + ns1 * (ns2 + nf2)
+        if denominator > 0:
+            self._p = float((ns1 * (ns2 + nf2)) / denominator)
+
+        if adapt_fp:
+            nsg, nsc = counts['nsg'], counts['nsc']
+            nfg, nfc = counts['nfg'], counts['nfc']
+            fp_denominator = nsc * (nsg + nfg) + nsg * (nsc + nfc)
+            if fp_denominator > 0:
+                self._fp = float((nsg * (nsc + nfc)) / fp_denominator)
+
+        for key in counts:
+            counts[key] = 0
 
     @property
     def symbol(self) -> str | None:
@@ -353,13 +392,14 @@ class Population(MultiAtoms):
         """Return an independent copy of this population and its clusters.
 
         Clusters are copied with ``Atoms.copy()``, so ASE calculators are not
-        copied. The population fp/p/crm, cluster coordinates, info, arrays and
-        the candidate list are all preserved.
+        copied. The population fp/p/crm, accumulated success counts, cluster
+        coordinates, info, arrays and the candidate list are all preserved.
         """
         new_pop = Population(symbol=self._symbol)
         new_pop._fp = self._fp
         new_pop._p = self._p
         new_pop._crm = self._crm
+        new_pop._success_counts = self._success_counts.copy()
         # Copy the list directly to avoid add_cluster translating the cluster
         # center of mass again.
         new_pop._clusters = [cluster.copy() for cluster in self._clusters]

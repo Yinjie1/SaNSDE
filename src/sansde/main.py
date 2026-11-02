@@ -41,7 +41,7 @@ def load_config(params_path: Path) -> None:
     global pop_size, generations, stagnation_limit, ediff
     global similarity_reset, similarity_energy_reset, candidate_size
     global use_zbl, ZBL_CUTOFF, ZBL_SKIN
-    global fmax, steps, potential, relax, ROUND
+    global fmax, steps, potential, relax, ROUND, FP_ADAPTIVE, LEARNING_PERIOD
 
     try:
         with params_path.open('r', encoding='utf-8') as f:
@@ -104,6 +104,8 @@ def load_config(params_path: Path) -> None:
     similarity_reset = float(params.get('S_STRICT', 0.95))
     similarity_energy_reset = float(params.get('S_LOOSE', 0.98))
     candidate_size = int(params.get('CAND_SIZE', 2))
+    FP_ADAPTIVE = bool(params.get('FP_ADAPTIVE', True))
+    LEARNING_PERIOD = int(params.get('LEARNING_PERIOD', 50))
 
     # 势能面
     # use_zbl=True 时在 POTENTIAL 上叠加 hiphive 的 ZBL 短程排斥
@@ -153,6 +155,8 @@ def load_config(params_path: Path) -> None:
 stats_path = Path("opt_stat.csv")
 run_start: float | None = None
 ROUND: int = 1
+FP_ADAPTIVE: bool = True
+LEARNING_PERIOD: int = 50
 
 
 def append_stats_row(
@@ -330,6 +334,9 @@ def main(atom: int) -> None:
 
         # 3) 选择下一代并输出每代指标.
         pop_next = select(pop, pop_trans, relax=relax)
+        # p and fp are updated only when the learning period ends.
+        if LEARNING_PERIOD > 0 and gen % LEARNING_PERIOD == 0:
+            pop_next.update_adaptive(adapt_fp=FP_ADAPTIVE)
 
         energy_values = [float(e) for e in pop_next.energies if e is not None]
         if not energy_values:

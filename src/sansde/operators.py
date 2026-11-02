@@ -922,7 +922,7 @@ def select(
     relax: Callable[[Population | Atoms], Population | Atoms],
     pg_tolerance: float = 0.3,
 ) -> Population:
-    """对原种群和候选种群执行选择并更新自适应参数.
+    """Select the next generation and accumulate adaptive statistics.
 
     被选中的个体在进入下一代时计算点群(PG, 熊夫利符号);
     若 pymatgen 不可用或点群分析失败, 对应个体 PG 记为 None.
@@ -947,6 +947,7 @@ def select(
     temp_clusters._fp = pop1.fp
     temp_clusters._p = pop1.p
     temp_clusters._crm = pop1.crm
+    temp_clusters._success_counts = pop1._success_counts.copy()
     temp_clusters._candidate = [atoms.copy() for atoms in pop1.candidate]
 
     # pop1: 先读取现有能量,仅对缺失能量个体做 relax 补全.
@@ -1070,14 +1071,15 @@ def select(
     if cr_rec and sum(delta_rec) > 0:
         temp_clusters._crm = float(np.average(cr_rec, weights=delta_rec))
 
-    # Update p from the success/failure counts of the two mutation strategies.
-    denominator = ns2 * (ns1 + nf1) + ns1 * (ns2 + nf2)
-    if denominator > 0:
-        temp_clusters._p = float((ns1 * (ns2 + nf2)) / denominator)
-
-    # Update fp from the success/failure counts of the Gaussian and Cauchy branches.
-    fp_denominator = nsc * (nsg + nfg) + nsg * (nsc + nfc)
-    if fp_denominator > 0:
-        temp_clusters._fp = float((nsg * (nsc + nfc)) / fp_denominator)
+    # Accumulate success counts for the learning period. p and fp are updated
+    # by Population.update_adaptive() only when the learning period ends.
+    temp_clusters._success_counts['ns1'] += ns1
+    temp_clusters._success_counts['ns2'] += ns2
+    temp_clusters._success_counts['nf1'] += nf1
+    temp_clusters._success_counts['nf2'] += nf2
+    temp_clusters._success_counts['nsg'] += nsg
+    temp_clusters._success_counts['nsc'] += nsc
+    temp_clusters._success_counts['nfg'] += nfg
+    temp_clusters._success_counts['nfc'] += nfc
 
     return temp_clusters
