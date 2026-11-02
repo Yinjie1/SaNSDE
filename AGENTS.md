@@ -40,6 +40,9 @@
   - Returns
   - Raises (if applicable)
   - Examples (when helpful)
+- If a function returns `None`, do not add a `Returns` section.
+- For extremely simple functions, a single-line summary docstring is enough;
+  do not expand it into structured sections.
 - Class docstrings should include key Attributes.
 - Use ASCII punctuation in comments and docstrings in the main program.
   Do not use full-width or other Unicode punctuation marks.
