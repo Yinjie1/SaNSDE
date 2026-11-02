@@ -38,6 +38,7 @@ class MultiAtoms:
     >>> multi.add_cluster(cluster)
     >>> multi[0]
     >>> multi[::2]
+    >>> cluster in multi
     >>> multi[0] = cluster
     >>> del multi[0]
     >>> multi.symbols
@@ -75,6 +76,9 @@ class MultiAtoms:
 
     def __delitem__(self, index: int | slice) -> None:
         del self._clusters[index]
+
+    def __contains__(self, item: Atoms) -> bool:
+        return item in self._clusters
 
     @overload
     def __setitem__(self, index: int, value: Atoms) -> None: ...
