@@ -63,23 +63,23 @@ def load_config(params_path: Path) -> None:
         exec(script, globals())  # noqa: S102, user-provided calculator setup
 
     # 体系配置
-    element = str(params.get('element', 'Au'))
-    a = float(params.get('a', 2.88))
-    atom_min = int(params.get('atom_min', 3))
-    atom_max = int(params.get('atom_max', 5))
+    element = str(params.get('ELEMENT', 'Au'))
+    a = float(params.get('LATTICE_CONST', 2.88))
+    atom_min = int(params.get('MIN_ATOM', 3))
+    atom_max = int(params.get('MAX_ATOM', 5))
 
     # IO
-    init_dir = Path(params.get('init_dir', 'init'))
-    init_pop_dir = Path(params.get('init_pop_dir', '')) # 非空时忽略 init_dir
-    best_dir = Path(params.get('best_dir', 'best'))
-    keep_snapshots = int(params.get('keep_snapshots', 1))
-    pop_dir = Path(params.get('pop_dir', 'Populations'))
+    init_dir = Path(params.get('INIT_DIR', 'init'))
+    init_pop_dir = Path(params.get('INIT_POP_DIR', '')) # 非空时忽略 init_dir
+    best_dir = Path(params.get('BEST_DIR', 'best'))
+    keep_snapshots = int(params.get('KEEP_SNAPSHOTS', 1))
+    pop_dir = Path(params.get('POP_DIR', 'Populations'))
 
     # 优化轮数; ROUND > 1 时 init_dir/best_dir 按轮次自动生成, 忽略自定义值.
     ROUND = int(params.get('ROUND', 1))
     if ROUND > 1 and (
-        'init_dir' in params
-        or 'best_dir' in params
+        'INIT_DIR' in params
+        or 'BEST_DIR' in params
         or init_pop_dir != Path('.')
     ):
         print(
@@ -88,13 +88,13 @@ def load_config(params_path: Path) -> None:
         )
 
     # 全局优化设置
-    pop_size = int(params.get('pop_size', 12))
-    generations = int(params.get('generations', 500))
-    stagnation_limit = int(params.get('stagnation_limit', 10))
-    ediff = float(params.get('ediff', 1e-5))
-    similarity_reset = float(params.get('similarity_reset', 0.95))
-    similarity_energy_reset = float(params.get('similarity_energy_reset', 0.98))
-    candidate_size = int(params.get('candidate_size', 2))
+    pop_size = int(params.get('POP_SIZE', 12))
+    generations = int(params.get('MAX_GEN', 500))
+    stagnation_limit = int(params.get('CONV_STEPS', 10))
+    ediff = float(params.get('EDIFF', 1e-5))
+    similarity_reset = float(params.get('S_STRICT', 0.95))
+    similarity_energy_reset = float(params.get('S_LOOSE', 0.98))
+    candidate_size = int(params.get('CAND_SIZE', 2))
 
     # 势能面
     # use_zbl=True 时在 POTENTIAL 上叠加 hiphive 的 ZBL 短程排斥
@@ -110,7 +110,7 @@ def load_config(params_path: Path) -> None:
             f"evaluates to one, got {type(potential_spec).__name__}"
         )
     POTENTIAL: Calculator = potential_spec
-    use_zbl = bool(params.get('use_zbl', True))
+    use_zbl = bool(params.get('USE_ZBL', True))
     ZBL_CUTOFF = float(params.get('ZBL_CUTOFF', 1.5))
     ZBL_SKIN = float(params.get('ZBL_SKIN', 0))
     if use_zbl and ZBLCalculator is None:
@@ -118,8 +118,8 @@ def load_config(params_path: Path) -> None:
         use_zbl = False
 
     # 优化器参数: 收敛判据与最大优化步数
-    fmax = float(params.get('fmax', 0.05))
-    steps = int(params.get('steps', 300))
+    fmax = float(params.get('RELAX_FMAX', 0.05))
+    steps = int(params.get('RELAX_STEPS', 300))
 
     # 输出全部初始化参数, 便于确认本次运行配置.
     print("initialized parameters:")
