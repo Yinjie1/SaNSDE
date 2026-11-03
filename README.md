@@ -66,6 +66,7 @@ python -m sansde run params.json --fg
     "ROUND": 5,
     "INIT_DIR": "init",
     "INIT_POP_DIR": "",
+    "CONTINUE": false,
     "BEST_DIR": "best",
     "KEEP_SNAPSHOTS": 1,
     "POP_DIR": "Populations",
@@ -97,6 +98,7 @@ Key points:
 - `USE_ZBL` adds the hiphive ZBL short-range repulsion on top of `POTENTIAL` with range `ZBL_CUTOFF + 2 * ZBL_SKIN`.
 - `ROUND` is the number of optimization rounds. With `ROUND > 1`, custom `INIT_DIR`, `BEST_DIR` and `INIT_POP_DIR` are ignored: round 1 reads `init/` and writes `best1/`, round `r` reads `best{r-1}/` and writes `best{r}/`.
 - `INIT_POP_DIR`, when non-empty, loads `{element}{atom}*.json` population snapshots instead of `INIT_DIR`.
+- `CONTINUE` (default `false`): with `INIT_POP_DIR`, only the lowest-energy structure is imported and the rest of the population is generated randomly; set it to `true` to import the whole saved population and continue the run.
 - `LEARNING_PERIOD` is the number of generations over which mutation success counts are accumulated; `p` and `fp` are updated only at the end of each period. With `0` no adaptation is performed and both stay at 0.5. `FP_ADAPTIVE` (default `true`) can keep `p` adaptive while freezing `fp` at 0.5.
 - `CR_PERIOD` is the number of generations a set of individual crossover rates is kept; the rates are resampled from `N(CRm, 0.1)` every `CR_PERIOD` generations (5 in SaDE). With `0` the rates are never resampled.
 - `CRM_PERIOD` is the number of generations over which successful crossover rates are accumulated; `CRm` is updated as their fitness-improvement-weighted mean every `CRM_PERIOD` generations (25 in SaDE). With `0` no update is performed and `CRm` stays at 0.5.
@@ -122,6 +124,9 @@ Outputs are written to the current directory:
     "frame": 3,
     "similarity": [0.99, 0.98],
     "cell": [15.0, 15.0, 15.0, 90.0, 90.0, 90.0],
+    "large_cluster_cell": [20.0, 20.0, 20.0, 90.0, 90.0, 90.0],
+    "large_cluster_atom_count": 40,
+    "large_cluster_unique": true,
     "output": "relax.Au",
     "compress": true
 }
@@ -131,7 +136,10 @@ Outputs are written to the current directory:
 - `template`: VASP input template directory. Default `input`.
 - `frame`: frames read from each xyz file. Default `3`.
 - `similarity`: `[s, s_c1]` deduplication thresholds. Default `[0.99, 0.98]`.
-- `cell`: six cell parameters `(a, b, c, alpha, beta, gamma)`. When omitted, clusters with at least 40 atoms use a 20 A cube, smaller clusters keep their own cell, and clusters without a cell use a 15 A cube.
+- `cell`: six cell parameters `(a, b, c, alpha, beta, gamma)`. It applies to clusters smaller than `large_cluster_atom_count`; larger clusters use `large_cluster_cell` (which takes precedence over `cell`). Smaller clusters without a cell use a 15 A cube.
+- `large_cluster_cell`: six cell parameters used for clusters with at least `large_cluster_atom_count` atoms; it takes precedence over `cell`. Default `[20, 20, 20, 90, 90, 90]`.
+- `large_cluster_atom_count`: atom-count threshold for `large_cluster_cell` and `large_cluster_unique`. Default `40`.
+- `large_cluster_unique`: if `true` (default), large clusters are made unique per chemical formula, keeping the lowest-energy one.
 - `output`: output name. Default `relax.<elements>`.
 - `compress`: pack the task directories into `<output>.tgz` and remove the directory.
 

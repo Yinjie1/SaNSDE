@@ -45,6 +45,7 @@ def merge_multi_atoms(
     s: float = 0.99,
     s_c1: float = 0.98,
     large_unique: bool = LARGE_CLUSTER_UNIQUE,
+    large_atom_count: int = LARGE_CLUSTER_ATOM_COUNT,
 ) -> MultiAtoms:
     """Merge MultiAtoms containers and remove duplicates.
 
@@ -57,9 +58,12 @@ def merge_multi_atoms(
     s_c1 : float, optional
         Similarity threshold for C1 point groups. Default is 0.98.
     large_unique : bool, optional
-        If True, clusters with at least ``LARGE_CLUSTER_ATOM_COUNT`` atoms are
-        made unique per chemical formula, keeping the lowest-energy one.
+        If True, clusters with at least ``large_atom_count`` atoms are made
+        unique per chemical formula, keeping the lowest-energy one.
         Default is ``LARGE_CLUSTER_UNIQUE``.
+    large_atom_count : int, optional
+        Atom count threshold for large-cluster handling. Default is
+        ``LARGE_CLUSTER_ATOM_COUNT``.
 
     Returns
     -------
@@ -77,7 +81,7 @@ def merge_multi_atoms(
     unique = Clusters()
     remaining = MultiAtoms()
     for cluster in merged:
-        if len(cluster) < LARGE_CLUSTER_ATOM_COUNT:
+        if len(cluster) < large_atom_count:
             remaining.add_cluster(cluster)
             continue
         index = unique.add_cluster(cluster, sort=False)
@@ -100,6 +104,7 @@ def merge_xyz_directories(
     s: float = 0.99,
     s_c1: float = 0.98,
     large_unique: bool = LARGE_CLUSTER_UNIQUE,
+    large_atom_count: int = LARGE_CLUSTER_ATOM_COUNT,
 ) -> MultiAtoms:
     """Read xyz directories, deduplicate them, and return a MultiAtoms.
 
@@ -118,9 +123,12 @@ def merge_xyz_directories(
     s_c1 : float, optional
         Similarity threshold for C1 point groups. Default is 0.98.
     large_unique : bool, optional
-        If True, clusters with at least ``LARGE_CLUSTER_ATOM_COUNT`` atoms are
-        made unique per chemical formula, keeping the lowest-energy one.
+        If True, clusters with at least ``large_atom_count`` atoms are made
+        unique per chemical formula, keeping the lowest-energy one.
         Default is ``LARGE_CLUSTER_UNIQUE``.
+    large_atom_count : int, optional
+        Atom count threshold for large-cluster handling. Default is
+        ``LARGE_CLUSTER_ATOM_COUNT``.
 
     Returns
     -------
@@ -163,6 +171,7 @@ def merge_xyz_directories(
         s=s,
         s_c1=s_c1,
         large_unique=large_unique,
+        large_atom_count=large_atom_count,
     )
 
 
@@ -172,24 +181,24 @@ def _write_poscar(
     cell: Sequence[float] | None,
     large_cell: Sequence[float],
     default_cell: Sequence[float],
+    large_atom_count: int,
 ) -> None:
     """Write a cluster as a POSCAR.
 
     ``cell``, ``large_cell`` and ``default_cell`` are six-element sequences
     ``(a, b, c, alpha, beta, gamma)`` giving cell vector lengths in Angstrom
-    followed by the angles between them in degrees. When ``cell`` is given it
-    overrides the cluster cell. Otherwise clusters with at least
-    ``LARGE_CLUSTER_ATOM_COUNT`` atoms use ``large_cell``, while smaller
-    clusters keep their own cell; if a small cluster has no cell (zero
-    volume), ``default_cell`` is used. Atoms are sorted by chemical symbol so
-    that each species forms a single contiguous block, as required for a
-    matching concatenated POTCAR.
+    followed by the angles between them in degrees. Clusters with at least
+    ``large_atom_count`` atoms always use ``large_cell``. Smaller clusters use
+    ``cell`` when given, otherwise they keep their own cell; if a small
+    cluster has no cell (zero volume), ``default_cell`` is used. Atoms are
+    sorted by chemical symbol so that each species forms a single contiguous
+    block, as required for a matching concatenated POTCAR.
     """
     atoms = cluster.copy()
-    if cell is not None:
-        atoms.cell = list(cell)
-    elif len(atoms) >= LARGE_CLUSTER_ATOM_COUNT:
+    if len(atoms) >= large_atom_count:
         atoms.cell = list(large_cell)
+    elif cell is not None:
+        atoms.cell = list(cell)
     elif atoms.cell.volume == 0.0:
         atoms.cell = list(default_cell)
     atoms.pbc = True
@@ -288,12 +297,19 @@ def write_vasp_tasks(params: str | Path) -> list[Path]:
             "frame": 3,
             "similarity": [0.99, 0.98],
             "cell": null,
+            "large_cluster_cell": [20.0, 20.0, 20.0, 90.0, 90.0, 90.0],
+            "large_cluster_atom_count": 40,
+            "large_cluster_unique": true,
             "output": null,
             "compress": false
         }
 
     ``cell`` is six values ``(a, b, c, alpha, beta, gamma)`` and overrides the
-    cluster cell when given. ``output`` defaults to ``relax.<elements>``.
+    cell of clusters smaller than ``large_cluster_atom_count``.
+    ``large_cluster_cell`` sets the cell used for clusters with at least
+    ``large_cluster_atom_count`` atoms (it takes precedence over ``cell``),
+    and ``large_cluster_unique`` makes those clusters unique per formula.
+    ``output`` defaults to ``relax.<elements>``.
     """
     settings: dict[str, Any] = json.loads(Path(params).read_text())
     if not isinstance(settings, dict):
@@ -315,12 +331,26 @@ def write_vasp_tasks(params: str | Path) -> list[Path]:
     )
     compress = bool(settings.get("compress", False))
     template_path = Path(str(settings.get("template", "input")))
+    large_cell_value = settings.get("large_cluster_cell")
+    large_cell = (
+        [float(value) for value in large_cell_value]
+        if large_cell_value is not None
+        else list(LARGE_CLUSTER_CELL)
+    )
+    large_atom_count = int(
+        settings.get("large_cluster_atom_count", LARGE_CLUSTER_ATOM_COUNT)
+    )
+    large_unique = bool(
+        settings.get("large_cluster_unique", LARGE_CLUSTER_UNIQUE)
+    )
 
     clusters = merge_xyz_directories(
         input_dirs,
         n=frame,
         s=s,
         s_c1=s_c1,
+        large_unique=large_unique,
+        large_atom_count=large_atom_count,
     )
     print(f"loaded {len(clusters)} clusters from {len(input_dirs)} input path(s)")
 
@@ -397,8 +427,9 @@ def write_vasp_tasks(params: str | Path) -> list[Path]:
             cluster,
             task_dir / "POSCAR",
             cell,
-            LARGE_CLUSTER_CELL,
+            large_cell,
             DEFAULT_CELL,
+            large_atom_count,
         )
         _copy_template_files(template_path, task_dir)
         cores = 12 if len(cluster) <= 40 else 20
