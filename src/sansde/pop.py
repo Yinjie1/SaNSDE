@@ -510,25 +510,11 @@ class Population(MultiAtoms):
             except Exception as e:  # noqa: BLE001
                 print(f"Warning: Failed to write extxyz file {xyz_path}: {e}")
         
-        min_e = None
-        min_idx = None
-        
-        valid_energies = [(i, e) for i, e in enumerate(self.energies) if e is not None]
-        if valid_energies:
-            min_idx, min_e = min(valid_energies, key=lambda x: x[1])
-            if isinstance(min_e, np.generic):
-                min_e = min_e.item()
-
         summary_data = {
             "date": datetime.now().strftime('%Y%m%d%H%M%S'),
             "symbol": self.symbol,
             "size": len(self),
-            "fp": self.fp,
-            "p": self.p,
-            "CRm": self.crm,
             "info": self.info.copy(),
-            "min_energy": min_e,
-            "min_energy_index": min_idx,
             # Each cluster is stored directly in the list in ASE JSON format (Atoms).
             "clusters": self._clusters,
             "candidate": self._candidate,
