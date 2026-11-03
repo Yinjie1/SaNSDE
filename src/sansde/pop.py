@@ -4,7 +4,7 @@ python 3.13.12
 from collections.abc import Iterable, Iterator
 from datetime import datetime
 from pathlib import Path
-from typing import Self, overload
+from typing import Any, Self, overload
 
 import numpy as np
 from ase import Atoms
@@ -31,6 +31,8 @@ class MultiAtoms:
         Forces read from ``cluster.arrays['forces']``.
     PGs : list[str | None]
         Point groups read from ``cluster.info['PG']``.
+    info : dict[str, Any]
+        Container-level metadata, copied together with the container.
 
     Examples
     --------
@@ -46,6 +48,7 @@ class MultiAtoms:
 
     def __init__(self) -> None:
         self._clusters: list[Atoms] = []
+        self.info: dict[str, Any] = {}
 
     @property
     def clusters(self) -> list[Atoms]:
@@ -124,9 +127,11 @@ class MultiAtoms:
         """Return an independent copy of this cluster container.
 
         Clusters are copied with ``Atoms.copy()``; calculators are not copied.
+        The container ``info`` dictionary is also copied.
         """
         new_atoms = type(self)()
         new_atoms._clusters = [cluster.copy() for cluster in self._clusters]
+        new_atoms.info = self.info.copy()
         return new_atoms
 
     def add_cluster(self, cluster: Atoms) -> None:
@@ -240,11 +245,11 @@ class Population(MultiAtoms):
     def __init__(self, symbol: str | None = None):
         super().__init__()
         self._symbol: str | None = symbol
-        self._fp: float = 0.5
-        self._p: float = 0.5
-        self._crm: float = 0.5
         self._candidate: list[Atoms] = []
-        self._success_counts: dict[str, int] = {
+        self.info.update({
+            'fp': 0.5,
+            'p': 0.5,
+            'crm': 0.5,
             'ns1': 0,
             'ns2': 0,
             'nf1': 0,
@@ -253,7 +258,7 @@ class Population(MultiAtoms):
             'nsc': 0,
             'nfg': 0,
             'nfc': 0,
-        }
+        })
 
     @property
     def best_cluster(self) -> Atoms:
@@ -286,15 +291,15 @@ class Population(MultiAtoms):
 
     @property
     def fp(self) -> float:
-        return self._fp
+        return float(self.info['fp'])
 
     @property
     def p(self) -> float:
-        return self._p
+        return float(self.info['p'])
 
     @property
     def crm(self) -> float:
-        return self._crm
+        return float(self.info['crm'])
 
     def update_adaptive(self, adapt_fp: bool = True) -> None:
         """Update p and fp from the accumulated success counts.
@@ -308,22 +313,22 @@ class Population(MultiAtoms):
             If True (default), update fp from the Gaussian/Cauchy counts.
             If False, fp is kept unchanged.
         """
-        counts = self._success_counts
+        counts = self.info
         ns1, ns2 = counts['ns1'], counts['ns2']
         nf1, nf2 = counts['nf1'], counts['nf2']
         denominator = ns2 * (ns1 + nf1) + ns1 * (ns2 + nf2)
         if denominator > 0:
-            self._p = float((ns1 * (ns2 + nf2)) / denominator)
+            self.info['p'] = float((ns1 * (ns2 + nf2)) / denominator)
 
         if adapt_fp:
             nsg, nsc = counts['nsg'], counts['nsc']
             nfg, nfc = counts['nfg'], counts['nfc']
             fp_denominator = nsc * (nsg + nfg) + nsg * (nsc + nfc)
             if fp_denominator > 0:
-                self._fp = float((nsg * (nsc + nfc)) / fp_denominator)
+                self.info['fp'] = float((nsg * (nsc + nfc)) / fp_denominator)
 
-        for key in counts:
-            counts[key] = 0
+        for key in ('ns1', 'ns2', 'nf1', 'nf2', 'nsg', 'nsc', 'nfg', 'nfc'):
+            self.info[key] = 0
 
     @property
     def symbol(self) -> str | None:
@@ -350,9 +355,7 @@ class Population(MultiAtoms):
     def __getitem__(self, index: int | slice) -> Atoms | Self:
         if isinstance(index, slice):
             sub_pop = Population(symbol=self._symbol)
-            sub_pop._fp = self._fp
-            sub_pop._p = self._p
-            sub_pop._crm = self._crm
+            sub_pop.info = self.info.copy()
             for cluster in self._clusters[index]:
                 sub_pop.add_cluster(cluster)
             return sub_pop # type: ignore
@@ -396,10 +399,7 @@ class Population(MultiAtoms):
         coordinates, info, arrays and the candidate list are all preserved.
         """
         new_pop = Population(symbol=self._symbol)
-        new_pop._fp = self._fp
-        new_pop._p = self._p
-        new_pop._crm = self._crm
-        new_pop._success_counts = self._success_counts.copy()
+        new_pop.info = self.info.copy()
         # Copy the list directly to avoid add_cluster translating the cluster
         # center of mass again.
         new_pop._clusters = [cluster.copy() for cluster in self._clusters]
@@ -523,6 +523,7 @@ class Population(MultiAtoms):
             "fp": self.fp,
             "p": self.p,
             "CRm": self.crm,
+            "info": self.info.copy(),
             "min_energy": min_e,
             "min_energy_index": min_idx,
             # Each cluster is stored directly in the list in ASE JSON format (Atoms).
@@ -685,19 +686,24 @@ class Population(MultiAtoms):
             print(f"Warning: JSON symbol ({data.get('symbol')}) does not match population symbol ({self._symbol})")
             # Proceeding anyway, but this is a potential issue if user intends strict type checking
 
+        # Restore the container info (adaptive parameters and success counts).
+        info_data = data.get('info')
+        if isinstance(info_data, dict):
+            self.info.update(info_data)
+
         # Load adaptive parameters if present; keep current values when missing.
         fp_value = data.get('fp')
         p_value = data.get('p')
         crm_value = data.get('CRm')
         if fp_value is not None:
-            self._fp = float(fp_value)
+            self.info['fp'] = float(fp_value)
         if p_value is not None:
-            self._p = float(p_value)
+            self.info['p'] = float(p_value)
         if crm_value is not None:
-            self._crm = float(crm_value)
+            self.info['crm'] = float(crm_value)
 
         # Import any extra attributes beyond the preset ones
-        preset_keys = {'symbol', 'fp', 'p', 'CRm', 'clusters', 'candidate'}
+        preset_keys = {'symbol', 'fp', 'p', 'CRm', 'info', 'clusters', 'candidate'}
         for key, value in data.items():
             if key not in preset_keys:
                 setattr(self, key, value)

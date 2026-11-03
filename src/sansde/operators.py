@@ -595,9 +595,7 @@ def crossover(pop1: Population, pop2: Population) -> Population:
         raise ValueError("Population sizes must match for crossover")
 
     temp_clusters = Population(symbol=pop1.symbol)
-    temp_clusters._fp = pop1.fp
-    temp_clusters._p = pop1.p
-    temp_clusters._crm = pop1.crm
+    temp_clusters.info = pop1.info.copy()
 
     for i in range(len(pop1)):
         # 采样当前个体交叉率,并裁剪到 [0, 1].
@@ -675,9 +673,7 @@ def sphere_cut_splice(
         raise ValueError("r must be in (0, 1]")
 
     temp_clusters = Population(symbol=pop1.symbol)
-    temp_clusters._fp = pop1.fp
-    temp_clusters._p = pop1.p
-    temp_clusters._crm = pop1.crm
+    temp_clusters.info = pop1.info.copy()
 
     if relax is None:
         raise ValueError("sphere_cut_splice requires explicit relax callable")
@@ -843,9 +839,7 @@ def local_transformation(
 
     source_pop = pop
     output_pop = Population(symbol=source_pop.symbol)
-    output_pop._fp = source_pop.fp
-    output_pop._p = source_pop.p
-    output_pop._crm = source_pop.crm
+    output_pop.info = source_pop.info.copy()
 
     base_energy_values: list[float | None] = source_pop.energies.copy()
     base_candidates: list[Atoms | None] = [None] * len(source_pop)
@@ -944,10 +938,7 @@ def select(
         raise ValueError("Population sizes must match for selection")
 
     temp_clusters = Population(symbol=pop1.symbol)
-    temp_clusters._fp = pop1.fp
-    temp_clusters._p = pop1.p
-    temp_clusters._crm = pop1.crm
-    temp_clusters._success_counts = pop1._success_counts.copy()
+    temp_clusters.info = pop1.info.copy()
     temp_clusters._candidate = [atoms.copy() for atoms in pop1.candidate]
 
     # pop1: 先读取现有能量,仅对缺失能量个体做 relax 补全.
@@ -1069,17 +1060,17 @@ def select(
 
     # 更新 crm:使用成功个体的 cr 按能量改变量加权平均.
     if cr_rec and sum(delta_rec) > 0:
-        temp_clusters._crm = float(np.average(cr_rec, weights=delta_rec))
+        temp_clusters.info['crm'] = float(np.average(cr_rec, weights=delta_rec))
 
     # Accumulate success counts for the learning period. p and fp are updated
     # by Population.update_adaptive() only when the learning period ends.
-    temp_clusters._success_counts['ns1'] += ns1
-    temp_clusters._success_counts['ns2'] += ns2
-    temp_clusters._success_counts['nf1'] += nf1
-    temp_clusters._success_counts['nf2'] += nf2
-    temp_clusters._success_counts['nsg'] += nsg
-    temp_clusters._success_counts['nsc'] += nsc
-    temp_clusters._success_counts['nfg'] += nfg
-    temp_clusters._success_counts['nfc'] += nfc
+    temp_clusters.info['ns1'] += ns1
+    temp_clusters.info['ns2'] += ns2
+    temp_clusters.info['nf1'] += nf1
+    temp_clusters.info['nf2'] += nf2
+    temp_clusters.info['nsg'] += nsg
+    temp_clusters.info['nsc'] += nsc
+    temp_clusters.info['nfg'] += nfg
+    temp_clusters.info['nfc'] += nfc
 
     return temp_clusters
