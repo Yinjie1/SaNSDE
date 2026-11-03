@@ -644,7 +644,7 @@ class Population(MultiAtoms):
         self,
         filename: str | Path,
         confirm: bool = False,
-        cont: bool = False,
+        optimal_only: bool = False,
     ):
         """Import population data from a JSON file.
 
@@ -661,10 +661,11 @@ class Population(MultiAtoms):
         confirm : bool, optional
             Whether to confirm overwriting the current population data.
             Default False.
-        cont : bool, optional
-            If True, only the first cluster of the population list is imported,
-            while the candidate list, info and other metadata are read fully.
-            Default False.
+        optimal_only : bool, optional
+            If True, only the lowest-energy cluster of the population
+            list is imported, while the candidate list, info and other
+            metadata are read fully. If False, the whole population
+            list is imported.
         """
         json_path = Path(filename)
         if not json_path.is_file():
@@ -723,8 +724,6 @@ class Population(MultiAtoms):
         ]
 
         clusters_data = data.get('clusters', [])
-        if cont:
-            clusters_data = clusters_data[:1]        
         for c_data in clusters_data:
             if isinstance(c_data, Atoms):
                 # ASE JSON snapshot: energy/point group are in info, forces are in
@@ -763,6 +762,9 @@ class Population(MultiAtoms):
                 
             except Exception as e:  # noqa: BLE001
                 print(f"Error loading cluster from JSON: {e}")
+
+        if optimal_only:
+            self._clusters = [self.best_cluster]
 
 
 class Clusters(MultiAtoms):
