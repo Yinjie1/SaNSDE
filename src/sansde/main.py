@@ -432,7 +432,8 @@ def main(atom: int) -> None:
             for f in pop_dir.glob(f"{element}{atom}_gen{old}*.json"):
                 f.unlink()
 
-        if stagnation_count >= stagnation_limit:
+        # CONV_STEPS=0 means no early stopping: run until MAX_GEN.
+        if stagnation_limit > 0 and stagnation_count >= stagnation_limit:
             sys_elapsed = time.perf_counter() - system_start
             print(
                 f"atom={atom} gen={gen:03d} converged=True"

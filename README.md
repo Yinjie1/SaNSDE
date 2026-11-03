@@ -100,6 +100,7 @@ Key points:
 - `LEARNING_PERIOD` is the number of generations over which mutation success counts are accumulated; `p` and `fp` are updated only at the end of each period. With `0` no adaptation is performed and both stay at 0.5. `FP_ADAPTIVE` (default `true`) can keep `p` adaptive while freezing `fp` at 0.5.
 - `CR_PERIOD` is the number of generations a set of individual crossover rates is kept; the rates are resampled from `N(CRm, 0.1)` every `CR_PERIOD` generations (5 in SaDE). With `0` the rates are never resampled.
 - `CRM_PERIOD` is the number of generations over which successful crossover rates are accumulated; `CRm` is updated as their fitness-improvement-weighted mean every `CRM_PERIOD` generations (25 in SaDE). With `0` no update is performed and `CRm` stays at 0.5.
+- `CONV_STEPS` is the number of stagnant generations that triggers early stopping. With `0` no early stopping is performed and the run continues until `MAX_GEN`.
 - `RELAX_FMAX` and `RELAX_STEPS` control the BFGS relaxation of every candidate.
 
 Outputs are written to the current directory:
