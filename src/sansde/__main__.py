@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 from sansde.io import write_vasp_tasks
-from sansde.main import run
+from sansde.main import main as run_opt
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -59,7 +59,7 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.foreground:
         # 显式前台: 直接在当前进程里跑, 输出留在终端.
-        run(args.params)
+        run_opt(args.params)
         return
 
     # 默认后台: 重新拉起一个脱离当前会话的子进程.

@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import csv
 import functools
 import json
 import os
 import time
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from ase import Atoms
@@ -20,6 +21,7 @@ try:
 except ImportError:
     ZBLCalculator = None  # type: ignore[assignment]
 
+from sansde.io import append_stats_row, read_run_params
 from sansde.operators import (
     crossover,
     local_optimize,
@@ -33,220 +35,52 @@ from sansde.operators import (
 from sansde.pop import Population
 
 
-# 初始化参数: 默认值内联, 可由运行目录下的 params.json 覆盖, 缺失的键保持默认值.
-def load_config(params_path: Path) -> None:
-    """Load run configuration from a JSON file and build the potential."""
-    global params, element, a, atom_min, atom_max
-    global init_dir, init_pop_dir, best_dir, keep_snapshots, pop_dir
-    global pop_size, generations, stagnation_limit, ediff
-    global similarity_reset, similarity_energy_reset, candidate_size
-    global use_zbl, ZBL_CUTOFF, ZBL_SKIN
-    global fmax, steps, potential, relax, ROUND, FP_ADAPTIVE, LEARNING_PERIOD
-    global CONTINUE, CR_PERIOD, CRM_PERIOD
-
-    try:
-        with params_path.open('r', encoding='utf-8') as f:
-            params = json.load(f)
-        if not isinstance(params, dict):
-            raise TypeError(f"{params_path} must contain a JSON object")
-        print(f"load parameters from {params_path}")
-    except FileNotFoundError:
-        params = {}
-
-    # Optional environment variables applied to the current process before
-    # SCRIPTS, for example {"OMP_NUM_THREADS": "6"}.
-    EXPORT = params.get('EXPORT', {})
-    if not isinstance(EXPORT, dict):
-        raise TypeError("EXPORT must be a dictionary of environment variables")
-    for name, value in EXPORT.items():
-        os.environ[str(name)] = str(value)
-
-    # Optional Python snippets executed in order before any other parameter is
-    # read. They can import calculators or modify ``params``, for example:
-    # ["from ase.calculators.lj import LennardJones", "from deepmd.calculator import DP"]
-    SCRIPTS = params.get('SCRIPTS', [])
-    if not isinstance(SCRIPTS, list) or not all(
-        isinstance(script, str) for script in SCRIPTS
-    ):
-        raise TypeError("SCRIPTS must be a list of Python code strings")
-    for script in SCRIPTS:
-        exec(script, globals())  # noqa: S102, user-provided calculator setup
-
-    # 体系配置
-    element = str(params.get('ELEMENT', 'Au'))
-    a = float(params.get('LATTICE_CONST', 2.88))
-    atom_min = int(params.get('MIN_ATOM', 3))
-    atom_max = int(params.get('MAX_ATOM', 5))
-
-    # IO
-    init_dir = Path(params.get('INIT_DIR', 'init'))
-    init_pop_dir = Path(params.get('INIT_POP_DIR', '')) # 非空时忽略 init_dir
-    best_dir = Path(params.get('BEST_DIR', 'best'))
-    keep_snapshots = int(params.get('KEEP_SNAPSHOTS', 1))
-    pop_dir = Path(params.get('POP_DIR', 'Populations'))
-
-    # 优化轮数; ROUND > 1 时 init_dir/best_dir 按轮次自动生成, 忽略自定义值.
-    ROUND = int(params.get('ROUND', 1))
-    if ROUND > 1 and (
-        'INIT_DIR' in params
-        or 'BEST_DIR' in params
-        or init_pop_dir != Path('.')
-    ):
-        print(
-            "Warning: ROUND > 1 ignores custom "
-            "init_dir/best_dir/init_pop_dir"
-        )
-
-    # 全局优化设置
-    pop_size = int(params.get('POP_SIZE', 12))
-    generations = int(params.get('MAX_GEN', 500))
-    stagnation_limit = int(params.get('CONV_STEPS', 10))
-    ediff = float(params.get('EDIFF', 1e-5))
-    similarity_reset = float(params.get('S_STRICT', 0.95))
-    similarity_energy_reset = float(params.get('S_LOOSE', 0.98))
-    candidate_size = int(params.get('CAND_SIZE', 2))
-    FP_ADAPTIVE = bool(params.get('FP_ADAPTIVE', True))
-    LEARNING_PERIOD = int(params.get('LEARNING_PERIOD', 50))
-    CR_PERIOD = int(params.get('CR_PERIOD', 5))
-    CRM_PERIOD = int(params.get('CRM_PERIOD', 25))
-    CONTINUE = bool(params.get('CONTINUE', False))
-
-    # 势能面
-    # use_zbl=True 时在 POTENTIAL 上叠加 hiphive 的 ZBL 短程排斥
-    # E_total = E_POTENTIAL + E_ZBL; 注意 ZBL 的有效作用距离约为
-    # r_eff = cutoff + 2 * skin.
-    default_potential = 'DP(model=Path("/home/linyj/02-linyj/potentials/dp/Au3c.pth"))'
-    potential_spec = params.get('POTENTIAL', default_potential)
-    if isinstance(potential_spec, str):
-        potential_spec = eval(potential_spec, globals())
-    if not isinstance(potential_spec, Calculator):
-        raise TypeError(
-            "POTENTIAL must be an ase Calculator or an expression that "
-            f"evaluates to one, got {type(potential_spec).__name__}"
-        )
-    POTENTIAL: Calculator = potential_spec
-    use_zbl = bool(params.get('USE_ZBL', True))
-    ZBL_CUTOFF = float(params.get('ZBL_CUTOFF', 1.5))
-    ZBL_SKIN = float(params.get('ZBL_SKIN', 0))
-    if use_zbl and ZBLCalculator is None:
-        print("Warning: hiphive is not installed; ZBL is disabled.")
-        use_zbl = False
-
-    # 优化器参数: 收敛判据与最大优化步数
-    fmax = float(params.get('RELAX_FMAX', 0.05))
-    steps = int(params.get('RELAX_STEPS', 300))
-
-    # 输出全部初始化参数, 便于确认本次运行配置.
-    print("initialized parameters:")
-    print(json.dumps(params, indent=2, ensure_ascii=False))
-
-    if use_zbl:
-        zbl = ZBLCalculator(cutoff=ZBL_CUTOFF, skin=ZBL_SKIN) # type: ignore
-        potential = SumCalculator([POTENTIAL, zbl])
-    else:
-        potential = POTENTIAL
-
-    relax = functools.partial(
-        local_optimize,
-        cell=None,
-        potential = potential, # type: ignore
-        optimizer=BFGS,
-        fmax=fmax,
-        steps=steps,
-    )
-
-
-stats_path = Path("opt_stat.csv")
-run_start: float | None = None
-
-
-def append_stats_row(
-    symbol: str,
+def run(
     atom: int,
-    gen: int,
-    pop: Population,
-    best_energy: float,
-    best_pg: str | None,
-    best_drop: float | None,
-    similarity: float | None,
-    stagnation_count: int,
-    candidate_size: int,
-    elapsed_time: float,
+    round_index: int = 1,
+    *,
+    params: dict[str, Any],
+    potential: Calculator,
+    relax: Callable[..., Any],
+    stats_path: Path,
+    run_start: float,
 ) -> None:
-    """Append one generation's statistics to the run CSVs.
+    """Optimize one cluster size.
 
-    ``<params>.csv`` is created on first write and appended afterwards. At most
-    three clusters are reported (``e_best`` plus two sub-optimal candidates),
-    so the number of sub-optimal columns is ``min(candidate_size - 1, 2)``.
-    When more candidates are available, the first ones in the candidate list
-    are written.
-
-    ``pop_stat.csv`` is written next to it with ``symbol``, ``atoms``, ``gen``
-    followed by every key of ``pop.info`` (lists are stored as JSON strings).
+    Parameters
+    ----------
+    atom : int
+        Number of atoms in the cluster.
+    round_index : int, optional
+        Current optimization round, used to derive the round directories.
+        Default 1.
+    params : dict[str, Any]
+        Parsed run parameters.
+    potential : Calculator
+        ASE calculator used to re-evaluate imported structures.
+    relax : Callable
+        Local optimization callable.
+    stats_path : Path
+        Path of the main statistics CSV.
+    run_start : float
+        Program start time from ``time.perf_counter``.
     """
-    candidates = list(pop.candidate)
-    n_sub = min(max(candidate_size - 1, 0), 2)
-    # candidate[0] 是当前候选最优, 按列表顺序直接取前两个次优候选.
-    sub_candidates = candidates[1:1 + n_sub]
-    sub_energies = [float(cluster.info['energy']) for cluster in sub_candidates]
-    sub_pgs = [
-        "" if cluster.info.get('PG') is None else str(cluster.info['PG'])
-        for cluster in sub_candidates
-    ]
-
-    header = ["symbol", "atoms", "gen", "e_best"]
-    header.extend(f"e_cand{i}" for i in range(1, n_sub + 1))
-    header.extend(["delta_e", "PG"])
-    header.extend(f"PG_cand{i}" for i in range(1, n_sub + 1))
-    header.extend(["S", "best_streak", "time"])
-
-    row = [symbol, atom, gen, f"{best_energy:.8f}"]
-    row.extend(
-        "" if energy is None else f"{energy:.8f}"
-        for energy in sub_energies
-    )
-    row.extend([""] * (n_sub - len(sub_energies)))
-    row.append("" if best_drop is None else f"{best_drop:.8f}")
-    row.append("" if best_pg is None else str(best_pg))
-    row.extend(sub_pgs)
-    row.extend([""] * (n_sub - len(sub_pgs)))
-    row.append("" if similarity is None else f"{similarity:.2f}")
-    row.extend([
-        stagnation_count,
-        f"{elapsed_time:.0f}",
-    ])
-
-    write_header = not stats_path.exists() or stats_path.stat().st_size == 0
-    with stats_path.open("a", newline="", encoding="utf-8") as handle:
-        writer = csv.writer(handle)
-        if write_header:
-            writer.writerow(header)
-        writer.writerow(row)
-
-    # Population info is logged to a separate CSV: symbol, atoms, gen, <info>.
-    pop_stats_path = stats_path.with_name("pop_stat.csv")
-    pop_header = ["symbol", "atoms", "gen", *pop.info.keys()]
-    pop_row: list[object] = [symbol, atom, gen]
-    for value in pop.info.values():
-        if isinstance(value, (list, dict)):
-            pop_row.append(json.dumps(value))
-        else:
-            pop_row.append(value)
-    pop_write_header = (
-        not pop_stats_path.exists() or pop_stats_path.stat().st_size == 0
-    )
-    with pop_stats_path.open("a", newline="", encoding="utf-8") as handle:
-        writer = csv.writer(handle)
-        if pop_write_header:
-            writer.writerow(pop_header)
-        writer.writerow(pop_row)
-
-
-def main(atom: int) -> None:
     system_start = time.perf_counter()
+
+    if int(params['ROUND']) > 1:
+        init_dir = (
+            Path('init') if round_index == 1 else Path(f'best{round_index - 1}')
+        )
+        best_dir = Path(f'best{round_index}')
+        init_pop_dir = Path('')
+    else:
+        init_dir = Path(params['INIT_DIR'])
+        best_dir = Path(params['BEST_DIR'])
+        init_pop_dir = Path(params['INIT_POP_DIR'])
+
     # 1) 初始化种群: init_pop_dir 非空时按尺寸加载给定种群;
     #    否则从 init/ 目录加载单个最优结构, 再随机补足至 pop_size.
-    expected_symbol = f"{element}{atom}"
+    expected_symbol = f"{params['ELEMENT']}{atom}"
     pop = Population(symbol=expected_symbol)
     init_from_pop = False
 
@@ -256,12 +90,12 @@ def main(atom: int) -> None:
         # 逐个尝试, 用化学式校验, 不匹配则继续下一个.
         for init_pop_path in sorted(init_pop_dir.glob(f"{expected_symbol}*.json")):
             pop = Population()
-            pop.import_population(init_pop_path, optimal_only=not CONTINUE)
+            pop.import_population(init_pop_path, optimal_only=not bool(params['CONTINUE']))
             if pop.symbol != expected_symbol or len(pop) == 0:
                 print(f"skip initial population {init_pop_path}: symbol mismatch")
                 continue
             init_from_pop = True
-            print(f"load initial population {element}{atom} from {init_pop_path}...")
+            print(f"load initial population {params['ELEMENT']}{atom} from {init_pop_path}...")
             break
         if init_from_pop:
             # 初始种群可能来自旧势, 用当前势重算团簇和候选团簇的能量与力.
@@ -282,7 +116,7 @@ def main(atom: int) -> None:
             # candidate[0] 是当前最优候选.
             pop.candidate.sort(key=lambda cluster: float(cluster.info['energy']))
             # 候选数超过 candidate_size 时, 保留能量最低的 candidate_size 个.
-            del pop.candidate[candidate_size:]
+            del pop.candidate[int(params['CAND_SIZE']):]
         else:
             pop = Population(symbol=expected_symbol)
     else:
@@ -317,41 +151,41 @@ def main(atom: int) -> None:
                 pop.add_candidate(frame, candidate_size=len(init_frames))
             pop.candidate.sort(key=lambda cluster: float(cluster.info['energy']))
             # 排序后再按 candidate_size 截断.
-            del pop.candidate[candidate_size:]
+            del pop.candidate[int(params['CAND_SIZE']):]
             break
 
-    if len(pop) < pop_size:
-        remaining = pop_size - len(pop)
+    if len(pop) < int(params['POP_SIZE']):
+        remaining = int(params['POP_SIZE']) - len(pop)
         if atom <= 20:
             for i in range(remaining):
-                if i < pop_size / 2:
-                    random_cluster(pop, a=a, delta=0.5, relax=relax, is_2d=True)
+                if i < int(params['POP_SIZE']) / 2:
+                    random_cluster(pop, a=float(params['LATTICE_CONST']), delta=0.5, relax=relax, is_2d=True)
                 else:
-                    random_cluster(pop, a=a, delta=0.5, relax=relax)
+                    random_cluster(pop, a=float(params['LATTICE_CONST']), delta=0.5, relax=relax)
         else:
             for i in range(remaining):
-                if i < pop_size / 4:
-                    random_cluster(pop, a=a, delta=0.5, relax=relax, is_2d=True)
+                if i < int(params['POP_SIZE']) / 4:
+                    random_cluster(pop, a=float(params['LATTICE_CONST']), delta=0.5, relax=relax, is_2d=True)
                 else:
-                    random_cluster(pop, a=a, delta=0.5, relax=relax)
+                    random_cluster(pop, a=float(params['LATTICE_CONST']), delta=0.5, relax=relax)
 
     prev_best: float | None = None
     prev_pg: str | None = None
     prev_best_cluster: Atoms | None = None
     stagnation_count = 0
 
-    for gen in range(1, generations + 1):
+    for gen in range(1, int(params['MAX_GEN']) + 1):
         tick = time.perf_counter()
 
         # Resample the per-individual CR every CR_PERIOD generations.
-        if CR_PERIOD > 0 and (gen - 1) % CR_PERIOD == 0:
+        if int(params['CR_PERIOD']) > 0 and (gen - 1) % int(params['CR_PERIOD']) == 0:
             for cluster in pop:
                 cluster.info['cr'] = float(
                     np.clip(np.random.normal(pop.crm, 0.1), 0.0, 1.0)
                 )
 
         # 2) 变异 + 交叉 + 球切交叉 + 局部变换.
-        pop_mut = mutate(pop, a=20 * a, debug=True)
+        pop_mut = mutate(pop, a=20 * float(params['LATTICE_CONST']), debug=True)
         pop_cross = crossover(pop, pop_mut)
         pop_splice = sphere_cut_splice(pop, pop_cross, r=0.8, relax=relax, debug=True)
         pop_trans = local_transformation(pop_splice, r=0.25, relax=relax)
@@ -361,11 +195,11 @@ def main(atom: int) -> None:
             pop,
             pop_trans,
             relax=relax,
-            update_crm=CRM_PERIOD > 0 and gen % CRM_PERIOD == 0,
+            update_crm=int(params['CRM_PERIOD']) > 0 and gen % int(params['CRM_PERIOD']) == 0,
         )
         # p and fp are updated only when the learning period ends.
-        if LEARNING_PERIOD > 0 and gen % LEARNING_PERIOD == 0:
-            pop_next.update_adaptive(adapt_fp=FP_ADAPTIVE)
+        if int(params['LEARNING_PERIOD']) > 0 and gen % int(params['LEARNING_PERIOD']) == 0:
+            pop_next.update_adaptive(adapt_fp=bool(params['FP_ADAPTIVE']))
 
         energy_values = [float(e) for e in pop_next.energies if e is not None]
         if not energy_values:
@@ -373,7 +207,7 @@ def main(atom: int) -> None:
         best_cluster = pop_next.best_cluster
         # candidate 为空时直接记录本代最优结构.
         if not pop_next.candidate:
-            pop_next.add_candidate(best_cluster, candidate_size=candidate_size)
+            pop_next.add_candidate(best_cluster, candidate_size=int(params['CAND_SIZE']))
         current_best = float(best_cluster.info['energy'])
         current_pg = best_cluster.info.get('PG')
         similarity_current: float | None = None
@@ -390,12 +224,12 @@ def main(atom: int) -> None:
             #  若结构变化判据满足, 停滞计数清零.
             if (
                 current_pg != prev_pg
-                or similarity < similarity_reset
-                or (similarity < similarity_energy_reset and abs(diff) > 10*ediff)
+                or similarity < float(params['S_STRICT'])
+                or (similarity < float(params['S_LOOSE']) and abs(diff) > 10 * float(params['EDIFF']))
             ):
                 stagnation_count = 0
                 # 结构变化判据满足: 本代最优结构加入候选列表.
-                pop_next.add_candidate(best_cluster, candidate_size=candidate_size)
+                pop_next.add_candidate(best_cluster, candidate_size=int(params['CAND_SIZE']))
                 # 输出结构变化判据: 点群变化/相似性/能量变化.
                 print(
                     f"atom={atom} gen={gen:03d}"
@@ -414,7 +248,8 @@ def main(atom: int) -> None:
 
         # 每代写一行统计到统计 CSV.
         append_stats_row(
-            symbol=f"{element}{atom}",
+            stats_path=stats_path,
+            symbol=f"{params['ELEMENT']}{atom}",
             atom=atom,
             gen=gen,
             pop=pop_next,
@@ -423,10 +258,8 @@ def main(atom: int) -> None:
             best_drop=None if prev_best is None else prev_best - current_best,
             similarity=similarity_current,
             stagnation_count=stagnation_count,
-            candidate_size=candidate_size,
-            elapsed_time=time.perf_counter() - (
-                run_start if run_start is not None else system_start
-            ),
+            candidate_size=int(params['CAND_SIZE']),
+            elapsed_time=time.perf_counter() - run_start,
         )
         elapsed = time.perf_counter() - tick
 
@@ -441,44 +274,101 @@ def main(atom: int) -> None:
         prev_best = current_best
         prev_pg = current_pg
         prev_best_cluster = best_cluster.copy()
-        # pop.dump(f"{element}{atom}_best")
-        pop.dump_xyz(f"{element}{atom}_best")
-        snapshot_path = pop.export(name=f"{element}{atom}_gen{gen}")
+        # pop.dump(f"{params['ELEMENT']}{atom}_best")
+        pop.dump_xyz(f"{params['ELEMENT']}{atom}_best")
+        snapshot_path = pop.export(name=f"{params['ELEMENT']}{atom}_gen{gen}")
 
         # 清理超出保留数量的旧快照
-        if gen > keep_snapshots:
-            old = gen - keep_snapshots
-            for f in pop_dir.glob(f"{element}{atom}_gen{old}*.json"):
+        if gen > int(params['KEEP_SNAPSHOTS']):
+            old = gen - int(params['KEEP_SNAPSHOTS'])
+            for f in Path(params['POP_DIR']).glob(f"{params['ELEMENT']}{atom}_gen{old}*.json"):
                 f.unlink()
 
         # CONV_STEPS=0 means no early stopping: run until MAX_GEN.
-        if stagnation_limit > 0 and stagnation_count >= stagnation_limit:
+        if int(params['CONV_STEPS']) > 0 and stagnation_count >= int(params['CONV_STEPS']):
             sys_elapsed = time.perf_counter() - system_start
             print(
                 f"atom={atom} gen={gen:03d} converged=True"
-                f" reason=stagnant_{stagnation_limit}"
+                f" reason=stagnant_{params['CONV_STEPS']}"
                 f" sys_time_s={sys_elapsed:.4f}"
             )
             break
 
     # 5) 导出最终结果: 候选列表写入 best/ 的 extxyz.
-    pop.dump_xyz(f"{element}{atom}_best", candidate=True, dir=best_dir)
+    pop.dump_xyz(f"{params['ELEMENT']}{atom}_best", candidate=True, dir=best_dir)
     print(f"atom={atom} final_snapshot={snapshot_path}")
 
 
-def run(params_path: Path) -> None:
+def main(params_path: Path) -> None:
     """Run the optimization for every configured cluster size.
 
     Parameters
     ----------
     params_path : pathlib.Path
-        Parameter JSON file passed to ``load_config``.
+        Parameter JSON file.
     """
-    global run_start, stats_path, init_dir, best_dir, init_pop_dir
-
     program_start = time.perf_counter()
-    run_start = program_start
-    load_config(params_path)
+
+    params = read_run_params(params_path)
+
+    # Optional environment variables applied to the current process before
+    # SCRIPTS, for example {"OMP_NUM_THREADS": "6"}.
+    EXPORT = params['EXPORT']
+    if not isinstance(EXPORT, dict):
+        raise TypeError("EXPORT must be a dictionary of environment variables")
+    for name, value in EXPORT.items():
+        os.environ[str(name)] = str(value)
+
+    # Optional Python snippets executed in order before any other parameter is
+    # used. They can import calculators or modify ``params``, for example:
+    # ["from ase.calculators.lj import LennardJones", "from deepmd.calculator import DP"]
+    SCRIPTS = params['SCRIPTS']
+    if not isinstance(SCRIPTS, list) or not all(
+        isinstance(script, str) for script in SCRIPTS
+    ):
+        raise TypeError("SCRIPTS must be a list of Python code strings")
+    for script in SCRIPTS:
+        exec(script, globals())  # noqa: S102, user-provided calculator setup
+
+    # 势能面
+    # use_zbl=True 时在 POTENTIAL 上叠加 hiphive 的 ZBL 短程排斥
+    # E_total = E_POTENTIAL + E_ZBL; 注意 ZBL 的有效作用距离约为
+    # r_eff = cutoff + 2 * skin.
+    potential_spec = params['POTENTIAL']
+    if isinstance(potential_spec, str):
+        potential_spec = eval(potential_spec, globals())
+    if not isinstance(potential_spec, Calculator):
+        raise TypeError(
+            "POTENTIAL must be an ase Calculator or an expression that "
+            f"evaluates to one, got {type(potential_spec).__name__}"
+        )
+    POTENTIAL: Calculator = potential_spec
+    use_zbl = bool(params['USE_ZBL'])
+    if use_zbl and ZBLCalculator is None:
+        print("Warning: hiphive is not installed; ZBL is disabled.")
+        use_zbl = False
+
+    if use_zbl:
+        zbl = ZBLCalculator(
+            cutoff=float(params['ZBL_CUTOFF']),
+            skin=float(params['ZBL_SKIN']),
+        )  # type: ignore
+        potential = SumCalculator([POTENTIAL, zbl])
+    else:
+        potential = POTENTIAL
+
+    print("initialized parameters:")
+    print(json.dumps(params, indent=2, ensure_ascii=False))
+
+    relax = functools.partial(
+        local_optimize,
+        cell=None,
+        potential=potential,  # type: ignore
+        optimizer=BFGS,
+        fmax=float(params['RELAX_FMAX']),
+        steps=int(params['RELAX_STEPS']),
+    )
+
     # CSV 与参数文件同名(31.json -> 31.csv); 没有可用 JSON 时用 opt_stat.csv.
     if params_path.is_file():
         stats_path = params_path.with_suffix(".csv")
@@ -490,8 +380,9 @@ def run(params_path: Path) -> None:
     pop_stats_path = stats_path.with_name("pop_stat.csv")
     if pop_stats_path.exists():
         pop_stats_path.unlink()
-    for round_index in range(1, ROUND + 1):
-        if ROUND > 1:
+    rounds = int(params['ROUND'])
+    for round_index in range(1, rounds + 1):
+        if rounds > 1:
             # 第 1 轮从 init/ 读取, 之后各轮读取上一轮的 best{round-1}/.
             init_dir = (
                 Path('init')
@@ -499,16 +390,22 @@ def run(params_path: Path) -> None:
                 else Path(f'best{round_index - 1}')
             )
             best_dir = Path(f'best{round_index}')
-            init_pop_dir = Path('')
             print(
-                f"round {round_index}/{ROUND}: "
+                f"round {round_index}/{rounds}: "
                 f"init_dir={init_dir} best_dir={best_dir}"
             )
-        for atom in range(atom_min, atom_max + 1):
-            main(atom)
+        for atom in range(int(params['MIN_ATOM']), int(params['MAX_ATOM']) + 1):
+            run(
+                atom,
+                round_index,
+                params=params,
+                potential=potential, # type: ignore
+                relax=relax,
+                stats_path=stats_path,
+                run_start=program_start,
+            )
     total_elapsed = time.perf_counter() - program_start
     print(f"program total_time_s={total_elapsed:.4f}")
 
-
 if __name__ == "__main__":
-    run(Path("params.json"))
+    main(Path("params.json"))
