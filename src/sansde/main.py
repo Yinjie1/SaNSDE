@@ -173,12 +173,16 @@ def append_stats_row(
     candidate_size: int,
     elapsed_time: float,
 ) -> None:
-    """Append one generation's statistics to the run CSV.
+    """Append one generation's statistics to the run CSVs.
 
-    The CSV is created on first write and appended afterwards. At most three
-    clusters are reported (``e_best`` plus two sub-optimal candidates), so the
-    number of sub-optimal columns is ``min(candidate_size - 1, 2)``. When more
-    candidates are available, the first ones in the candidate list are written.
+    ``<params>.csv`` is created on first write and appended afterwards. At most
+    three clusters are reported (``e_best`` plus two sub-optimal candidates),
+    so the number of sub-optimal columns is ``min(candidate_size - 1, 2)``.
+    When more candidates are available, the first ones in the candidate list
+    are written.
+
+    ``pop_stat.csv`` is written next to it with ``symbol``, ``atoms``, ``gen``
+    followed by every key of ``pop.info`` (lists are stored as JSON strings).
     """
     candidates = list(pop.candidate)
     n_sub = min(max(candidate_size - 1, 0), 2)
@@ -194,7 +198,7 @@ def append_stats_row(
     header.extend(f"e_cand{i}" for i in range(1, n_sub + 1))
     header.extend(["delta_e", "PG"])
     header.extend(f"PG_cand{i}" for i in range(1, n_sub + 1))
-    header.extend(["S", "fp", "p", "CRm", "best_streak", "time"])
+    header.extend(["S", "best_streak", "time"])
 
     row = [symbol, atom, gen, f"{best_energy:.8f}"]
     row.extend(
@@ -208,9 +212,6 @@ def append_stats_row(
     row.extend([""] * (n_sub - len(sub_pgs)))
     row.append("" if similarity is None else f"{similarity:.2f}")
     row.extend([
-        f"{pop.fp:.6f}",
-        f"{pop.p:.6f}",
-        f"{pop.crm:.6f}",
         stagnation_count,
         f"{elapsed_time:.0f}",
     ])
@@ -221,6 +222,24 @@ def append_stats_row(
         if write_header:
             writer.writerow(header)
         writer.writerow(row)
+
+    # Population info is logged to a separate CSV: symbol, atoms, gen, <info>.
+    pop_stats_path = stats_path.with_name("pop_stat.csv")
+    pop_header = ["symbol", "atoms", "gen", *pop.info.keys()]
+    pop_row: list[object] = [symbol, atom, gen]
+    for value in pop.info.values():
+        if isinstance(value, (list, dict)):
+            pop_row.append(json.dumps(value))
+        else:
+            pop_row.append(value)
+    pop_write_header = (
+        not pop_stats_path.exists() or pop_stats_path.stat().st_size == 0
+    )
+    with pop_stats_path.open("a", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        if pop_write_header:
+            writer.writerow(pop_header)
+        writer.writerow(pop_row)
 
 
 def main(atom: int) -> None:
@@ -468,6 +487,9 @@ def run(params_path: Path) -> None:
     # 每次运行重新生成统计文件, 避免上次运行的内容混在一起.
     if stats_path.exists():
         stats_path.unlink()
+    pop_stats_path = stats_path.with_name("pop_stat.csv")
+    if pop_stats_path.exists():
+        pop_stats_path.unlink()
     for round_index in range(1, ROUND + 1):
         if ROUND > 1:
             # 第 1 轮从 init/ 读取, 之后各轮读取上一轮的 best{round-1}/.

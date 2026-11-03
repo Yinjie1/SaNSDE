@@ -702,7 +702,10 @@ class Population(MultiAtoms):
             self.info['crm'] = float(crm_value)
 
         # Import any extra attributes beyond the preset ones
-        preset_keys = {'symbol', 'fp', 'p', 'CRm', 'info', 'clusters', 'candidate'}
+        preset_keys = {
+            'symbol', 'fp', 'p', 'CRm', 'info', 'clusters', 'candidate',
+            'date', 'size',
+        }
         for key, value in data.items():
             if key not in preset_keys:
                 setattr(self, key, value)

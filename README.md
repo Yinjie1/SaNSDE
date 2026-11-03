@@ -111,6 +111,7 @@ Outputs are written to the current directory:
 - `Populations/`: population snapshots.
 - `Trajectories/`: trajectory files.
 - `<params>.csv`: per-generation statistics.
+- `pop_stat.csv`: per-generation `symbol`, `atoms`, `gen` and every entry of the population `info` dictionary.
 - `<params>.log`: log file when running in the background.
 
 ## VASP export
