@@ -42,6 +42,7 @@ def load_config(params_path: Path) -> None:
     global similarity_reset, similarity_energy_reset, candidate_size
     global use_zbl, ZBL_CUTOFF, ZBL_SKIN
     global fmax, steps, potential, relax, ROUND, FP_ADAPTIVE, LEARNING_PERIOD
+    global CONTINUE
 
     try:
         with params_path.open('r', encoding='utf-8') as f:
@@ -106,6 +107,7 @@ def load_config(params_path: Path) -> None:
     candidate_size = int(params.get('CAND_SIZE', 2))
     FP_ADAPTIVE = bool(params.get('FP_ADAPTIVE', True))
     LEARNING_PERIOD = int(params.get('LEARNING_PERIOD', 50))
+    CONTINUE = bool(params.get('CONTINUE', False))
 
     # 势能面
     # use_zbl=True 时在 POTENTIAL 上叠加 hiphive 的 ZBL 短程排斥
@@ -154,9 +156,6 @@ def load_config(params_path: Path) -> None:
 
 stats_path = Path("opt_stat.csv")
 run_start: float | None = None
-ROUND: int = 1
-FP_ADAPTIVE: bool = True
-LEARNING_PERIOD: int = 50
 
 
 def append_stats_row(
@@ -228,7 +227,6 @@ def main(atom: int) -> None:
     #    否则从 init/ 目录加载单个最优结构, 再随机补足至 pop_size.
     expected_symbol = f"{element}{atom}"
     pop = Population(symbol=expected_symbol)
-    init_loaded = False
     init_from_pop = False
 
     # Path("") 会被规范化为 '.', 以此判断 init_pop_dir 是否为空.
@@ -237,12 +235,11 @@ def main(atom: int) -> None:
         # 逐个尝试, 用化学式校验, 不匹配则继续下一个.
         for init_pop_path in sorted(init_pop_dir.glob(f"{expected_symbol}*.json")):
             pop = Population()
-            pop.import_population(init_pop_path)
+            pop.import_population(init_pop_path, optimal_only=not CONTINUE)
             if pop.symbol != expected_symbol or len(pop) == 0:
                 print(f"skip initial population {init_pop_path}: symbol mismatch")
                 continue
             init_from_pop = True
-            init_loaded = True
             print(f"load initial population {element}{atom} from {init_pop_path}...")
             break
         if init_from_pop:
@@ -300,11 +297,10 @@ def main(atom: int) -> None:
             pop.candidate.sort(key=lambda cluster: float(cluster.info['energy']))
             # 排序后再按 candidate_size 截断.
             del pop.candidate[candidate_size:]
-            init_loaded = True
             break
 
-    if not init_from_pop:
-        remaining = pop_size - 1 if init_loaded else pop_size
+    if len(pop) < pop_size:
+        remaining = pop_size - len(pop)
         if atom <= 20:
             for i in range(remaining):
                 if i < pop_size / 2:
