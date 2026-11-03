@@ -598,10 +598,11 @@ def crossover(pop1: Population, pop2: Population) -> Population:
     temp_clusters.info = pop1.info.copy()
 
     for i in range(len(pop1)):
-        # 采样当前个体交叉率,并裁剪到 [0, 1].
-        # 裁剪是为了保证交叉概率合法,避免出现负值或大于 1.
-        cross_rate = np.random.normal(pop1.crm, 0.1)
-        cross_rate = np.clip(cross_rate, 0.0, 1.0)
+        # Reuse the CR kept by the individual; sample a new one only when missing.
+        cross_rate = pop1[i].info.get('cr')
+        if cross_rate is None:
+            cross_rate = np.random.normal(pop1.crm, 0.1)
+        cross_rate = float(np.clip(cross_rate, 0.0, 1.0))
 
         # 至少保留一个原子来自突变种群
         j_rand = np.random.randint(0, pop1.num)
@@ -915,6 +916,7 @@ def select(
     pop2: Population,
     relax: Callable[[Population | Atoms], Population | Atoms],
     pg_tolerance: float = 0.3,
+    update_crm: bool = False,
 ) -> Population:
     """Select the next generation and accumulate adaptive statistics.
 
@@ -931,6 +933,9 @@ def select(
         局域优化函数. 可传入偏函数 relax() 或函数对象 local_optimize().
     pg_tolerance : float, optional
         计算点群时传给 pymatgen ``PointGroupAnalyzer`` 的坐标容差. Default 0.3.
+    update_crm : bool, optional
+        Whether to update crm from the recorded successful CR values.
+        Default False; the caller enables it at the end of a CRm period.
     """
     if pop1.symbol != pop2.symbol:
         raise ValueError("Population symbols must match for selection")
@@ -1058,9 +1063,14 @@ def select(
             chosen_cluster, tolerance=pg_tolerance
         )
 
-    # 更新 crm:使用成功个体的 cr 按能量改变量加权平均.
+    # Record successful CR values and their fitness improvements.
     if cr_rec and sum(delta_rec) > 0:
-        temp_clusters.info['crm'] = float(np.average(cr_rec, weights=delta_rec))
+        temp_clusters.info['cr_rec'].extend(cr_rec)
+        temp_clusters.info['delta_rec'].extend(delta_rec)
+
+    # Update crm at the end of the CRm period and reset both record lists.
+    if update_crm:
+        temp_clusters.update_crm()
 
     # Accumulate success counts for the learning period. p and fp are updated
     # by Population.update_adaptive() only when the learning period ends.

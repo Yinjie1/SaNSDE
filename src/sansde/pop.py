@@ -258,6 +258,8 @@ class Population(MultiAtoms):
             'nsc': 0,
             'nfg': 0,
             'nfc': 0,
+            'cr_rec': [],
+            'delta_rec': [],
         })
 
     @property
@@ -301,18 +303,8 @@ class Population(MultiAtoms):
     def crm(self) -> float:
         return float(self.info['crm'])
 
-    def update_adaptive(self, adapt_fp: bool = True) -> None:
-        """Update p and fp from the accumulated success counts.
-
-        Counts are accumulated by :func:`~sansde.operators.select` over a
-        learning period and reset after this call.
-
-        Parameters
-        ----------
-        adapt_fp : bool, optional
-            If True (default), update fp from the Gaussian/Cauchy counts.
-            If False, fp is kept unchanged.
-        """
+    def update_adaptive(self, adapt_fp: bool = True) -> tuple[float, float]:
+        """Update p and fp from the accumulated success counts."""
         counts = self.info
         ns1, ns2 = counts['ns1'], counts['ns2']
         nf1, nf2 = counts['nf1'], counts['nf2']
@@ -329,6 +321,17 @@ class Population(MultiAtoms):
 
         for key in ('ns1', 'ns2', 'nf1', 'nf2', 'nsg', 'nsc', 'nfg', 'nfc'):
             self.info[key] = 0
+        return self.info['p'], self.info['fp']
+
+    def update_crm(self) -> float:
+        """Update crm from the recorded successful crossover rates."""
+        cr_rec = self.info['cr_rec']
+        delta_rec = self.info['delta_rec']
+        if cr_rec and sum(delta_rec) > 0:
+            self.info['crm'] = float(np.average(cr_rec, weights=delta_rec))
+        self.info['cr_rec'] = []
+        self.info['delta_rec'] = []
+        return self.info['crm']
 
     @property
     def symbol(self) -> str | None:

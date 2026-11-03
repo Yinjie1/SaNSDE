@@ -42,7 +42,7 @@ def load_config(params_path: Path) -> None:
     global similarity_reset, similarity_energy_reset, candidate_size
     global use_zbl, ZBL_CUTOFF, ZBL_SKIN
     global fmax, steps, potential, relax, ROUND, FP_ADAPTIVE, LEARNING_PERIOD
-    global CONTINUE
+    global CONTINUE, CR_PERIOD, CRM_PERIOD
 
     try:
         with params_path.open('r', encoding='utf-8') as f:
@@ -107,6 +107,8 @@ def load_config(params_path: Path) -> None:
     candidate_size = int(params.get('CAND_SIZE', 2))
     FP_ADAPTIVE = bool(params.get('FP_ADAPTIVE', True))
     LEARNING_PERIOD = int(params.get('LEARNING_PERIOD', 50))
+    CR_PERIOD = int(params.get('CR_PERIOD', 5))
+    CRM_PERIOD = int(params.get('CRM_PERIOD', 25))
     CONTINUE = bool(params.get('CONTINUE', False))
 
     # 势能面
@@ -139,7 +141,7 @@ def load_config(params_path: Path) -> None:
     print(json.dumps(params, indent=2, ensure_ascii=False))
 
     if use_zbl:
-        zbl = ZBLCalculator(cutoff=ZBL_CUTOFF, skin=ZBL_SKIN)
+        zbl = ZBLCalculator(cutoff=ZBL_CUTOFF, skin=ZBL_SKIN) # type: ignore
         potential = SumCalculator([POTENTIAL, zbl])
     else:
         potential = POTENTIAL
@@ -267,7 +269,7 @@ def main(atom: int) -> None:
     else:
         for init_path in init_dir.glob(f"{expected_symbol}*.xyz"):
             # 相同化学式的 xyz 只有一个, 只读取第一个化学式匹配的文件.
-            init_frames = read(init_path, index=':')
+            init_frames: list[Atoms] = read(init_path, index=':') # type: ignore
             # 同一个 xyz 中所有帧化学式相同, 只检查第一帧.
             if init_frames[0].get_chemical_formula() != expected_symbol: # type: ignore
                 print(f"skip structure {init_path}: symbol mismatch")
@@ -322,6 +324,13 @@ def main(atom: int) -> None:
     for gen in range(1, generations + 1):
         tick = time.perf_counter()
 
+        # Resample the per-individual CR every CR_PERIOD generations.
+        if CR_PERIOD > 0 and (gen - 1) % CR_PERIOD == 0:
+            for cluster in pop:
+                cluster.info['cr'] = float(
+                    np.clip(np.random.normal(pop.crm, 0.1), 0.0, 1.0)
+                )
+
         # 2) 变异 + 交叉 + 球切交叉 + 局部变换.
         pop_mut = mutate(pop, a=20 * a, debug=True)
         pop_cross = crossover(pop, pop_mut)
@@ -329,7 +338,12 @@ def main(atom: int) -> None:
         pop_trans = local_transformation(pop_splice, r=0.25, relax=relax)
 
         # 3) 选择下一代并输出每代指标.
-        pop_next = select(pop, pop_trans, relax=relax)
+        pop_next = select(
+            pop,
+            pop_trans,
+            relax=relax,
+            update_crm=CRM_PERIOD > 0 and gen % CRM_PERIOD == 0,
+        )
         # p and fp are updated only when the learning period ends.
         if LEARNING_PERIOD > 0 and gen % LEARNING_PERIOD == 0:
             pop_next.update_adaptive(adapt_fp=FP_ADAPTIVE)

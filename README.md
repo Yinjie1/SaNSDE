@@ -78,6 +78,8 @@ python -m sansde run params.json --fg
     "CAND_SIZE": 10,
     "FP_ADAPTIVE": true,
     "LEARNING_PERIOD": 50,
+    "CR_PERIOD": 5,
+    "CRM_PERIOD": 25,
     "POTENTIAL": "DP(model=Path('/home/linyj/02-linyj/potentials/dp/Au3c.pth'))",
     "USE_ZBL": true,
     "ZBL_CUTOFF": 1.5,
@@ -96,6 +98,8 @@ Key points:
 - `ROUND` is the number of optimization rounds. With `ROUND > 1`, custom `INIT_DIR`, `BEST_DIR` and `INIT_POP_DIR` are ignored: round 1 reads `init/` and writes `best1/`, round `r` reads `best{r-1}/` and writes `best{r}/`.
 - `INIT_POP_DIR`, when non-empty, loads `{element}{atom}*.json` population snapshots instead of `INIT_DIR`.
 - `LEARNING_PERIOD` is the number of generations over which mutation success counts are accumulated; `p` and `fp` are updated only at the end of each period. With `0` no adaptation is performed and both stay at 0.5. `FP_ADAPTIVE` (default `true`) can keep `p` adaptive while freezing `fp` at 0.5.
+- `CR_PERIOD` is the number of generations a set of individual crossover rates is kept; the rates are resampled from `N(CRm, 0.1)` every `CR_PERIOD` generations (5 in SaDE). With `0` the rates are never resampled.
+- `CRM_PERIOD` is the number of generations over which successful crossover rates are accumulated; `CRm` is updated as their fitness-improvement-weighted mean every `CRM_PERIOD` generations (25 in SaDE). With `0` no update is performed and `CRm` stays at 0.5.
 - `RELAX_FMAX` and `RELAX_STEPS` control the BFGS relaxation of every candidate.
 
 Outputs are written to the current directory:
