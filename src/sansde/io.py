@@ -149,9 +149,7 @@ def append_stats_row(
             writer.writerow(header)
         writer.writerow(row)
 
-    # Population info is logged to a separate CSV: symbol, atoms, gen, <info>.
-    # The cr_rec/delta_rec record lists are excluded from the output.
-    pop_stats_path = stats_path.with_name("pop_stat.csv")
+    pop_stats_path = stats_path.with_stem(f"{stats_path.stem}_pop")
     pop_items = [
         (key, value)
         for key, value in pop.info.items()

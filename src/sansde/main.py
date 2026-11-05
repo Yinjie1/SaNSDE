@@ -377,7 +377,7 @@ def main(params_path: Path) -> None:
     # 每次运行重新生成统计文件, 避免上次运行的内容混在一起.
     if stats_path.exists():
         stats_path.unlink()
-    pop_stats_path = stats_path.with_name("pop_stat.csv")
+    pop_stats_path = stats_path.with_stem(f"{stats_path.stem}_pop")
     if pop_stats_path.exists():
         pop_stats_path.unlink()
     rounds = int(params['ROUND'])
