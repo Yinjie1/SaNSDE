@@ -112,11 +112,14 @@ def run(
                 else:
                     cluster.info['energy'] = float('inf')
                     cluster.arrays['forces'] = np.zeros((len(cluster), 3))
-            # 重算能量后候选列表可能不再按能量升序, 重新排序以保证
-            # candidate[0] 是当前最优候选.
-            pop.candidate.sort(key=lambda cluster: float(cluster.info['energy']))
-            # 候选数超过 candidate_size 时, 保留能量最低的 candidate_size 个.
-            del pop.candidate[int(params['CAND_SIZE']):]
+            # Re-sort after recomputing energies: decreasing order (worst
+            # first) keeps candidate[-1] as the current best.
+            pop.candidate.sort(
+                key=lambda cluster: float(cluster.info['energy']),
+                reverse=True,
+            )
+            # Keep the candidate_size lowest-energy entries at the tail.
+            del pop.candidate[:max(len(pop.candidate) - int(params['CAND_SIZE']), 0)]
         else:
             pop = Population(symbol=expected_symbol)
     else:
@@ -145,13 +148,17 @@ def run(
                     frame.info['energy'] = float('inf')
                     frame.arrays['forces'] = np.zeros((len(frame), 3))
             pop.add_cluster(init_frames[0])
-            # 先把所有帧加入候选, 再按能量升序排序; 第一帧加入种群不受排序影响.
-            # 暂时不截断, 避免排序前丢失低能量结构.
+            # Add all frames first, then sort by decreasing energy; the first
+            # frame is already in the population and is not affected by sorting.
+            # Do not truncate before sorting to avoid losing low-energy entries.
             for frame in init_frames:
                 pop.add_candidate(frame, candidate_size=len(init_frames))
-            pop.candidate.sort(key=lambda cluster: float(cluster.info['energy']))
-            # 排序后再按 candidate_size 截断.
-            del pop.candidate[int(params['CAND_SIZE']):]
+            pop.candidate.sort(
+                key=lambda cluster: float(cluster.info['energy']),
+                reverse=True,
+            )
+            # Keep the candidate_size lowest-energy entries at the tail.
+            del pop.candidate[:max(len(pop.candidate) - int(params['CAND_SIZE']), 0)]
             break
 
     if len(pop) < int(params['POP_SIZE']):
@@ -246,12 +253,12 @@ def run(
                 )
             else:
                 stagnation_count += 1
-                # 结构变化判据不满足: 仅当本代最优能量更低时替换候选首位,
-                # 不新增候选, 避免插入后截断导致候选列表整体移位.
+                # 结构变化判据不满足: 仅当本代最优能量更低时替换候选末位(最优),
+                # 不新增候选, 避免追加后裁减导致候选列表整体移位.
                 if pop_next.candidate:
-                    candidate_energy = pop_next.candidate[0].info.get('energy')
+                    candidate_energy = pop_next.candidate[-1].info.get('energy')
                     if candidate_energy is not None and current_best < float(candidate_energy):
-                        pop_next.candidate[0] = best_cluster.copy()
+                        pop_next.candidate[-1] = best_cluster.copy()
 
         # 每代写一行统计到统计 CSV.
         append_stats_row(

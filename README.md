@@ -107,7 +107,7 @@ Key points:
 
 Outputs are written to the current directory:
 
-- `best*/{element}{atom}_best.xyz`: best structure and candidate list.
+- `best*/{element}{atom}_best.xyz`: candidate frames, written best-first.
 - `better/{element}{atom}_better.xyz`: one extxyz frame of the current best structure is appended each
   time the structure-change criterion is met. Imported initial structures are not recorded.
 - `Populations/`: population snapshots.

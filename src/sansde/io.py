@@ -112,8 +112,9 @@ def append_stats_row(
     """Append one generation's statistics to the run CSVs."""
     candidates = list(pop.candidate) # type: ignore
     n_sub = min(max(candidate_size - 1, 0), 2)
-    # candidate[0] 是当前候选最优, 按列表顺序直接取前两个次优候选.
-    sub_candidates = candidates[1:1 + n_sub]
+    # Candidates are ordered worst-first, so candidate[-1] is the best and the
+    # next-best entries are found by walking backwards.
+    sub_candidates = list(reversed(candidates[:-1]))[:n_sub]
     sub_energies = [float(cluster.info['energy']) for cluster in sub_candidates]
     sub_pgs = [
         "" if cluster.info.get('PG') is None else str(cluster.info['PG'])

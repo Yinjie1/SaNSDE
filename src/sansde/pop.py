@@ -220,7 +220,9 @@ class Population(MultiAtoms):
     symbol : str | None
         Population chemical formula. It can only be initialized once.
     candidate : list[Atoms]
-        History of candidate clusters.
+        History of candidate clusters ordered by decreasing energy (worst
+        first), so ``candidate[-1]`` is the best candidate. New candidates are
+        appended and trimming removes entries from the front.
     fp : float
         Selection probability parameter of the mutation scale factor sampling
         distribution.
@@ -411,12 +413,14 @@ class Population(MultiAtoms):
 
 
     def add_candidate(self, cluster: Atoms, candidate_size: int = 2) -> None:
-        """Insert a cluster at the front of the candidate list, keeping the
-        list length at most candidate_size.
+        """Append a cluster to the candidate list, keeping the list length at
+        most candidate_size.
 
-        The candidate cluster must have the same chemical formula as the
-        population. If the population symbol is empty, it is set when the first
-        candidate cluster is added.
+        The list is kept in decreasing energy order (worst first), so callers
+        should append candidates in improving order; trimming removes entries
+        from the front. The candidate cluster must have the same chemical
+        formula as the population. If the population symbol is empty, it is set
+        when the first candidate cluster is added.
 
         Parameters
         ----------
@@ -443,8 +447,8 @@ class Population(MultiAtoms):
                 f"population symbol {self._symbol}"
             )
 
-        self._candidate.insert(0, candidate_copy)
-        del self._candidate[candidate_size:]
+        self._candidate.append(candidate_copy)
+        del self._candidate[:max(len(self._candidate) - candidate_size, 0)]
 
     def export(
         self,
@@ -587,7 +591,8 @@ class Population(MultiAtoms):
         With ``candidate=False`` only the current best cluster is written, and
         the file is appended if it already exists, which records the evolution
         of the best cluster. With ``candidate=True`` the whole ``candidate``
-        list is written in order and the file with the same name is overwritten.
+        list is written best-first and the file with the same name is
+        overwritten.
 
         Only the energies and forces already present in ``info``/``arrays`` are
         used; the calculator is neither read nor recomputed.
@@ -619,7 +624,9 @@ class Population(MultiAtoms):
 
         if candidate:
             mode = 'w'
-            clusters = self._candidate
+            # The internal list is ordered worst-first; export best-first so
+            # the existing best*.xyz frame order is preserved.
+            clusters = list(reversed(self._candidate))
         else:
             mode = 'a'
             clusters = [self.best_cluster]
@@ -714,6 +721,15 @@ class Population(MultiAtoms):
         self._candidate = [
             atoms.copy() for atoms in candidate_data if isinstance(atoms, Atoms)
         ]
+        # Snapshots from older versions may store candidates best-first.
+        # Normalize to decreasing energy order when every energy is known.
+        if all(
+            cluster.info.get('energy') is not None for cluster in self._candidate
+        ):
+            self._candidate.sort(
+                key=lambda cluster: float(cluster.info['energy']),
+                reverse=True,
+            )
 
         clusters_data = data.get('clusters', [])
         for c_data in clusters_data:
