@@ -107,7 +107,7 @@ Key points:
 
 Outputs are written to the current directory:
 
-- `best*/{element}{atom}_best.xyz`: candidate frames, written best-first.
+- `best*/{element}{atom}_best.xyz`: candidate frames in candidate-list order (worst first, best last).
 - `better/{element}{atom}_better.xyz`: one extxyz frame of the current best structure is appended each
   time the structure-change criterion is met. Imported initial structures are not recorded.
 - `Populations/`: population snapshots.
@@ -138,7 +138,7 @@ Outputs are written to the current directory:
 
 - `input`: xyz directories or files (`str` or list). Default `best`.
 - `template`: VASP input template directory. Default `input`.
-- `frame`: frames read from each xyz file. Default `3`.
+- `frame`: number of frames read from the end of each xyz file; the best candidates are stored last. Default `3`.
 - `similarity`: `[s, s_c1]` deduplication thresholds. Default `[0.99, 0.98]`.
 - `cell`: six cell parameters `(a, b, c, alpha, beta, gamma)`. It applies to clusters smaller than `large_cluster_atom_count`; larger clusters use `large_cluster_cell` (which takes precedence over `cell`). Smaller clusters without a cell use a 15 A cube.
 - `large_cluster_cell`: six cell parameters used for clusters with at least `large_cluster_atom_count` atoms; it takes precedence over `cell`. Default `[20, 20, 20, 90, 90, 90]`.

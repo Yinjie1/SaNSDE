@@ -591,8 +591,8 @@ class Population(MultiAtoms):
         With ``candidate=False`` only the current best cluster is written, and
         the file is appended if it already exists, which records the evolution
         of the best cluster. With ``candidate=True`` the whole ``candidate``
-        list is written best-first and the file with the same name is
-        overwritten.
+        list is written in candidate order (worst first, best last) and the
+        file with the same name is overwritten.
 
         Only the energies and forces already present in ``info``/``arrays`` are
         used; the calculator is neither read nor recomputed.
@@ -624,9 +624,9 @@ class Population(MultiAtoms):
 
         if candidate:
             mode = 'w'
-            # The internal list is ordered worst-first; export best-first so
-            # the existing best*.xyz frame order is preserved.
-            clusters = list(reversed(self._candidate))
+            # Write in candidate order (worst first, best last), matching the
+            # append-only better/*.xyz history.
+            clusters = self._candidate
         else:
             mode = 'a'
             clusters = [self.best_cluster]

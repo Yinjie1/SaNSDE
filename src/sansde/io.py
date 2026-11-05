@@ -5,6 +5,7 @@ import json
 import shutil
 import subprocess
 import tarfile
+from collections import deque
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -258,9 +259,10 @@ def merge_xyz_directories(
 ) -> MultiAtoms:
     """Read xyz directories, deduplicate them, and return a MultiAtoms.
 
-    Each directory (or single xyz file) contributes up to ``n`` frames per
-    xyz file. The frames from one directory are deduplicated before all
-    directories are merged and deduplicated again.
+    Each directory (or single xyz file) contributes the last ``n`` frames per
+    xyz file, because sansde writes candidates worst-first (best last). The
+    frames from one directory are deduplicated before all directories are
+    merged and deduplicated again.
 
     Parameters
     ----------
@@ -308,11 +310,11 @@ def merge_xyz_directories(
 
         container = MultiAtoms()
         for file_path in files:
-            for count, frame in enumerate(iread(file_path), start=1):
+            # Candidate frames are written worst-first, so the last n frames
+            # hold the best structures.
+            for frame in deque(iread(file_path), maxlen=n):
                 _normalize_frame(frame)
                 container.add_cluster(frame)
-                if count >= n:
-                    break
         container.deduplicate(s=s, s_c1=s_c1)
         containers.append(container)
 
@@ -454,8 +456,10 @@ def write_vasp_tasks(params: str | Path) -> list[Path]:
             "compress": false
         }
 
-    ``cell`` is six values ``(a, b, c, alpha, beta, gamma)`` and overrides the
-    cell of clusters smaller than ``large_cluster_atom_count``.
+    ``frame`` is the number of frames read from the end of each xyz file; the
+    best candidates are stored last. ``cell`` is six values
+    ``(a, b, c, alpha, beta, gamma)`` and overrides the cell of clusters
+    smaller than ``large_cluster_atom_count``.
     ``large_cluster_cell`` sets the cell used for clusters with at least
     ``large_cluster_atom_count`` atoms (it takes precedence over ``cell``),
     and ``large_cluster_unique`` makes those clusters unique per formula.
