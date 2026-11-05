@@ -618,7 +618,7 @@ def crossover(pop1: Population, pop2: Population) -> Population:
             trial_positions = base_positions.copy()
             for j in range(pop1.num):
                 if np.random.uniform(0.0, 1.0) <= cross_rate or j == j_rand:
-                    trial_positions[j] = mut_positions[j]
+                    trial_positions[j] = mut_positions[j] # type: ignore
             if min_pair_distance(trial_positions) >= MIN_ATOM_DISTANCE:
                 break
         else:
@@ -641,8 +641,8 @@ def crossover(pop1: Population, pop2: Population) -> Population:
 
 
 def sphere_cut_splice(
-    pop1: Population,
-    pop2: Population,
+    pop: Population,
+    trial: Population,
     r: float = 0.8,
     relax: Callable[[Population | Atoms], Population | Atoms] | None = None,
     debug: bool = False,
@@ -651,10 +651,10 @@ def sphere_cut_splice(
 
     Parameters
     ----------
-    pop1 : Population
-        父代种群 1.
-    pop2 : Population
-        父代种群 2.
+    pop : Population
+        父代种群.
+    trial : Population
+        试验种群(crossover 产生的候选).
     r : float, optional
         半径缩放系数,取值范围 (0, 1].
         球面半径定义为 R = dmax_a * r.
@@ -663,18 +663,22 @@ def sphere_cut_splice(
         若使用默认值 None, 则直接报错.
     debug : bool, optional
         是否输出重选过程信息. Default False.
+
+    The splice pairs clusters randomly, so the per-individual crossover rates
+    are restored by population order afterwards: the offspring at index ``i``
+    receives the CR of ``trial[i]``.
     """
-    if pop1.symbol != pop2.symbol:
+    if pop.symbol != trial.symbol:
         raise ValueError("Population symbols must match for sphere_cut_splice")
-    if len(pop1) != len(pop2):
+    if len(pop) != len(trial):
         raise ValueError("Population sizes must match for sphere_cut_splice")
-    if len(pop1) < 2:
+    if len(pop) < 2:
         raise ValueError("sphere_cut_splice requires at least 2 clusters per population")
     if not (0.0 < r <= 1.0):
         raise ValueError("r must be in (0, 1]")
 
-    temp_clusters = Population(symbol=pop1.symbol)
-    temp_clusters.info = pop1.info.copy()
+    temp_clusters = Population(symbol=pop.symbol)
+    temp_clusters.info = pop.info.copy()
 
     if relax is None:
         raise ValueError("sphere_cut_splice requires explicit relax callable")
@@ -762,12 +766,6 @@ def sphere_cut_splice(
             relaxed_a.info['strategy_tag'] = strategy_tag
             relaxed_b.info['strategy_tag'] = strategy_tag
 
-        # cr 生命周期透传: 供 select 在成功样本上更新 crm.
-        cross_rate = cluster_b.info.get('cr')
-        if cross_rate is not None:
-            relaxed_a.info['cr'] = cross_rate
-            relaxed_b.info['cr'] = cross_rate
-
         energy_a = relaxed_a.info.get('energy')
         energy_b = relaxed_b.info.get('energy')
         if energy_a is None or energy_b is None:
@@ -775,7 +773,7 @@ def sphere_cut_splice(
 
         return relaxed_a if float(energy_a) <= float(energy_b) else relaxed_b
 
-    target_size = len(pop1)
+    target_size = len(pop)
     max_retries = target_size * 200
     retry_count = 0
 
@@ -784,13 +782,13 @@ def sphere_cut_splice(
             raise RuntimeError("sphere_cut_splice failed to generate enough offspring after retries")
         retry_count += 1
 
-        selected_1 = np.random.choice(len(pop1), size=2, replace=False)
-        selected_2 = np.random.choice(len(pop2), size=2, replace=False)
+        selected_1 = np.random.choice(len(pop), size=2, replace=False)
+        selected_2 = np.random.choice(len(trial), size=2, replace=False)
 
         winners: list[Atoms] = []
         round_failed = False
         for local_index in range(2):
-            winner = splice_one(pop1[int(selected_1[local_index])], pop2[int(selected_2[local_index])])
+            winner = splice_one(pop[int(selected_1[local_index])], trial[int(selected_2[local_index])])
             if winner is None:
                 round_failed = True
                 break
@@ -805,6 +803,13 @@ def sphere_cut_splice(
             if len(temp_clusters) >= target_size:
                 break
             temp_clusters.add_cluster(winner)
+
+    # Restore the CR of each population index: the splice pairs random cluster
+    # indexes, so record the current CR values and assign them back by order.
+    for index, cluster in enumerate(temp_clusters):
+        cross_rate = trial[index].info.get('cr')
+        if cross_rate is not None:
+            cluster.info['cr'] = float(cross_rate)
 
     return temp_clusters
 

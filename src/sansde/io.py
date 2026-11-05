@@ -110,7 +110,7 @@ def append_stats_row(
     elapsed_time: float,
 ) -> None:
     """Append one generation's statistics to the run CSVs."""
-    candidates = list(pop.candidate)
+    candidates = list(pop.candidate) # type: ignore
     n_sub = min(max(candidate_size - 1, 0), 2)
     # candidate[0] 是当前候选最优, 按列表顺序直接取前两个次优候选.
     sub_candidates = candidates[1:1 + n_sub]
@@ -150,10 +150,16 @@ def append_stats_row(
         writer.writerow(row)
 
     # Population info is logged to a separate CSV: symbol, atoms, gen, <info>.
+    # The cr_rec/delta_rec record lists are excluded from the output.
     pop_stats_path = stats_path.with_name("pop_stat.csv")
-    pop_header = ["symbol", "atoms", "gen", *pop.info.keys()]
+    pop_items = [
+        (key, value)
+        for key, value in pop.info.items()
+        if key not in ('cr_rec', 'delta_rec')
+    ]
+    pop_header = ["symbol", "atoms", "gen", *(key for key, _ in pop_items)]
     pop_row: list[object] = [symbol, atom, gen]
-    for value in pop.info.values():
+    for _, value in pop_items:
         if isinstance(value, (list, dict)):
             pop_row.append(json.dumps(value))
         else:
