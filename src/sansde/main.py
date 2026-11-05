@@ -230,6 +230,13 @@ def run(
                 stagnation_count = 0
                 # 结构变化判据满足: 本代最优结构加入候选列表.
                 pop_next.add_candidate(best_cluster, candidate_size=int(params['CAND_SIZE']))
+                # The criterion only fires after the best cluster has changed,
+                # so imported initial candidates are never recorded here.
+                # Frames are appended so the whole optimization history is kept.
+                pop_next.dump_xyz(
+                    name=f"{expected_symbol}_better",
+                    dir="better",
+                )
                 # 输出结构变化判据: 点群变化/相似性/能量变化.
                 print(
                     f"atom={atom} gen={gen:03d}"
