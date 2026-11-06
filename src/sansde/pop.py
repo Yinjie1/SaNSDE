@@ -800,7 +800,11 @@ class Population(MultiAtoms):
             print(f"xyz file {xyz_path} not found.")
             return
 
-        frames: list[Atoms] = read(xyz_path, index=':') # type: ignore
+        try:
+            frames: list[Atoms] = read(xyz_path, index=':') # type: ignore
+        except Exception as e:  # noqa: BLE001
+            print(f"failed to read xyz file {xyz_path}: {e}")
+            return
         if not frames:
             print(f"xyz file {xyz_path} contains no frames.")
             return
