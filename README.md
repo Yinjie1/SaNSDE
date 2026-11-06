@@ -60,7 +60,7 @@ parsed, or contain an invalid `MIN_ATOM`/`MAX_ATOM` are reported and skipped. Wh
 define overlapping systems, each overlapping pair is reported with the shared range:
 
 ```text
-overlapping optimization systems:
+warning: overlapping optimization systems exist
   a.json <-> c.json: Au18-20
 ```
 
@@ -82,6 +82,10 @@ Output and initial-structure directories are resolved against the current workin
 ```bash
 sansde check ../configs
 ```
+
+Colors are used when stdout is a terminal: the `optimization systems:` label is blue, the `warning:`
+prefix is red, skipped files are yellow, and "no issues" confirmations are green. Colors are disabled
+automatically when output is piped or redirected, and can be disabled explicitly with `NO_COLOR=1`.
 
 `check` is read-only: it does not create, modify or delete any file.
 

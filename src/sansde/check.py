@@ -1,8 +1,31 @@
 """Checks for sansde run parameter files and working directories."""
 
 import json
+import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+_RED = "31"
+_GREEN = "32"
+_YELLOW = "33"
+_BLUE = "34"
+
+
+def _supports_color() -> bool:
+    """Return whether ANSI colors should be written to stdout."""
+    if os.environ.get("NO_COLOR") is not None:
+        return False
+    if os.environ.get("TERM") == "dumb":
+        return False
+    return sys.stdout.isatty()
+
+
+def _paint(text: str, color: str, enabled: bool) -> str:
+    """Wrap text in an ANSI color code when colors are enabled."""
+    if not enabled:
+        return text
+    return f"\033[{color}m{text}\033[0m"
 
 
 @dataclass(frozen=True)
@@ -21,7 +44,7 @@ class _RunConfig:
     rounds: int
 
 
-def _read_run_configs(directory: Path) -> list[_RunConfig]:
+def _read_run_configs(directory: Path, color: bool) -> list[_RunConfig]:
     """Read run parameter JSON files and return the parsed configurations.
 
     Files that are not run parameter files, cannot be parsed, or contain
@@ -32,26 +55,26 @@ def _read_run_configs(directory: Path) -> list[_RunConfig]:
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as e:
-            print(f"skip {path.name}: cannot read JSON ({e})")
+            print(_paint(f"skip {path.name}: cannot read JSON ({e})", _YELLOW, color))
             continue
         if not isinstance(data, dict):
-            print(f"skip {path.name}: JSON root is not an object")
+            print(_paint(f"skip {path.name}: JSON root is not an object", _YELLOW, color))
             continue
         if "MIN_ATOM" not in data or "MAX_ATOM" not in data:
-            print(f"skip {path.name}: not a run parameter file")
+            print(_paint(f"skip {path.name}: not a run parameter file", _YELLOW, color))
             continue
         try:
             min_atom = int(data["MIN_ATOM"])
             max_atom = int(data["MAX_ATOM"])
             rounds = int(data.get("ROUND", 1))
         except (TypeError, ValueError) as e:
-            print(f"skip {path.name}: invalid parameter ({e})")
+            print(_paint(f"skip {path.name}: invalid parameter ({e})", _YELLOW, color))
             continue
         if min_atom > max_atom:
-            print(f"skip {path.name}: MIN_ATOM > MAX_ATOM")
+            print(_paint(f"skip {path.name}: MIN_ATOM > MAX_ATOM", _YELLOW, color))
             continue
         if rounds < 1:
-            print(f"skip {path.name}: ROUND must be >= 1")
+            print(_paint(f"skip {path.name}: ROUND must be >= 1", _YELLOW, color))
             continue
         configs.append(
             _RunConfig(
@@ -164,7 +187,11 @@ def _existing_outputs(
     return existing
 
 
-def _warn_existing_outputs(config: _RunConfig, directory: Path) -> bool:
+def _warn_existing_outputs(
+    config: _RunConfig,
+    directory: Path,
+    color: bool,
+) -> bool:
     """Warn when output files for a configuration already exist."""
     existing = _existing_outputs(config, directory)
     if not existing:
@@ -172,7 +199,8 @@ def _warn_existing_outputs(config: _RunConfig, directory: Path) -> bool:
 
     systems = _format_range(config.element, config.min_atom, config.max_atom)
     print(
-        f"warning: {config.path.name} ({systems}) has existing output files:"
+        f"{_paint('warning:', _RED, color)} "
+        f"{config.path.name} ({systems}) has existing output files:"
     )
     for label in sorted(existing):
         files = existing[label]
@@ -201,7 +229,8 @@ def run_check(directory: str | Path = ".") -> None:
     if not params_dir.is_dir():
         print(f"directory not found: {params_dir}")
         return
-    configs = _read_run_configs(params_dir)
+    color = _supports_color()
+    configs = _read_run_configs(params_dir, color)
     if not configs:
         print(f"no run parameter files found in {params_dir.resolve()}")
         return
@@ -225,21 +254,30 @@ def run_check(directory: str | Path = ".") -> None:
             _format_range(element, start, end)
             for start, end in merged
         )
-    print(f"optimization systems: {', '.join(parts)}")
+    print(f"{_paint('optimization systems:', _BLUE, color)} {', '.join(parts)}")
 
     overlaps = _find_overlaps(configs)
     if overlaps:
-        print("overlapping optimization systems:")
+        print(
+            f"{_paint('warning:', _RED, color)} "
+            "overlapping optimization systems exist"
+        )
         for path_a, path_b, element, start, end in overlaps:
             print(
                 f"  {path_a.name} <-> {path_b.name}: "
                 f"{_format_range(element, start, end)}"
             )
     else:
-        print("no overlapping optimization systems")
+        print(_paint("no overlapping optimization systems", _GREEN, color))
 
     warned = False
     for config in configs:
-        warned = _warn_existing_outputs(config, work_dir) or warned
+        warned = _warn_existing_outputs(config, work_dir, color) or warned
     if not warned:
-        print("no existing output files for the target systems")
+        print(
+            _paint(
+                "no existing output files for the target systems",
+                _GREEN,
+                color,
+            )
+        )
