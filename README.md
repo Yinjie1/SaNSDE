@@ -106,10 +106,10 @@ error: params.json (Au): potential check failed: name 'LennardJones' is not defi
 ```
 
 If `USE_ZBL` is true (the default), `check` also verifies that `hiphive.calculators.zbl` can be
-imported:
+imported. Only the first JSON with `USE_ZBL` true is checked:
 
 ```text
-zbl ok: params.json: hiphive.calculators.zbl
+zbl ok: hiphive.calculators.zbl
 ```
 
 With `ROUND > 1`, the round directories `best1/`, `best2/`, ... are checked instead of `BEST_DIR`.

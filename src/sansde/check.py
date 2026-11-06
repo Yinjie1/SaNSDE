@@ -501,10 +501,7 @@ def _check_zbl(config: _RunConfig, color: bool) -> None:
             f"{config.path.name}: zbl check failed: {detail}"
         )
         return
-    print(
-        f"{_paint('zbl ok:', _GREEN, color)} "
-        f"{config.path.name}: {module}"
-    )
+    print(f"{_paint('zbl ok:', _GREEN, color)} {module}")
 
 
 def run_check(directory: str | Path = ".") -> None:
@@ -593,7 +590,9 @@ def run_check(directory: str | Path = ".") -> None:
             checked_potentials[key] = name
 
     for config in configs:
-        _check_zbl(config, color)
+        if config.use_zbl:
+            _check_zbl(config, color)
+            break
 
     warned = False
     for config in configs:

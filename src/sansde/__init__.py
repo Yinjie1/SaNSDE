@@ -9,7 +9,7 @@ from sansde.operators import (
 )
 from sansde.pop import Clusters, Population
 
-__version__ = "0.1.5"
+__version__ = "0.1.7"
 
 __all__ = [
     'Clusters',
