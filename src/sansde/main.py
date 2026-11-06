@@ -283,7 +283,10 @@ def run(
         prev_best_cluster = best_cluster.copy()
         # pop.dump(f"{params['ELEMENT']}{atom}_best")
         pop.dump_xyz(f"{params['ELEMENT']}{atom}_best")
-        snapshot_path = pop.export(name=f"{params['ELEMENT']}{atom}_gen{gen}")
+        snapshot_path = pop.export(
+            name=f"{params['ELEMENT']}{atom}_gen{gen}",
+            dir=params['POP_DIR'],
+        )
 
         # 清理超出保留数量的旧快照
         if gen > int(params['KEEP_SNAPSHOTS']):
