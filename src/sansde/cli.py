@@ -4,6 +4,7 @@ Usage:
     sansde run params.json            # run in the background, log to params.log
     sansde run params.json --fg       # run in the foreground
     sansde xyz2vasp params.json       # export VASP tasks from JSON parameters
+    sansde check [directory]          # inspect run parameter files and outputs
     python -m sansde run params.json --fg
 """
 import argparse
@@ -11,6 +12,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from sansde.check import run_check
 from sansde.io import write_vasp_tasks
 from sansde.main import main as run_opt
 
@@ -19,6 +21,18 @@ def main(argv: list[str] | None = None) -> None:
     """Parse command line arguments and dispatch the requested task."""
     parser = argparse.ArgumentParser(prog="sansde")
     subparsers = parser.add_subparsers(dest="command")
+
+    checker = subparsers.add_parser(
+        "check",
+        help="check run parameter files and output directories in a directory",
+    )
+    checker.add_argument(
+        "directory",
+        nargs="?",
+        type=Path,
+        default=Path("."),
+        help="directory to check (default: current directory)",
+    )
 
     export = subparsers.add_parser(
         "xyz2vasp",
@@ -49,6 +63,10 @@ def main(argv: list[str] | None = None) -> None:
         help="run in the foreground (default: run in the background)",
     )
     args = parser.parse_args(argv)
+
+    if args.command == "check":
+        run_check(args.directory)
+        return
 
     if args.command == "xyz2vasp":
         write_vasp_tasks(args.json)

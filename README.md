@@ -41,8 +41,22 @@ uv build
 sansde run params.json            # background; log -> params.log, pid -> ./pid
 sansde run params.json --fg       # foreground
 sansde xyz2vasp xyz2vasp.json     # export VASP task directories
+sansde check                      # inspect *.json in the current directory
 python -m sansde run params.json --fg
 ```
+
+## Check
+
+`sansde check [directory]` reads all `*.json` run parameter files in the directory (default: the
+current directory) and prints the merged optimization systems, for example:
+
+```text
+read 3 run parameter file(s)
+optimization systems: Au2-25, Au30-40
+```
+
+Overlapping or adjacent ranges are merged. JSON files that are not run parameter files, cannot be
+parsed, or contain an invalid `MIN_ATOM`/`MAX_ATOM` are reported and skipped.
 
 ## Optimization
 
