@@ -235,7 +235,7 @@ def run(
                 # Frames are appended so the whole optimization history is kept.
                 pop_next.dump_xyz(
                     name=f"{expected_symbol}_better",
-                    dir="better",
+                    dir=params['BETTER_DIR'],
                 )
                 # 输出结构变化判据: 点群变化/相似性/能量变化.
                 print(

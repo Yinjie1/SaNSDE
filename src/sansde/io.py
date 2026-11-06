@@ -64,6 +64,7 @@ def read_run_params(params_path: Path) -> dict[str, Any]:
         'INIT_DIR': 'init',
         'INIT_POP_DIR': '',
         'BEST_DIR': 'best',
+        'BETTER_DIR': 'better',
         'KEEP_SNAPSHOTS': 1,
         'POP_DIR': 'Populations',
         'POP_SIZE': 12,

@@ -64,6 +64,18 @@ overlapping optimization systems:
   a.json <-> c.json: Au18-20
 ```
 
+It also warns when `BEST_DIR`, `BETTER_DIR` or `POP_DIR` already contain files for the target
+sizes, because those files may be modified or overwritten by a run:
+
+```text
+warning: params.json (Au2-20) has existing output files:
+  best/: best/Au2_best.xyz, best/Au5_best.xyz
+  better/: better/Au3_better.xyz
+  Populations/: Populations/Au2_gen1.json
+  these files may be modified or overwritten by the run
+```
+
+With `ROUND > 1`, the round directories `best1/`, `best2/`, ... are checked instead of `BEST_DIR`.
 `check` is read-only: it does not create, modify or delete any file.
 
 ## Optimization
@@ -90,6 +102,7 @@ overlapping optimization systems:
     "INIT_POP_DIR": "",
     "CONTINUE": false,
     "BEST_DIR": "best",
+    "BETTER_DIR": "better",
     "KEEP_SNAPSHOTS": 1,
     "POP_DIR": "Populations",
     "POP_SIZE": 12,
