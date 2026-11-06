@@ -105,6 +105,13 @@ potential ok: params.json (Au): LennardJones
 error: params.json (Au): potential check failed: name 'LennardJones' is not defined
 ```
 
+If `USE_ZBL` is true (the default), `check` also verifies that `hiphive.calculators.zbl` can be
+imported:
+
+```text
+zbl ok: params.json: hiphive.calculators.zbl
+```
+
 With `ROUND > 1`, the round directories `best1/`, `best2/`, ... are checked instead of `BEST_DIR`.
 Output and initial-structure directories are resolved against the current working directory, matching
 `sansde run`, even when the parameter JSON files live in another directory:
@@ -113,9 +120,12 @@ Output and initial-structure directories are resolved against the current workin
 sansde check ../configs
 ```
 
+A SANSDE banner and a `version: x.y.z` line are printed first; the banner is skipped only on a TTY
+narrower than 50 columns.
+
 Colors are used when stdout is a terminal: the `optimization systems:` label is blue, output/overlap
 `warning:` prefixes are red, missing initial-input `warning:` prefixes and skipped files are yellow,
-and "no issues" confirmations and `potential ok:` are green. Colors are disabled automatically when output is piped or
+and "no issues" confirmations, `potential ok:` and `zbl ok:` are green. Colors are disabled automatically when output is piped or
 redirected, and can be disabled explicitly with `NO_COLOR=1`.
 
 `check` is read-only: it does not create, modify or delete any file.

@@ -3,6 +3,8 @@
 import shutil
 import sys
 
+from sansde import __version__
+
 _BANNER_LINES = (
     "███████╗ █████╗ ███╗   ██╗███████╗██████╗ ███████╗",
     "██╔════╝██╔══██╗████╗  ██║██╔════╝██╔══██╗██╔════╝",
@@ -24,4 +26,5 @@ def print_banner() -> None:
         if width < _BANNER_WIDTH:
             return
     print("\n".join(_BANNER_LINES))
+    print(f"version: {__version__}")
     print()

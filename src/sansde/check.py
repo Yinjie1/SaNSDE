@@ -1,5 +1,6 @@
 """Checks for sansde run parameter files and working directories."""
 
+import importlib
 import json
 import math
 import os
@@ -52,6 +53,7 @@ class _RunConfig:
     init_pop_dir: str
     scripts: object
     potential: object
+    use_zbl: bool
     rounds: int
 
 
@@ -106,6 +108,7 @@ def _read_run_configs(directory: Path, color: bool) -> list[_RunConfig]:
                 init_pop_dir=_dir_setting(data, "INIT_POP_DIR", ""),
                 scripts=data.get("SCRIPTS", []),
                 potential=data.get("POTENTIAL"),
+                use_zbl=bool(data.get("USE_ZBL", True)),
                 rounds=rounds,
             )
         )
@@ -484,6 +487,26 @@ def _check_potential(config: _RunConfig, color: bool) -> str | None:
     return name
 
 
+def _check_zbl(config: _RunConfig, color: bool) -> None:
+    """Check that the hiphive ZBL module can be imported when USE_ZBL is true."""
+    if not config.use_zbl:
+        return
+    module = "hiphive.calculators.zbl"
+    try:
+        importlib.import_module(module)
+    except Exception as e:  # noqa: BLE001
+        detail = str(e) or type(e).__name__
+        print(
+            f"{_paint('error:', _RED, color)} "
+            f"{config.path.name}: zbl check failed: {detail}"
+        )
+        return
+    print(
+        f"{_paint('zbl ok:', _GREEN, color)} "
+        f"{config.path.name}: {module}"
+    )
+
+
 def run_check(directory: str | Path = ".") -> None:
     """Check run parameter files and output directories without modifying files.
 
@@ -568,6 +591,9 @@ def run_check(directory: str | Path = ".") -> None:
         name = _check_potential(config, color)
         if key is not None:
             checked_potentials[key] = name
+
+    for config in configs:
+        _check_zbl(config, color)
 
     warned = False
     for config in configs:
