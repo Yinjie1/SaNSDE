@@ -33,6 +33,11 @@ def main(argv: list[str] | None = None) -> None:
         default=Path("."),
         help="directory containing parameter JSON files (default: current directory)",
     )
+    checker.add_argument(
+        "--no-banner",
+        action="store_true",
+        help="do not print the SANSDE banner",
+    )
 
     export = subparsers.add_parser(
         "xyz2vasp",
@@ -65,7 +70,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     if args.command == "check":
-        run_check(args.directory)
+        run_check(args.directory, show_banner=not args.no_banner)
         return
 
     if args.command == "xyz2vasp":

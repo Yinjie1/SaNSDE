@@ -50,8 +50,8 @@ banner at the top of `<params>.log`; the launcher only prints the `started backg
 
 ## Check
 
-`sansde check [directory]` reads all `*.json` run parameter files in the given directory (default:
-the current directory) and prints the merged optimization systems, for example:
+`sansde check [--no-banner] [directory]` reads all `*.json` run parameter files in the given directory
+(default: the current directory) and prints the merged optimization systems, for example:
 
 ```text
 read 3 run parameter file(s)
@@ -121,7 +121,7 @@ sansde check ../configs
 ```
 
 A SANSDE banner and a `version: x.y.z` line are printed first; the banner is skipped only on a TTY
-narrower than 50 columns.
+narrower than 50 columns. Use `--no-banner` to suppress the banner and version line entirely.
 
 Colors are used when stdout is a terminal: the `optimization systems:` label is blue, output/overlap
 `warning:` prefixes are red, missing initial-input `warning:` prefixes and skipped files are yellow,

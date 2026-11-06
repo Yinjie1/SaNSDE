@@ -504,7 +504,10 @@ def _check_zbl(config: _RunConfig, color: bool) -> None:
     print(f"{_paint('zbl ok:', _GREEN, color)} {module}")
 
 
-def run_check(directory: str | Path = ".") -> None:
+def run_check(
+    directory: str | Path = ".",
+    show_banner: bool = True,
+) -> None:
     """Check run parameter files and output directories without modifying files.
 
     The parameter JSON files are read from ``directory``. Output and initial
@@ -515,8 +518,11 @@ def run_check(directory: str | Path = ".") -> None:
     ----------
     directory : str | pathlib.Path, optional
         Directory containing the ``*.json`` run parameter files. Default ``"."``.
+    show_banner : bool, optional
+        Whether to print the SANSDE banner and version line. Default True.
     """
-    print_banner()
+    if show_banner:
+        print_banner()
     params_dir = Path(directory)
     if not params_dir.is_dir():
         print(f"directory not found: {params_dir}")
