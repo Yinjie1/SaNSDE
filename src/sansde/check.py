@@ -55,6 +55,22 @@ def _format_range(element: str, start: int, end: int) -> str:
     return f"{element}{start}-{end}"
 
 
+def _find_overlaps(
+    ranges: list[tuple[Path, str, int, int]],
+) -> list[tuple[Path, Path, str, int, int]]:
+    """Return pairwise overlapping systems as ``(path_a, path_b, element, start, end)``."""
+    overlaps: list[tuple[Path, Path, str, int, int]] = []
+    for index, (path_a, element_a, min_a, max_a) in enumerate(ranges):
+        for path_b, element_b, min_b, max_b in ranges[index + 1:]:
+            if element_a != element_b:
+                continue
+            start = max(min_a, min_b)
+            end = min(max_a, max_b)
+            if start <= end:
+                overlaps.append((path_a, path_b, element_a, start, end))
+    return overlaps
+
+
 def run_check(directory: str | Path = ".") -> None:
     """Check run parameter files in a directory and print the target systems.
 
@@ -85,3 +101,14 @@ def run_check(directory: str | Path = ".") -> None:
             for start, end in merged
         )
     print(f"optimization systems: {', '.join(parts)}")
+
+    overlaps = _find_overlaps(ranges)
+    if overlaps:
+        print("overlapping optimization systems:")
+        for path_a, path_b, element, start, end in overlaps:
+            print(
+                f"  {path_a.name} <-> {path_b.name}: "
+                f"{_format_range(element, start, end)}"
+            )
+    else:
+        print("no overlapping optimization systems")

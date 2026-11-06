@@ -56,7 +56,15 @@ optimization systems: Au2-25, Au30-40
 ```
 
 Overlapping or adjacent ranges are merged. JSON files that are not run parameter files, cannot be
-parsed, or contain an invalid `MIN_ATOM`/`MAX_ATOM` are reported and skipped.
+parsed, or contain an invalid `MIN_ATOM`/`MAX_ATOM` are reported and skipped. When multiple files
+define overlapping systems, each overlapping pair is reported with the shared range:
+
+```text
+overlapping optimization systems:
+  a.json <-> c.json: Au18-20
+```
+
+`check` is read-only: it does not create, modify or delete any file.
 
 ## Optimization
 
