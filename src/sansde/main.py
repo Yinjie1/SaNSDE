@@ -13,7 +13,6 @@ import numpy as np
 from ase import Atoms
 from ase.calculators.calculator import Calculator
 from ase.calculators.mixing import SumCalculator
-from ase.io import read
 from ase.optimize import BFGS
 
 try:
@@ -124,40 +123,29 @@ def run(
             pop = Population(symbol=expected_symbol)
     else:
         for init_path in sorted(init_dir.glob(f"{expected_symbol}*.xyz")):
-            # 相同化学式的 xyz 只有一个, 只读取第一个化学式匹配的文件.
-            init_frames: list[Atoms] = read(init_path, index=':') # type: ignore
-            if not init_frames:
-                print(f"skip empty structure file {init_path}")
+            try:
+                pop.import_xyz(init_path)
+            except ValueError as e:
+                print(f"skip structure {init_path}: {e}")
                 continue
-            # 同一个 xyz 中所有帧化学式相同, 只检查第一帧.
-            if init_frames[0].get_chemical_formula() != expected_symbol: # type: ignore
-                print(f"skip structure {init_path}: symbol mismatch")
+            if len(pop) == 0:
                 continue
             print(f"load structure {expected_symbol} from {init_path}...")
-            # 候选列表按能量降序导出(最优在最后), 直接取最后一帧作为
-            # 种群种子; 种子能量在下面的循环中重新计算.
-            # 所有帧(包括种子)都加入到候选列表.
-            for frame in init_frames:
-                # 用当前势(DP 或 DP+ZBL)重算能量和力, 不信任文件里可能来自旧势的数据.
-                frame.calc = potential
+            # Recompute energies and forces for the imported population and
+            # candidates with the current potential.
+            for cluster in [*pop.clusters, *pop.candidate]:
+                cluster.calc = potential
                 try:
-                    energy_value = float(frame.get_potential_energy())
-                    force_value = np.asarray(frame.get_forces(), dtype=float)
+                    energy_value = float(cluster.get_potential_energy())
+                    force_value = np.asarray(cluster.get_forces(), dtype=float)
                 finally:
-                    frame.calc = None  # 摘掉计算器, 避免进入后续种群流程
+                    cluster.calc = None
                 if np.isfinite(energy_value):
-                    frame.info['energy'] = energy_value
-                    frame.arrays['forces'] = force_value
+                    cluster.info['energy'] = energy_value
+                    cluster.arrays['forces'] = force_value
                 else:
-                    frame.info['energy'] = float('inf')
-                    frame.arrays['forces'] = np.zeros((len(frame), 3))
-            # The last frame is the best structure from the previous run.
-            pop.add_cluster(init_frames[-1])
-            # Add all frames first, then sort by decreasing energy; the seed is
-            # selected by frame order, not by the recomputed energies.
-            # Do not truncate before sorting to avoid losing low-energy entries.
-            for frame in init_frames:
-                pop.add_candidate(frame, candidate_size=len(init_frames))
+                    cluster.info['energy'] = float('inf')
+                    cluster.arrays['forces'] = np.zeros((len(cluster), 3))
             pop.candidate.sort(
                 key=lambda cluster: float(cluster.info['energy']),
                 reverse=True,

@@ -8,6 +8,7 @@ from typing import Any, Self, overload
 
 import numpy as np
 from ase import Atoms
+from ase.io import read
 from ase.io.extxyz import write_extxyz
 from ase.io.jsonio import read_json, write_json
 from ase.io.trajectory import Trajectory
@@ -773,6 +774,57 @@ class Population(MultiAtoms):
 
         if optimal_only:
             self._clusters = [self.best_cluster]
+
+    def import_xyz(self, filename: str | Path) -> None:
+        """Import one structure and its candidate frames from an xyz file.
+
+        The last frame is added to the population because candidates are
+        written worst-first, so the last frame is the best structure from the
+        previous run. All frames are appended to the candidate list in file
+        order. Existing population data is replaced. Energies and forces are
+        neither read from the calculator nor recomputed.
+
+        Parameters
+        ----------
+        filename : str | pathlib.Path
+            Path of the xyz file.
+
+        Raises
+        ------
+        ValueError
+            If the frames have mixed chemical formulas, or if their formula
+            does not match the population symbol.
+        """
+        xyz_path = Path(filename)
+        if not xyz_path.is_file():
+            print(f"xyz file {xyz_path} not found.")
+            return
+
+        frames: list[Atoms] = read(xyz_path, index=':') # type: ignore
+        if not frames:
+            print(f"xyz file {xyz_path} contains no frames.")
+            return
+
+        formulas = {frame.get_chemical_formula() for frame in frames}
+        if len(formulas) != 1:
+            raise ValueError(
+                f"xyz frames have mixed chemical formulas: {sorted(formulas)}"
+            )
+        formula = formulas.pop()
+        if self._symbol is not None and formula != self._symbol:
+            raise ValueError(
+                f"xyz formula {formula} does not match population symbol "
+                f"{self._symbol}"
+            )
+
+        # Replace the current population and candidate archive.
+        self._clusters = []
+        self._candidate = []
+
+        # The last frame is the best structure from the previous run.
+        self.add_cluster(frames[-1])
+        for frame in frames:
+            self.add_candidate(frame, candidate_size=len(frames))
 
 
 class Clusters(MultiAtoms):
