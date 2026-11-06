@@ -188,19 +188,28 @@ def _warn_existing_outputs(config: _RunConfig, directory: Path) -> bool:
 def run_check(directory: str | Path = ".") -> None:
     """Check run parameter files and output directories without modifying files.
 
+    The parameter JSON files are read from ``directory``. Output and initial
+    structure directories are resolved against the current working directory,
+    because ``sansde run`` executes there even when the JSON lives elsewhere.
+
     Parameters
     ----------
     directory : str | pathlib.Path, optional
-        Directory searched for ``*.json`` run parameter files. Default ``"."``.
+        Directory containing the ``*.json`` run parameter files. Default ``"."``.
     """
-    path = Path(directory)
-    if not path.is_dir():
-        print(f"directory not found: {path}")
+    params_dir = Path(directory)
+    if not params_dir.is_dir():
+        print(f"directory not found: {params_dir}")
         return
-    configs = _read_run_configs(path)
+    configs = _read_run_configs(params_dir)
     if not configs:
-        print(f"no run parameter files found in {path.resolve()}")
+        print(f"no run parameter files found in {params_dir.resolve()}")
         return
+
+    work_dir = Path.cwd()
+    if params_dir.resolve() != work_dir:
+        print(f"parameter directory: {params_dir.resolve()}")
+        print(f"working directory: {work_dir}")
 
     ranges_by_element: dict[str, list[tuple[int, int]]] = {}
     for config in configs:
@@ -231,6 +240,6 @@ def run_check(directory: str | Path = ".") -> None:
 
     warned = False
     for config in configs:
-        warned = _warn_existing_outputs(config, path) or warned
+        warned = _warn_existing_outputs(config, work_dir) or warned
     if not warned:
         print("no existing output files for the target systems")

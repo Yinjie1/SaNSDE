@@ -31,7 +31,7 @@ def main(argv: list[str] | None = None) -> None:
         nargs="?",
         type=Path,
         default=Path("."),
-        help="directory to check (default: current directory)",
+        help="directory containing parameter JSON files (default: current directory)",
     )
 
     export = subparsers.add_parser(

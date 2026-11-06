@@ -47,8 +47,8 @@ python -m sansde run params.json --fg
 
 ## Check
 
-`sansde check [directory]` reads all `*.json` run parameter files in the directory (default: the
-current directory) and prints the merged optimization systems, for example:
+`sansde check [directory]` reads all `*.json` run parameter files in the given directory (default:
+the current directory) and prints the merged optimization systems, for example:
 
 ```text
 read 3 run parameter file(s)
@@ -76,6 +76,13 @@ warning: params.json (Au2-20) has existing output files:
 ```
 
 With `ROUND > 1`, the round directories `best1/`, `best2/`, ... are checked instead of `BEST_DIR`.
+Output and initial-structure directories are resolved against the current working directory, matching
+`sansde run`, even when the parameter JSON files live in another directory:
+
+```bash
+sansde check ../configs
+```
+
 `check` is read-only: it does not create, modify or delete any file.
 
 ## Optimization
