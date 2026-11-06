@@ -45,6 +45,9 @@ sansde check                      # inspect *.json in the current directory
 python -m sansde run params.json --fg
 ```
 
+The run itself writes the SANSDE banner to its stdout at the start. A background run therefore has the
+banner at the top of `<params>.log`; the launcher only prints the `started background process ...` line.
+
 ## Check
 
 `sansde check [directory]` reads all `*.json` run parameter files in the given directory (default:
@@ -82,8 +85,8 @@ Initial inputs are checked per parameter file:
 - `INIT_POP_DIR` non-empty: report missing `{element}{atom}*.json` populations, ignoring `INIT_DIR`.
 
 Initial inputs are optional. Missing structures or populations are reported as yellow warnings rather
-than errors. Only files whose chemical formula (or JSON `symbol`) matches the target system count as
-present. Example:
+than errors. Omitted settings use the run defaults (`INIT_DIR="init"`, `INIT_POP_DIR=""`). Only files
+whose chemical formula (or JSON `symbol`) matches the target system count as present. Example:
 
 ```text
 warning: params.json (Au2-5) is missing initial structures in init:

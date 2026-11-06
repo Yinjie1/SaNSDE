@@ -32,6 +32,7 @@ from sansde.operators import (
     sphere_cut_splice,
 )
 from sansde.pop import Population
+from sansde.utils import print_banner
 
 
 def run(
@@ -319,6 +320,7 @@ def main(params_path: Path) -> None:
     params_path : pathlib.Path
         Parameter JSON file.
     """
+    print_banner()
     program_start = time.perf_counter()
 
     params = read_run_params(params_path)
