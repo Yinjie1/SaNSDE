@@ -1,11 +1,17 @@
 """Checks for sansde run parameter files and working directories."""
 
+import contextlib
 import json
+import math
 import os
 import sys
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
+from ase import Atoms
+from ase.calculators.calculator import Calculator
 from ase.io import read
 
 from sansde.utils import print_banner
@@ -14,6 +20,31 @@ _RED = "31"
 _GREEN = "32"
 _YELLOW = "33"
 _BLUE = "34"
+
+
+@contextlib.contextmanager
+def _suppress_output() -> Iterator[None]:
+    """Suppress Python- and file-descriptor-level output."""
+    if sys.stdout is not None:
+        sys.stdout.flush()
+    if sys.stderr is not None:
+        sys.stderr.flush()
+    old_stdout = os.dup(1)
+    old_stderr = os.dup(2)
+    try:
+        with open(os.devnull, "w") as devnull:
+            os.dup2(devnull.fileno(), 1)
+            os.dup2(devnull.fileno(), 2)
+            with (
+                contextlib.redirect_stdout(devnull),
+                contextlib.redirect_stderr(devnull),
+            ):
+                yield
+    finally:
+        os.dup2(old_stdout, 1)
+        os.dup2(old_stderr, 2)
+        os.close(old_stdout)
+        os.close(old_stderr)
 
 
 def _supports_color() -> bool:
@@ -45,6 +76,8 @@ class _RunConfig:
     pop_dir: str
     init_dir: str
     init_pop_dir: str
+    scripts: object
+    potential: object
     rounds: int
 
 
@@ -97,6 +130,8 @@ def _read_run_configs(directory: Path, color: bool) -> list[_RunConfig]:
                 pop_dir=_dir_setting(data, "POP_DIR", "Populations"),
                 init_dir=_dir_setting(data, "INIT_DIR", "init"),
                 init_pop_dir=_dir_setting(data, "INIT_POP_DIR", ""),
+                scripts=data.get("SCRIPTS", []),
+                potential=data.get("POTENTIAL"),
                 rounds=rounds,
             )
         )
@@ -337,6 +372,70 @@ def _warn_initial_inputs(
         print(f"  missing: {', '.join(missing)}")
 
 
+def _check_potential(config: _RunConfig, color: bool) -> str | None:
+    """Evaluate the configured potential on a small three-atom cluster.
+
+    Returns the calculator class name on success and ``None`` on failure or
+    when no potential is configured.
+    """
+    if config.potential is None:
+        return None
+    try:
+        with _suppress_output():
+            if not isinstance(config.scripts, list) or not all(
+                isinstance(script, str) for script in config.scripts
+            ):
+                raise TypeError("SCRIPTS must be a list of strings")
+            if not isinstance(config.potential, str):
+                raise TypeError("POTENTIAL must be a string expression")
+
+            namespace: dict[str, object] = {
+                "Atoms": Atoms,
+                "Calculator": Calculator,
+                "Path": Path,
+                "np": np,
+            }
+            for script in config.scripts:
+                exec(script, namespace)  # noqa: S102
+            potential = eval(config.potential, namespace)
+            if not isinstance(potential, Calculator):
+                raise TypeError(
+                    "POTENTIAL evaluated to "
+                    f"{type(potential).__name__}, not an ASE Calculator"
+                )
+
+            atoms = Atoms(
+                f"{config.element}3",
+                positions=[
+                    [1.0, 0.0, 0.0],
+                    [0.0, 1.0, 1.0],
+                    [0.0, 0.0, 1.0],
+                ],
+            )
+            atoms.calc = potential
+            energy = float(atoms.get_potential_energy())
+            forces = np.asarray(atoms.get_forces(), dtype=float)
+            if not math.isfinite(energy):
+                raise ValueError(f"non-finite potential energy: {energy}")
+            if not np.isfinite(forces).all():
+                raise ValueError("non-finite forces")
+    except Exception as e:  # noqa: BLE001
+        detail = str(e) or type(e).__name__
+        print(
+            f"{_paint('error:', _RED, color)} "
+            f"{config.path.name} ({config.element}): "
+            f"potential check failed: {detail}"
+        )
+        return None
+
+    name = type(potential).__name__
+    print(
+        f"{_paint('potential ok:', _GREEN, color)} "
+        f"{config.path.name} ({config.element}): {name}"
+    )
+    return name
+
+
 def run_check(directory: str | Path = ".") -> None:
     """Check run parameter files and output directories without modifying files.
 
@@ -394,6 +493,33 @@ def run_check(directory: str | Path = ".") -> None:
             )
     else:
         print(_paint("no overlapping optimization systems", _GREEN, color))
+
+    checked_potentials: dict[tuple[tuple[str, ...], str, str], str | None] = {}
+    for config in configs:
+        if config.potential is None:
+            continue
+        key: tuple[tuple[str, ...], str, str] | None = None
+        if (
+            isinstance(config.scripts, list)
+            and all(isinstance(script, str) for script in config.scripts)
+            and isinstance(config.potential, str)
+        ):
+            key = (
+                tuple(config.scripts),
+                config.potential,
+                config.element,
+            )
+            if key in checked_potentials:
+                name = checked_potentials[key]
+                if name is not None:
+                    print(
+                        f"{_paint('potential ok:', _GREEN, color)} "
+                        f"{config.path.name} ({config.element}): {name}"
+                    )
+                continue
+        name = _check_potential(config, color)
+        if key is not None:
+            checked_potentials[key] = name
 
     warned = False
     for config in configs:

@@ -93,6 +93,17 @@ warning: params.json (Au2-5) is missing initial structures in init:
   missing: Au2, Au4, Au5
 ```
 
+If `POTENTIAL` is set, `check` executes `SCRIPTS`, evaluates `POTENTIAL`, and computes a single-point
+energy and forces for a three-atom `{element}3` cluster at `[1,0,0]`, `[0,1,1]`, `[0,0,1]`.
+All output produced by `SCRIPTS`, `POTENTIAL` construction and the calculator itself (including
+C-level stdout/stderr) is suppressed; only the result line is printed. Success reports the calculator
+class, and failures are reported as red errors:
+
+```text
+potential ok: params.json (Au): LennardJones
+error: params.json (Au): potential check failed: name 'LennardJones' is not defined
+```
+
 With `ROUND > 1`, the round directories `best1/`, `best2/`, ... are checked instead of `BEST_DIR`.
 Output and initial-structure directories are resolved against the current working directory, matching
 `sansde run`, even when the parameter JSON files live in another directory:
@@ -103,7 +114,7 @@ sansde check ../configs
 
 Colors are used when stdout is a terminal: the `optimization systems:` label is blue, output/overlap
 `warning:` prefixes are red, missing initial-input `warning:` prefixes and skipped files are yellow,
-and "no issues" confirmations are green. Colors are disabled automatically when output is piped or
+and "no issues" confirmations and `potential ok:` are green. Colors are disabled automatically when output is piped or
 redirected, and can be disabled explicitly with `NO_COLOR=1`.
 
 `check` is read-only: it does not create, modify or delete any file.
