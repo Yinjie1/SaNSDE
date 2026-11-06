@@ -1,11 +1,10 @@
 """Checks for sansde run parameter files and working directories."""
 
-import contextlib
 import json
 import math
 import os
+import subprocess
 import sys
-from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,31 +19,6 @@ _RED = "31"
 _GREEN = "32"
 _YELLOW = "33"
 _BLUE = "34"
-
-
-@contextlib.contextmanager
-def _suppress_output() -> Iterator[None]:
-    """Suppress Python- and file-descriptor-level output."""
-    if sys.stdout is not None:
-        sys.stdout.flush()
-    if sys.stderr is not None:
-        sys.stderr.flush()
-    old_stdout = os.dup(1)
-    old_stderr = os.dup(2)
-    try:
-        with open(os.devnull, "w") as devnull:
-            os.dup2(devnull.fileno(), 1)
-            os.dup2(devnull.fileno(), 2)
-            with (
-                contextlib.redirect_stdout(devnull),
-                contextlib.redirect_stderr(devnull),
-            ):
-                yield
-    finally:
-        os.dup2(old_stdout, 1)
-        os.dup2(old_stderr, 2)
-        os.close(old_stdout)
-        os.close(old_stderr)
 
 
 def _supports_color() -> bool:
@@ -372,53 +346,102 @@ def _warn_initial_inputs(
         print(f"  missing: {', '.join(missing)}")
 
 
+_POTENTIAL_MARKER = "SANSDE_POTENTIAL:"
+
+
+def _potential_probe(payload_text: str) -> None:
+    """Run one potential probe in a child process and print a JSON result."""
+    try:
+        payload = json.loads(payload_text)
+        namespace: dict[str, object] = {
+            "Atoms": Atoms,
+            "Calculator": Calculator,
+            "Path": Path,
+            "np": np,
+        }
+        for script in payload["scripts"]:
+            exec(script, namespace)  # noqa: S102
+        potential = eval(payload["potential"], namespace)
+        if not isinstance(potential, Calculator):
+            raise TypeError(
+                "POTENTIAL evaluated to "
+                f"{type(potential).__name__}, not an ASE Calculator"
+            )
+        atoms = Atoms(
+            f"{payload['element']}3",
+            positions=[
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 1.0],
+                [0.0, 0.0, 1.0],
+            ],
+        )
+        atoms.calc = potential
+        energy = float(atoms.get_potential_energy())
+        forces = np.asarray(atoms.get_forces(), dtype=float)
+        if not math.isfinite(energy):
+            raise ValueError(f"non-finite potential energy: {energy}")
+        if not np.isfinite(forces).all():
+            raise ValueError("non-finite forces")
+        result = {"status": "ok", "name": type(potential).__name__}
+    except Exception as e:  # noqa: BLE001
+        result = {"status": "error", "detail": str(e) or type(e).__name__}
+    print(_POTENTIAL_MARKER + json.dumps(result))
+    sys.stdout.flush()
+
+
 def _check_potential(config: _RunConfig, color: bool) -> str | None:
-    """Evaluate the configured potential on a small three-atom cluster.
+    """Evaluate the configured potential in an isolated child process.
 
     Returns the calculator class name on success and ``None`` on failure or
-    when no potential is configured.
+    when no potential is configured. Running in a child process keeps loader
+    and calculator output away from the check output.
     """
     if config.potential is None:
         return None
+    if not isinstance(config.scripts, list) or not all(
+        isinstance(script, str) for script in config.scripts
+    ):
+        print(
+            f"{_paint('error:', _RED, color)} "
+            f"{config.path.name} ({config.element}): "
+            "potential check failed: SCRIPTS must be a list of strings"
+        )
+        return None
+    if not isinstance(config.potential, str):
+        print(
+            f"{_paint('error:', _RED, color)} "
+            f"{config.path.name} ({config.element}): "
+            "potential check failed: POTENTIAL must be a string expression"
+        )
+        return None
+
+    payload = {
+        "scripts": config.scripts,
+        "potential": config.potential,
+        "element": config.element,
+    }
+    probe_code = (
+        "import sys; "
+        "from sansde.check import _potential_probe; "
+        "_potential_probe(sys.stdin.read())"
+    )
     try:
-        with _suppress_output():
-            if not isinstance(config.scripts, list) or not all(
-                isinstance(script, str) for script in config.scripts
-            ):
-                raise TypeError("SCRIPTS must be a list of strings")
-            if not isinstance(config.potential, str):
-                raise TypeError("POTENTIAL must be a string expression")
-
-            namespace: dict[str, object] = {
-                "Atoms": Atoms,
-                "Calculator": Calculator,
-                "Path": Path,
-                "np": np,
-            }
-            for script in config.scripts:
-                exec(script, namespace)  # noqa: S102
-            potential = eval(config.potential, namespace)
-            if not isinstance(potential, Calculator):
-                raise TypeError(
-                    "POTENTIAL evaluated to "
-                    f"{type(potential).__name__}, not an ASE Calculator"
-                )
-
-            atoms = Atoms(
-                f"{config.element}3",
-                positions=[
-                    [1.0, 0.0, 0.0],
-                    [0.0, 1.0, 1.0],
-                    [0.0, 0.0, 1.0],
-                ],
-            )
-            atoms.calc = potential
-            energy = float(atoms.get_potential_energy())
-            forces = np.asarray(atoms.get_forces(), dtype=float)
-            if not math.isfinite(energy):
-                raise ValueError(f"non-finite potential energy: {energy}")
-            if not np.isfinite(forces).all():
-                raise ValueError("non-finite forces")
+        process = subprocess.run(
+            [sys.executable, "-c", probe_code],
+            check=False,
+            input=json.dumps(payload),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=600,
+        )
+    except subprocess.TimeoutExpired:
+        print(
+            f"{_paint('error:', _RED, color)} "
+            f"{config.path.name} ({config.element}): "
+            "potential check failed: timed out after 600 s"
+        )
+        return None
     except Exception as e:  # noqa: BLE001
         detail = str(e) or type(e).__name__
         print(
@@ -428,7 +451,32 @@ def _check_potential(config: _RunConfig, color: bool) -> str | None:
         )
         return None
 
-    name = type(potential).__name__
+    result: object = None
+    for line in process.stdout.splitlines():
+        index = line.find(_POTENTIAL_MARKER)
+        if index < 0:
+            continue
+        try:
+            result = json.loads(line[index + len(_POTENTIAL_MARKER):])
+        except json.JSONDecodeError:
+            result = None
+    if not isinstance(result, dict):
+        print(
+            f"{_paint('error:', _RED, color)} "
+            f"{config.path.name} ({config.element}): "
+            f"potential check failed: probe exited with code {process.returncode}"
+        )
+        return None
+    if result.get("status") != "ok":
+        detail = str(result.get("detail", "unknown error"))
+        print(
+            f"{_paint('error:', _RED, color)} "
+            f"{config.path.name} ({config.element}): "
+            f"potential check failed: {detail}"
+        )
+        return None
+
+    name = str(result.get("name", "Calculator"))
     print(
         f"{_paint('potential ok:', _GREEN, color)} "
         f"{config.path.name} ({config.element}): {name}"

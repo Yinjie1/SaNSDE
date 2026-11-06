@@ -95,9 +95,10 @@ warning: params.json (Au2-5) is missing initial structures in init:
 
 If `POTENTIAL` is set, `check` executes `SCRIPTS`, evaluates `POTENTIAL`, and computes a single-point
 energy and forces for a three-atom `{element}3` cluster at `[1,0,0]`, `[0,1,1]`, `[0,0,1]`.
-All output produced by `SCRIPTS`, `POTENTIAL` construction and the calculator itself (including
-C-level stdout/stderr) is suppressed; only the result line is printed. Success reports the calculator
-class, and failures are reported as red errors:
+The probe runs in an isolated child process: its stdout is captured and its stderr is discarded, so
+output from `SCRIPTS`, `POTENTIAL` construction, the calculator and library loaders (including
+atexit CUDA messages) never reaches the check output. Only the result line is printed. Success reports
+the calculator class, and failures are reported as red errors:
 
 ```text
 potential ok: params.json (Au): LennardJones
