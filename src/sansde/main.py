@@ -122,37 +122,39 @@ def run(
         else:
             pop = Population(symbol=expected_symbol)
     else:
-        for init_path in sorted(init_dir.glob(f"{expected_symbol}*.xyz")):
-            try:
-                pop.import_xyz(init_path)
-            except ValueError as e:
-                print(f"skip structure {init_path}: {e}")
-                continue
-            if len(pop) == 0:
-                continue
-            print(f"load structure {expected_symbol} from {init_path}...")
-            # Recompute energies and forces for the imported population and
-            # candidates with the current potential.
-            for cluster in [*pop.clusters, *pop.candidate]:
-                cluster.calc = potential
+        # An empty INIT_DIR means no initial structure is read.
+        if params['INIT_DIR']:
+            for init_path in sorted(init_dir.glob(f"{expected_symbol}*.xyz")):
                 try:
-                    energy_value = float(cluster.get_potential_energy())
-                    force_value = np.asarray(cluster.get_forces(), dtype=float)
-                finally:
-                    cluster.calc = None
-                if np.isfinite(energy_value):
-                    cluster.info['energy'] = energy_value
-                    cluster.arrays['forces'] = force_value
-                else:
-                    cluster.info['energy'] = float('inf')
-                    cluster.arrays['forces'] = np.zeros((len(cluster), 3))
-            pop.candidate.sort(
-                key=lambda cluster: float(cluster.info['energy']),
-                reverse=True,
-            )
-            # Keep the candidate_size lowest-energy entries at the tail.
-            del pop.candidate[:max(len(pop.candidate) - int(params['CAND_SIZE']), 0)]
-            break
+                    pop.import_xyz(init_path)
+                except ValueError as e:
+                    print(f"skip structure {init_path}: {e}")
+                    continue
+                if len(pop) == 0:
+                    continue
+                print(f"load structure {expected_symbol} from {init_path}...")
+                # Recompute energies and forces for the imported population and
+                # candidates with the current potential.
+                for cluster in [*pop.clusters, *pop.candidate]:
+                    cluster.calc = potential
+                    try:
+                        energy_value = float(cluster.get_potential_energy())
+                        force_value = np.asarray(cluster.get_forces(), dtype=float)
+                    finally:
+                        cluster.calc = None
+                    if np.isfinite(energy_value):
+                        cluster.info['energy'] = energy_value
+                        cluster.arrays['forces'] = force_value
+                    else:
+                        cluster.info['energy'] = float('inf')
+                        cluster.arrays['forces'] = np.zeros((len(cluster), 3))
+                pop.candidate.sort(
+                    key=lambda cluster: float(cluster.info['energy']),
+                    reverse=True,
+                )
+                # Keep the candidate_size lowest-energy entries at the tail.
+                del pop.candidate[:max(len(pop.candidate) - int(params['CAND_SIZE']), 0)]
+                break
 
     if len(pop) < int(params['POP_SIZE']):
         remaining = int(params['POP_SIZE']) - len(pop)

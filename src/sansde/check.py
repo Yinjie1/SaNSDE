@@ -7,6 +7,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from ase.io import read
+
 _RED = "31"
 _GREEN = "32"
 _YELLOW = "33"
@@ -68,6 +70,12 @@ class _RunConfig:
     rounds: int
 
 
+def _dir_setting(data: dict[str, object], key: str, default: str) -> str:
+    """Return a directory setting, using the default only when it is missing."""
+    value = data.get(key, default)
+    return default if value is None else str(value)
+
+
 def _read_run_configs(directory: Path, color: bool) -> list[_RunConfig]:
     """Read run parameter JSON files and return the parsed configurations.
 
@@ -106,11 +114,11 @@ def _read_run_configs(directory: Path, color: bool) -> list[_RunConfig]:
                 element=str(data.get("ELEMENT", "Au")),
                 min_atom=min_atom,
                 max_atom=max_atom,
-                best_dir=str(data.get("BEST_DIR", "best")),
-                better_dir=str(data.get("BETTER_DIR", "better")),
-                pop_dir=str(data.get("POP_DIR", "Populations")),
-                init_dir=str(data.get("INIT_DIR", "init")),
-                init_pop_dir=str(data.get("INIT_POP_DIR", "")),
+                best_dir=_dir_setting(data, "BEST_DIR", "best"),
+                better_dir=_dir_setting(data, "BETTER_DIR", "better"),
+                pop_dir=_dir_setting(data, "POP_DIR", "Populations"),
+                init_dir=_dir_setting(data, "INIT_DIR", "init"),
+                init_pop_dir=_dir_setting(data, "INIT_POP_DIR", ""),
                 rounds=rounds,
             )
         )
@@ -237,6 +245,121 @@ def _warn_existing_outputs(
     return True
 
 
+def _available_xyz_symbols(directory: Path, color: bool) -> set[str]:
+    """Return the symbols of valid single-formula xyz files in a directory."""
+    symbols: set[str] = set()
+    if not directory.is_dir():
+        return symbols
+    for path in directory.glob("*.xyz"):
+        try:
+            frames = read(path, index=":")  # type: ignore
+        except Exception as e:  # noqa: BLE001
+            print(_paint(f"skip {path.name}: cannot read xyz ({e})", _YELLOW, color))
+            continue
+        formulas = {frame.get_chemical_formula() for frame in frames}
+        if len(formulas) == 1:
+            symbols.update(formulas)
+    return symbols
+
+
+def _available_population_symbols(directory: Path, color: bool) -> set[str]:
+    """Return the symbols stored in population JSON snapshots in a directory."""
+    symbols: set[str] = set()
+    if not directory.is_dir():
+        return symbols
+    for path in directory.glob("*.json"):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as e:
+            print(_paint(f"skip {path.name}: cannot read JSON ({e})", _YELLOW, color))
+            continue
+        if not isinstance(data, dict):
+            continue
+        symbol = data.get("symbol")
+        if isinstance(symbol, str):
+            symbols.add(symbol)
+    return symbols
+
+
+def _missing_systems(
+    directory: Path,
+    element: str,
+    min_atom: int,
+    max_atom: int,
+    suffix: str,
+    color: bool,
+) -> list[str]:
+    """Return target symbols that are not present in ``directory``."""
+    if suffix == ".xyz":
+        available = _available_xyz_symbols(directory, color)
+    else:
+        available = _available_population_symbols(directory, color)
+    return [
+        f"{element}{atom}"
+        for atom in range(min_atom, max_atom + 1)
+        if f"{element}{atom}" not in available
+    ]
+
+
+def _warn_initial_inputs(
+    config: _RunConfig,
+    directory: Path,
+    color: bool,
+) -> None:
+    """Warn about missing initial structures or populations."""
+    init_dir_value = config.init_dir
+    init_pop_dir_value = config.init_pop_dir
+    has_init_dir = bool(init_dir_value.strip())
+    has_init_pop = bool(init_pop_dir_value.strip())
+    systems = _format_range(config.element, config.min_atom, config.max_atom)
+
+    if not has_init_dir and not has_init_pop:
+        print(
+            f"{config.path.name} ({systems}) has no initial structures configured "
+            "(INIT_DIR and INIT_POP_DIR are empty)"
+        )
+        print("  the optimization will start from random clusters")
+        return
+
+    if has_init_pop:
+        init_path = _resolve_dir(directory, init_pop_dir_value)
+        missing = _missing_systems(
+            init_path,
+            config.element,
+            config.min_atom,
+            config.max_atom,
+            ".json",
+            color,
+        )
+        if missing:
+            label = _display_path(init_path, directory)
+            print(
+                f"{_paint('warning:', _YELLOW, color)} "
+                f"{config.path.name} ({systems}) is missing initial "
+                f"populations in {label}:"
+            )
+            print(f"  missing: {', '.join(missing)}")
+        return
+
+    init_path = _resolve_dir(directory, init_dir_value)
+    missing = _missing_systems(
+        init_path,
+        config.element,
+        config.min_atom,
+        config.max_atom,
+        ".xyz",
+        color,
+    )
+    if missing:
+        label = _display_path(init_path, directory)
+        print(
+            f"{_paint('warning:', _YELLOW, color)} "
+            f"{config.path.name} ({systems}) is missing initial "
+            f"structures in {label}:"
+        )
+        print(f"  missing: {', '.join(missing)}")
+
+
 def run_check(directory: str | Path = ".") -> None:
     """Check run parameter files and output directories without modifying files.
 
@@ -306,3 +429,6 @@ def run_check(directory: str | Path = ".") -> None:
                 color,
             )
         )
+
+    for config in configs:
+        _warn_initial_inputs(config, work_dir, color)

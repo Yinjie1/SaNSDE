@@ -75,6 +75,21 @@ warning: params.json (Au2-20) has existing output files:
   these files may be modified or overwritten by the run
 ```
 
+Initial inputs are checked per parameter file:
+
+- both `INIT_DIR` and `INIT_POP_DIR` empty: report that the run starts from random clusters (no warning);
+- `INIT_POP_DIR` empty: report missing `{element}{atom}*.xyz` structures in `INIT_DIR`;
+- `INIT_POP_DIR` non-empty: report missing `{element}{atom}*.json` populations, ignoring `INIT_DIR`.
+
+Initial inputs are optional. Missing structures or populations are reported as yellow warnings rather
+than errors. Only files whose chemical formula (or JSON `symbol`) matches the target system count as
+present. Example:
+
+```text
+warning: params.json (Au2-5) is missing initial structures in init:
+  missing: Au2, Au4, Au5
+```
+
 With `ROUND > 1`, the round directories `best1/`, `best2/`, ... are checked instead of `BEST_DIR`.
 Output and initial-structure directories are resolved against the current working directory, matching
 `sansde run`, even when the parameter JSON files live in another directory:
@@ -83,9 +98,10 @@ Output and initial-structure directories are resolved against the current workin
 sansde check ../configs
 ```
 
-Colors are used when stdout is a terminal: the `optimization systems:` label is blue, the `warning:`
-prefix is red, skipped files are yellow, and "no issues" confirmations are green. Colors are disabled
-automatically when output is piped or redirected, and can be disabled explicitly with `NO_COLOR=1`.
+Colors are used when stdout is a terminal: the `optimization systems:` label is blue, output/overlap
+`warning:` prefixes are red, missing initial-input `warning:` prefixes and skipped files are yellow,
+and "no issues" confirmations are green. Colors are disabled automatically when output is piped or
+redirected, and can be disabled explicitly with `NO_COLOR=1`.
 
 `check` is read-only: it does not create, modify or delete any file.
 
@@ -143,7 +159,7 @@ Key points:
 - `POTENTIAL` must be an ASE `Calculator`. A string expression is also accepted, but it must evaluate to a calculator; it is evaluated in the module namespace where `DP`, `LennardJones` and any name imported by `SCRIPTS` are available. For a Lennard-Jones test use `"POTENTIAL": "LennardJones(epsilon=0.4443, sigma=2.6367)"`.
 - `USE_ZBL` adds the hiphive ZBL short-range repulsion on top of `POTENTIAL` with range `ZBL_CUTOFF + 2 * ZBL_SKIN`.
 - `ROUND` is the number of optimization rounds. With `ROUND > 1`, custom `INIT_DIR`, `BEST_DIR` and `INIT_POP_DIR` are ignored: round 1 reads `init/` and writes `best1/`, round `r` reads `best{r-1}/` and writes `best{r}/`.
-- `INIT_DIR` is scanned for `{element}{atom}*.xyz`; the last frame is used as the initial structure (candidate frames are written worst-first, so the best is last) and its energy is recomputed.
+- `INIT_DIR` is scanned for `{element}{atom}*.xyz`; the last frame is used as the initial structure (candidate frames are written worst-first, so the best is last) and its energy is recomputed. An empty `INIT_DIR` disables initial-structure loading.
 - `INIT_POP_DIR`, when non-empty, loads `{element}{atom}*.json` population snapshots instead of `INIT_DIR`.
 - `CONTINUE` (default `false`): with `INIT_POP_DIR`, only the lowest-energy structure is imported and the rest of the population is generated randomly; set it to `true` to import the whole saved population and continue the run.
 - `LEARNING_PERIOD` is the number of generations over which mutation success counts are accumulated; `p` and `fp` are updated only at the end of each period. With `0` no adaptation is performed and both stay at 0.5. `FP_ADAPTIVE` (default `true`) can keep `p` adaptive while freezing `fp` at 0.5.
