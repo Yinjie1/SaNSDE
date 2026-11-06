@@ -97,6 +97,7 @@ Key points:
 - `POTENTIAL` must be an ASE `Calculator`. A string expression is also accepted, but it must evaluate to a calculator; it is evaluated in the module namespace where `DP`, `LennardJones` and any name imported by `SCRIPTS` are available. For a Lennard-Jones test use `"POTENTIAL": "LennardJones(epsilon=0.4443, sigma=2.6367)"`.
 - `USE_ZBL` adds the hiphive ZBL short-range repulsion on top of `POTENTIAL` with range `ZBL_CUTOFF + 2 * ZBL_SKIN`.
 - `ROUND` is the number of optimization rounds. With `ROUND > 1`, custom `INIT_DIR`, `BEST_DIR` and `INIT_POP_DIR` are ignored: round 1 reads `init/` and writes `best1/`, round `r` reads `best{r-1}/` and writes `best{r}/`.
+- `INIT_DIR` is scanned for `{element}{atom}*.xyz`; the last frame is used as the initial structure (candidate frames are written worst-first, so the best is last) and its energy is recomputed.
 - `INIT_POP_DIR`, when non-empty, loads `{element}{atom}*.json` population snapshots instead of `INIT_DIR`.
 - `CONTINUE` (default `false`): with `INIT_POP_DIR`, only the lowest-energy structure is imported and the rest of the population is generated randomly; set it to `true` to import the whole saved population and continue the run.
 - `LEARNING_PERIOD` is the number of generations over which mutation success counts are accumulated; `p` and `fp` are updated only at the end of each period. With `0` no adaptation is performed and both stay at 0.5. `FP_ADAPTIVE` (default `true`) can keep `p` adaptive while freezing `fp` at 0.5.
