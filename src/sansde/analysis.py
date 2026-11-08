@@ -12,7 +12,7 @@ from typing import TypeAlias
 import numpy as np
 from ase import Atoms
 
-from sansde.operators import compute_point_group
+from sansde.operators import compute_point_group, similarity_function
 from sansde.pop import Clusters
 
 SHAPE_RATIO = 0.8
@@ -280,28 +280,6 @@ def eval_fit(coefficients: np.ndarray, natoms: int) -> float:
     )
 
 
-def pairwise_sorted(coords: np.ndarray) -> np.ndarray:
-    """Return sorted pairwise distances.
-
-    Parameters
-    ----------
-    coords : numpy.ndarray
-        Atomic coordinates with shape ``(N, 3)``.
-
-    Returns
-    -------
-    numpy.ndarray
-        ``N(N-1)/2`` distances in ascending order.
-    """
-    count = len(coords)
-    if count < 2:
-        return np.array([])
-    diff = coords[:, None, :] - coords[None, :, :]
-    distances = np.sqrt((diff**2).sum(axis=-1))
-    upper = np.triu_indices(count, k=1)
-    return np.sort(distances[upper])
-
-
 def shape_indicator(coords: np.ndarray | None) -> np.ndarray | None:
     """Compute normalized second-moment eigenvalues.
 
@@ -363,57 +341,41 @@ def shape_label(
 
 
 def similarity_add_atom(
-    coords_n: np.ndarray | None,
-    coords_ref: np.ndarray | None,
+    atoms_n: Atoms | None,
+    atoms_ref: Atoms | None,
 ) -> float | None:
     """Compute the distance similarity ``S(N, N-1)``.
 
-    Each atom is removed from the N-atom cluster in turn, and the minimum
-    distance-based ``q`` against the reference cluster defines
-    ``S = 1 / (1 + q / UL)``.
+    Each atom is removed from the N-atom cluster in turn. The maximum
+    :func:`sansde.operators.similarity_function` value against the reference
+    cluster is returned.
 
     Parameters
     ----------
-    coords_n : numpy.ndarray | None
-        Coordinates of the N-atom cluster.
-    coords_ref : numpy.ndarray | None
-        Coordinates of the reference cluster with ``N - 1`` atoms.
+    atoms_n : Atoms | None
+        N-atom cluster.
+    atoms_ref : Atoms | None
+        Reference cluster with ``N - 1`` atoms.
 
     Returns
     -------
     float | None
         Similarity value, or ``None`` when the input sizes are inconsistent.
     """
-    if coords_n is None or coords_ref is None:
+    if atoms_n is None or atoms_ref is None:
         return None
-    count = len(coords_n)
-    reference_count = len(coords_ref)
-    if reference_count != count - 1 or count < 3:
-        return None
-    if reference_count < 2:
-        return None
-    reference_distances = pairwise_sorted(coords_ref)
-    if reference_distances[0] <= 0:
+    if len(atoms_ref) != len(atoms_n) - 1 or len(atoms_n) < 3:
         return None
 
-    minimum_q: float | None = None
-    for index in range(count):
-        trial = pairwise_sorted(np.delete(coords_n, index, axis=0))
-        if len(trial) != len(reference_distances) or trial[0] <= 0:
-            return None
-        q = float(
-            np.sqrt(
-                (2.0 / (reference_count * (reference_count - 1)))
-                * np.sum(
-                    (reference_distances / reference_distances[0] - trial / trial[0])
-                    ** 2
-                )
-            )
-        )
-        minimum_q = q if minimum_q is None else min(minimum_q, q)
-    if minimum_q is None:
-        return None
-    return 1.0 / (1.0 + minimum_q / UL)
+    best: float | None = None
+    for index in range(len(atoms_n)):
+        trial = atoms_n.copy()
+        del trial[index]
+        value = similarity_function(trial, atoms_ref)
+        if value <= 0.0:
+            continue
+        best = value if best is None else max(best, value)
+    return best
 
 
 def _cos_angle(left: np.ndarray, right: np.ndarray) -> np.ndarray:
@@ -614,7 +576,7 @@ def analyze_clusters(
         previous_positions = (
             None if previous_cluster is None else previous_cluster.get_positions()
         )
-        similarity = similarity_add_atom(positions, previous_positions)
+        similarity = similarity_add_atom(cluster, previous_cluster)
         similarity_angle = None
         if compute_s2:
             similarity_angle = angle_similarity_add_atom(
