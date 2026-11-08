@@ -89,7 +89,7 @@ def run(
         # 逐个尝试, 用化学式校验, 不匹配则继续下一个.
         for init_pop_path in sorted(init_pop_dir.glob(f"{expected_symbol}*.json")):
             pop = Population()
-            pop.import_population(init_pop_path, optimal_only=not bool(params['CONTINUE']))
+            pop.load(init_pop_path, optimal_only=not bool(params['CONTINUE']))
             if pop.symbol != expected_symbol or len(pop) == 0:
                 print(f"skip initial population {init_pop_path}: symbol mismatch")
                 continue

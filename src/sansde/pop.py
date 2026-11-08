@@ -637,7 +637,7 @@ class Population(MultiAtoms):
 
         return xyz_path.resolve()
 
-    def import_population(
+    def load(
         self,
         filename: str | Path,
         confirm: bool = False,
