@@ -144,11 +144,11 @@ sansde analyse -i ase_json --s2 > cluster_analysis.csv
 sansde analyse -i ase_json --ref reference.json --plot -o cluster_analysis.csv
 ```
 
-Plot files are disabled by default. With `--plot`, the command writes files prefixed by the input
-directory name: `<name>_energy.svg`, `<name>_shape.svg`, `<name>_s.svg`,
-`<name>_energy_ref.svg` (when reference data is supplied), and `<name>_eb.svg`. Use `--shape-start`
-to set the first atom count in the shape plot, `--ref` for reference data, and `--e1` for an explicit
-isolated-atom energy.
+Plot files are disabled by default. `--plot` writes SVG files prefixed by the input directory name:
+`<name>_energy.svg`, `<name>_shape.svg`, `<name>_s.svg`, `<name>_energy_ref.svg` (when reference data
+is supplied), and `<name>_eb.svg`. `--plot png` writes both SVG and PNG files with the same names. Use
+`--shape-start` to set the first atom count in the shape plot, `--ref` for reference data, and `--e1`
+for an explicit isolated-atom energy.
 
 ASE JSON structures can also be analyzed through the `sansde.analysis` module:
 
@@ -176,7 +176,7 @@ sansde radial -i ase_json --k 1 12 30 --plot -o radial.csv
 The CSV contains `system`, `symbol`, `natoms`, `is_ref`, `PG`, `n_layers`, `layer_sizes`,
 `layer_pg`, and `radial_distances`. Layer counts are manual; `--k` supplies counts in ascending
 atom-count order. When `--k` is omitted, `n_layers`, `layer_sizes` and `layer_pg` are empty.
-`--plot` writes `<input-name>_radial.svg`.
+`--plot` writes `<input-name>_radial.svg`; `--plot png` writes both SVG and PNG.
 
 The same analysis is available from Python:
 
@@ -200,7 +200,8 @@ sansde cn -i ase_json --bulk-cn --plot
 The bonding cutoff defaults to the mean of the first and second bulk neighbor distances of the most
 common element; `--cutoff` supplies an explicit value. The CSV contains `system`, `symbol`, `natoms`,
 `is_ref`, `cn_atoms`, `cn_ratios`, `cn_avg`, and `bond_length_avg`. `--bulk-cn` computes the bulk
-average coordination number for the plot. `--plot` writes `<input-name>_cn.svg`.
+average coordination number for the plot. `--plot` writes `<input-name>_cn.svg`; `--plot png` writes
+both SVG and PNG.
 
 The analysis is also available from Python:
 

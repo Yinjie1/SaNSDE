@@ -83,8 +83,12 @@ def main(argv: list[str] | None = None) -> None:
     )
     analyser.add_argument(
         "--plot",
-        action="store_true",
-        help="write plot files (default: disabled)",
+        nargs="?",
+        const="svg",
+        choices=("svg", "png"),
+        default=None,
+        metavar="FORMAT",
+        help="write SVG plots; pass png to also write PNG",
     )
     analyser.add_argument(
         "--shape-start",
@@ -124,8 +128,12 @@ def main(argv: list[str] | None = None) -> None:
     )
     radial.add_argument(
         "--plot",
-        action="store_true",
-        help="write the radial distance plot (default: disabled)",
+        nargs="?",
+        const="svg",
+        choices=("svg", "png"),
+        default=None,
+        metavar="FORMAT",
+        help="write SVG plots; pass png to also write PNG",
     )
     radial.add_argument(
         "--cyan-pos",
@@ -170,8 +178,12 @@ def main(argv: list[str] | None = None) -> None:
     )
     coordination.add_argument(
         "--plot",
-        action="store_true",
-        help="write the coordination plot (default: disabled)",
+        nargs="?",
+        const="svg",
+        choices=("svg", "png"),
+        default=None,
+        metavar="FORMAT",
+        help="write SVG plots; pass png to also write PNG",
     )
 
     checker = subparsers.add_parser(
@@ -233,11 +245,17 @@ def main(argv: list[str] | None = None) -> None:
         if args.plot:
             input_path = args.input.resolve()
             prefix = input_path.stem if input_path.is_file() else input_path.name
-            plot_energy(rows, f"{prefix}_energy.svg")
-            plot_shape(rows, f"{prefix}_shape.svg", shape_start=args.shape_start)
-            plot_similarity(rows, f"{prefix}_s.svg")
-            plot_reference(rows, f"{prefix}_energy_ref.svg")
-            plot_binding(rows, f"{prefix}_eb.svg")
+            formats = ("svg",) if args.plot == "svg" else ("svg", "png")
+            for suffix in formats:
+                plot_energy(rows, f"{prefix}_energy.{suffix}")
+                plot_shape(
+                    rows,
+                    f"{prefix}_shape.{suffix}",
+                    shape_start=args.shape_start,
+                )
+                plot_similarity(rows, f"{prefix}_s.{suffix}")
+                plot_reference(rows, f"{prefix}_energy_ref.{suffix}")
+                plot_binding(rows, f"{prefix}_eb.{suffix}")
         return
 
     if args.command == "cn":
@@ -251,7 +269,9 @@ def main(argv: list[str] | None = None) -> None:
         if args.plot:
             input_path = args.input.resolve()
             prefix = input_path.stem if input_path.is_file() else input_path.name
-            plot_coordination(rows, f"{prefix}_cn.svg")
+            formats = ("svg",) if args.plot == "svg" else ("svg", "png")
+            for suffix in formats:
+                plot_coordination(rows, f"{prefix}_cn.{suffix}")
         return
 
     if args.command == "radial":
@@ -261,11 +281,13 @@ def main(argv: list[str] | None = None) -> None:
         if args.plot:
             input_path = args.input.resolve()
             prefix = input_path.stem if input_path.is_file() else input_path.name
-            plot_radial(
-                rows,
-                f"{prefix}_radial.svg",
-                cyan_pos=args.cyan_pos,
-            )
+            formats = ("svg",) if args.plot == "svg" else ("svg", "png")
+            for suffix in formats:
+                plot_radial(
+                    rows,
+                    f"{prefix}_radial.{suffix}",
+                    cyan_pos=args.cyan_pos,
+                )
         return
 
     if args.command == "check":
