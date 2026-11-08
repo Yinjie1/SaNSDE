@@ -42,6 +42,7 @@ sansde run params.json            # background; log -> params.log, pid -> ./pid
 sansde run params.json --fg       # foreground
 sansde xyz2vasp xyz2vasp.json     # export VASP task directories
 sansde check                      # inspect *.json in the current directory
+sansde analyse -i ase_json        # cluster analysis from ASE JSON structures
 python -m sansde run params.json --fg
 ```
 
@@ -132,7 +133,14 @@ redirected, and can be disabled explicitly with `NO_COLOR=1`.
 
 ## Cluster analysis
 
-ASE JSON structures can be analyzed through the `sansde.analysis` module:
+Run the analysis from the command line:
+
+```bash
+sansde analyse -i ase_json -o cluster_analysis.csv
+sansde analyse -i ase_json --s2 > cluster_analysis.csv
+```
+
+ASE JSON structures can also be analyzed through the `sansde.analysis` module:
 
 ```python
 from sansde.analysis import analyze_clusters, format_cluster_csv, load_clusters

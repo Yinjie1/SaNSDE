@@ -5,6 +5,7 @@ Usage:
     sansde run params.json --fg       # run in the foreground
     sansde xyz2vasp params.json       # export VASP tasks from JSON parameters
     sansde check [directory]          # inspect run parameter files and outputs
+    sansde analyse -i json_dir        # analyse ASE JSON cluster structures
     python -m sansde run params.json --fg
 """
 import argparse
@@ -12,6 +13,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from sansde.analysis import analyze_clusters, load_clusters, write_cluster_csv
 from sansde.check import run_check
 from sansde.io import write_vasp_tasks
 from sansde.main import main as run_opt
@@ -21,6 +23,32 @@ def main(argv: list[str] | None = None) -> None:
     """Parse command line arguments and dispatch the requested task."""
     parser = argparse.ArgumentParser(prog="sansde")
     subparsers = parser.add_subparsers(dest="command")
+
+    analyser = subparsers.add_parser(
+        "analyse",
+        help="run cluster analysis on ASE JSON structures",
+    )
+    analyser.add_argument(
+        "-i",
+        "--input",
+        type=Path,
+        required=True,
+        metavar="JSON_DIR",
+        help="directory containing ASE JSON structures",
+    )
+    analyser.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=None,
+        metavar="CSV",
+        help="CSV output path (default: standard output)",
+    )
+    analyser.add_argument(
+        "--s2",
+        action="store_true",
+        help="also compute the angle similarity S2",
+    )
 
     checker = subparsers.add_parser(
         "check",
@@ -68,6 +96,12 @@ def main(argv: list[str] | None = None) -> None:
         help="run in the foreground (default: run in the background)",
     )
     args = parser.parse_args(argv)
+
+    if args.command == "analyse":
+        clusters = load_clusters(args.input)
+        rows = analyze_clusters(clusters, compute_s2=args.s2)
+        write_cluster_csv(rows, args.output)
+        return
 
     if args.command == "check":
         run_check(args.directory, show_banner=not args.no_banner)
