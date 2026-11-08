@@ -2,6 +2,7 @@
 
 import csv
 import json
+import re
 import shutil
 import subprocess
 import tarfile
@@ -17,6 +18,8 @@ from sansde.pop import Clusters, MultiAtoms
 
 __all__ = [
     "append_stats_row",
+    "load_clusters",
+    "load_ref_energies",
     "merge_multi_atoms",
     "merge_xyz_directories",
     "read_run_params",
@@ -173,6 +176,146 @@ def append_stats_row(
         if pop_write_header:
             writer.writerow(pop_header)
         writer.writerow(pop_row)
+
+
+# ===== cluster analysis IO: ASE JSON loading =====
+
+def _natural_key(value: str) -> list[object]:
+    """Split a string into integer and lowercase text chunks for sorting."""
+    return [
+        int(chunk) if chunk.isdigit() else chunk.lower()
+        for chunk in re.split(r"(\d+)", value)
+    ]
+
+
+def load_clusters(directory: str | Path) -> Clusters:
+    """Load ASE JSON structures into a :class:`Clusters` container.
+
+    One JSON file contains one ``Atoms`` object. The ``system`` metadata is
+    set from the file stem when absent, and ``is_ref`` defaults to 0. When
+    several files share a chemical formula, the lowest-energy structure is
+    kept.
+
+    Parameters
+    ----------
+    directory : str | pathlib.Path
+        Directory containing ``*.json`` files, or a single JSON file.
+
+    Returns
+    -------
+    Clusters
+        Clusters in the order returned by ``load_json`` calls.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the path does not exist.
+    TypeError
+        If a file does not contain an ASE ``Atoms`` object.
+    ValueError
+        If a file cannot be read or no structure is loaded.
+    """
+    source = Path(directory)
+    if source.is_dir():
+        files = sorted(
+            source.glob("*.json"),
+            key=lambda path: _natural_key(path.stem),
+        )
+    elif source.is_file():
+        files = [source]
+    else:
+        raise FileNotFoundError(f"path does not exist: {source}")
+
+    clusters = Clusters()
+    for file_path in files:
+        try:
+            formula = clusters.load_json(file_path, keep_lower=True)
+        except TypeError:
+            raise
+        except Exception as e:
+            raise ValueError(f"cannot read {file_path}: {e}") from e
+
+        index = clusters.symbols.index(formula)
+        cluster = clusters[index]
+        cluster.info.setdefault("system", file_path.stem)
+        cluster.info.setdefault("is_ref", 0)
+
+    if len(clusters) == 0:
+        raise ValueError(f"no cluster structures found in {source}")
+    return clusters
+
+
+def load_ref_energies(source: str | Path) -> dict[int, float]:
+    """Load reference energies keyed by atom count.
+
+    Parameters
+    ----------
+    source : str | pathlib.Path
+        ASE JSON directory or CSV file. A CSV file must contain a
+        ``natoms``/``N`` column and an ``energy`` or ``energy_per_atom``
+        column.
+
+    Returns
+    -------
+    dict[int, float]
+        Lowest reference energy for each atom count.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the path does not exist.
+    ValueError
+        If a CSV file lacks the required columns.
+    """
+    path = Path(source)
+    if path.is_dir():
+        clusters = load_clusters(path)
+        energies: dict[int, float] = {}
+        for cluster in clusters:
+            energy = cluster.info.get("energy")
+            if energy is None:
+                continue
+            count = len(cluster)
+            value = float(energy)
+            if count not in energies or value < energies[count]:
+                energies[count] = value
+        return energies
+
+    if not path.is_file():
+        raise FileNotFoundError(f"path does not exist: {path}")
+
+    energies = {}
+    with path.open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        fields = reader.fieldnames or []
+        count_column = next(
+            (name for name in ("natoms", "N", "n") if name in fields),
+            None,
+        )
+        energy_column = next(
+            (name for name in ("energy", "E") if name in fields),
+            None,
+        )
+        per_atom_column = "energy_per_atom" if "energy_per_atom" in fields else None
+        if count_column is None or (
+            energy_column is None and per_atom_column is None
+        ):
+            raise ValueError(
+                "reference CSV needs a natoms/N column and an energy or "
+                "energy_per_atom column"
+            )
+        for row in reader:
+            try:
+                count = int(float(row[count_column]))
+                if energy_column is not None:
+                    value = float(row[energy_column])
+                else:
+                    value = float(row[per_atom_column]) * count
+            except (TypeError, ValueError):
+                continue
+            if count not in energies or value < energies[count]:
+                energies[count] = value
+    return energies
 
 
 # ===== xyz2vasp IO: xyz reading, merging and VASP export =====

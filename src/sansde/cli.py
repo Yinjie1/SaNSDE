@@ -13,10 +13,17 @@ import subprocess
 import sys
 from pathlib import Path
 
-from sansde.analysis import analyze_clusters, load_clusters, write_cluster_csv
+from sansde.analysis import analyze_clusters, write_cluster_csv
 from sansde.check import run_check
-from sansde.io import write_vasp_tasks
+from sansde.io import load_clusters, write_vasp_tasks
 from sansde.main import main as run_opt
+from sansde.plots import (
+    plot_binding,
+    plot_energy,
+    plot_reference,
+    plot_shape,
+    plot_similarity,
+)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -48,6 +55,67 @@ def main(argv: list[str] | None = None) -> None:
         "--s2",
         action="store_true",
         help="also compute the angle similarity S2",
+    )
+    analyser.add_argument(
+        "--ref",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="reference ASE JSON directory or CSV file",
+    )
+    analyser.add_argument(
+        "--e1",
+        type=float,
+        default=None,
+        metavar="E1",
+        help="isolated atom energy; defaults to the N=1 structure",
+    )
+    analyser.add_argument(
+        "--no-plot",
+        action="store_true",
+        help="do not write plot files",
+    )
+    analyser.add_argument(
+        "--plot",
+        type=Path,
+        default=Path("cluster_energy.svg"),
+        metavar="SVG",
+        help="E - E_fit and delta2E plot (default: cluster_energy.svg)",
+    )
+    analyser.add_argument(
+        "--plot-shape",
+        type=Path,
+        default=Path("cluster_shape.svg"),
+        metavar="SVG",
+        help="shape eigenvalue plot (default: cluster_shape.svg)",
+    )
+    analyser.add_argument(
+        "--plot-s",
+        type=Path,
+        default=Path("cluster_s.svg"),
+        metavar="SVG",
+        help="similarity plot (default: cluster_s.svg)",
+    )
+    analyser.add_argument(
+        "--plot-ref",
+        type=Path,
+        default=Path("cluster_energy_ref.svg"),
+        metavar="SVG",
+        help="reference energy difference plot (default: cluster_energy_ref.svg)",
+    )
+    analyser.add_argument(
+        "--plot-eb",
+        type=Path,
+        default=Path("cluster_eb.svg"),
+        metavar="SVG",
+        help="binding energy plot (default: cluster_eb.svg)",
+    )
+    analyser.add_argument(
+        "--shape-start",
+        type=float,
+        default=6.0,
+        metavar="N",
+        help="first atom count shown in the shape plot (default: 6)",
     )
 
     checker = subparsers.add_parser(
@@ -99,8 +167,24 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.command == "analyse":
         clusters = load_clusters(args.input)
-        rows = analyze_clusters(clusters, compute_s2=args.s2)
+        rows = analyze_clusters(
+            clusters,
+            e1=args.e1,
+            ref=args.ref,
+            compute_s2=args.s2,
+        )
         write_cluster_csv(rows, args.output)
+        if not args.no_plot:
+            plots = [
+                plot_energy(rows, args.plot),
+                plot_shape(rows, args.plot_shape, shape_start=args.shape_start),
+                plot_similarity(rows, args.plot_s),
+                plot_reference(rows, args.plot_ref),
+                plot_binding(rows, args.plot_eb),
+            ]
+            for path in plots:
+                if path is not None:
+                    print(f"[plot] {path}", file=sys.stderr)
         return
 
     if args.command == "check":

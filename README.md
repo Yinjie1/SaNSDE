@@ -18,6 +18,7 @@ Any ASE calculator can be used as the potential. The default is a DeePMD-kit mod
 - Python >= 3.10
 - `numpy`, `ase`
 - `pymatgen` (for point group calculation)
+- `matplotlib` (for cluster analysis plots)
 - `deepmd-kit` (optional, for DP potentials)
 - `hiphive` (optional, for the ZBL short-range term)
 
@@ -138,12 +139,19 @@ Run the analysis from the command line:
 ```bash
 sansde analyse -i ase_json -o cluster_analysis.csv
 sansde analyse -i ase_json --s2 > cluster_analysis.csv
+sansde analyse -i ase_json --ref reference.json -o cluster_analysis.csv
 ```
+
+By default the command writes `cluster_energy.svg`, `cluster_shape.svg`, `cluster_s.svg`,
+`cluster_energy_ref.svg` (when reference data is supplied), and `cluster_eb.svg`. Use `--no-plot` to
+skip plots, `--shape-start` to set the first atom count in the shape plot, `--ref` for reference data,
+and `--e1` for an explicit isolated-atom energy.
 
 ASE JSON structures can also be analyzed through the `sansde.analysis` module:
 
 ```python
-from sansde.analysis import analyze_clusters, format_cluster_csv, load_clusters
+from sansde.analysis import analyze_clusters, format_cluster_csv
+from sansde.io import load_clusters
 
 clusters = load_clusters("ase_json")
 rows = analyze_clusters(clusters, compute_s2=True)
