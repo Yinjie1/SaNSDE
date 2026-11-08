@@ -916,6 +916,34 @@ class Clusters(MultiAtoms):
             self.sort()
         return self.symbols.index(formula)
 
+    def load_json(self, filename: str | Path) -> str:
+        """Load one ASE JSON structure and return its chemical formula.
+
+        The structure is added with ``sort=False``. When the formula already
+        exists, ``add_cluster`` returns the existing index and the stored
+        cluster is kept unchanged.
+
+        Parameters
+        ----------
+        filename : str | pathlib.Path
+            Path of the ASE JSON file.
+
+        Returns
+        -------
+        str
+            Chemical formula at the index returned by ``add_cluster``.
+
+        Raises
+        ------
+        TypeError
+            If the JSON content is not an ASE ``Atoms`` object.
+        """
+        atoms = read_json(filename)
+        if not isinstance(atoms, Atoms):
+            raise TypeError(f"{filename} does not contain an ASE Atoms object")
+        index = self.add_cluster(atoms, sort=False)
+        return self.symbols[index]
+
     def merge(self, clusters: Self) -> None:
         """Merge all clusters from another container.
 
