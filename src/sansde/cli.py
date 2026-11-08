@@ -7,7 +7,7 @@ Usage:
     sansde check [directory]          # inspect run parameter files and outputs
     sansde analyse -i json_dir        # analyse ASE JSON cluster structures
     sansde radial -i json_dir         # analyse radial layer structure
-    sansde coordination -i json_dir   # analyse coordination numbers
+    sansde cn -i json_dir             # analyse coordination numbers
     python -m sansde run params.json --fg
 """
 import argparse
@@ -136,7 +136,7 @@ def main(argv: list[str] | None = None) -> None:
     )
 
     coordination = subparsers.add_parser(
-        "coordination",
+        "cn",
         help="analyse coordination numbers from ASE JSON structures",
     )
     coordination.add_argument(
@@ -240,7 +240,7 @@ def main(argv: list[str] | None = None) -> None:
             plot_binding(rows, f"{prefix}_eb.svg")
         return
 
-    if args.command == "coordination":
+    if args.command == "cn":
         clusters = load_clusters(args.input)
         rows = analyze_coordination(
             clusters,
@@ -251,7 +251,7 @@ def main(argv: list[str] | None = None) -> None:
         if args.plot:
             input_path = args.input.resolve()
             prefix = input_path.stem if input_path.is_file() else input_path.name
-            plot_coordination(rows, f"{prefix}_coordination.svg")
+            plot_coordination(rows, f"{prefix}_cn.svg")
         return
 
     if args.command == "radial":

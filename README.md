@@ -45,7 +45,7 @@ sansde xyz2vasp xyz2vasp.json     # export VASP task directories
 sansde check                      # inspect *.json in the current directory
 sansde analyse -i ase_json        # cluster analysis from ASE JSON structures
 sansde radial -i ase_json         # radial layer analysis from ASE JSON structures
-sansde coordination -i ase_json   # coordination number analysis from ASE JSON structures
+sansde cn -i ase_json             # coordination number analysis from ASE JSON structures
 python -m sansde run params.json --fg
 ```
 
@@ -192,15 +192,15 @@ csv_text = format_radial_csv(rows)
 ## Coordination analysis
 
 ```bash
-sansde coordination -i ase_json -o coordination.csv
-sansde coordination -i ase_json --cutoff 3.0 --plot -o coordination.csv
-sansde coordination -i ase_json --bulk-cn --plot
+sansde cn -i ase_json -o coordination.csv
+sansde cn -i ase_json --cutoff 3.0 --plot -o coordination.csv
+sansde cn -i ase_json --bulk-cn --plot
 ```
 
 The bonding cutoff defaults to the mean of the first and second bulk neighbor distances of the most
 common element; `--cutoff` supplies an explicit value. The CSV contains `system`, `symbol`, `natoms`,
 `is_ref`, `cn_atoms`, `cn_ratios`, `cn_avg`, and `bond_length_avg`. `--bulk-cn` computes the bulk
-average coordination number for the plot. `--plot` writes `<input-name>_coordination.svg`.
+average coordination number for the plot. `--plot` writes `<input-name>_cn.svg`.
 
 The analysis is also available from Python:
 
