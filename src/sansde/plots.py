@@ -1,5 +1,6 @@
 """Plotting helpers for cluster analysis results."""
 
+from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -8,8 +9,9 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.colors import LinearSegmentedColormap
 
-from sansde.analysis import AnalysisRow
+from sansde.analysis import AnalysisRow, RadialRow
 
 X_STEP = 5.0
 Y_STEP = 1.0
@@ -28,6 +30,10 @@ COLOR_EREF = "#0000ff"
 COLOR_EB = "#0000ff"
 REF_BAND = "0.86"
 REF_BAND_DARK = "0.72"
+RADIAL_Y_STEP = 2.0
+RADIAL_TOLERANCE = 0.1
+CMAP_CYAN_POS = 1.0 / 6.0
+CMAP_YELLOW_POS = 0.5
 
 
 def _spans(sizes: set[int]) -> list[tuple[int, int]]:
@@ -276,5 +282,66 @@ def plot_binding(rows: Sequence[AnalysisRow], path: str | Path) -> Path | None:
     ax.set_xticks(np.arange(_tick_start(min(xs), X_STEP), max(xs) + 1e-9, X_STEP))
     ax.grid(True, alpha=0.3)
     ax.legend()
+    fig.tight_layout()
+    return _save_figure(fig, path)
+
+
+def plot_radial(
+    rows: Sequence[RadialRow],
+    path: str | Path,
+    cyan_pos: float = CMAP_CYAN_POS,
+    yellow_pos: float = CMAP_YELLOW_POS,
+) -> Path | None:
+    """Plot radial distances with an overlap-count color scale."""
+    counts: list[int] = []
+    distances: list[float] = []
+    for row in rows:
+        count = int(row["natoms"])
+        for radius in row["radial_distances"]:
+            counts.append(count)
+            distances.append(float(radius))
+    if not distances:
+        return None
+
+    ns = np.asarray(counts, dtype=int)
+    rs = np.asarray(distances, dtype=float)
+    keys = list(
+        zip(
+            ns.tolist(),
+            np.round(rs / RADIAL_TOLERANCE).astype(int).tolist(),
+        )
+    )
+    overlap = Counter(keys)
+    colors = np.asarray([overlap[key] for key in keys], dtype=float)
+
+    cmap = LinearSegmentedColormap.from_list(
+        "blue_yellow_red",
+        [
+            (0.0, "#0000ff"),
+            (cyan_pos, "#00ffff"),
+            (yellow_pos, "#ffff00"),
+            (1.0, "#ff0000"),
+        ],
+    )
+    fig, ax = plt.subplots(figsize=(10, 6))
+    _draw_ref_bands(ax, _ref_sizes(rows), label="ref-affected (N)")
+    scatter = ax.scatter(
+        ns,
+        rs,
+        c=colors,
+        cmap=cmap,
+        vmin=1,
+        vmax=max(2, float(colors.max())),
+        s=18,
+        linewidths=0,
+    )
+    colorbar = fig.colorbar(scatter, ax=ax)
+    colorbar.set_label("overlap count")
+    ax.set_xlabel("N")
+    ax.set_ylabel("Radial Distance (A)")
+    xmin, xmax = int(ns.min()), int(ns.max())
+    ax.set_xticks(np.arange(xmin - xmin % X_STEP, xmax + 1e-9, X_STEP))
+    ax.set_yticks(np.arange(0, rs.max() + RADIAL_Y_STEP, RADIAL_Y_STEP))
+    ax.grid(True, alpha=0.3)
     fig.tight_layout()
     return _save_figure(fig, path)

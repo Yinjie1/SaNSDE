@@ -6,6 +6,7 @@ Usage:
     sansde xyz2vasp params.json       # export VASP tasks from JSON parameters
     sansde check [directory]          # inspect run parameter files and outputs
     sansde analyse -i json_dir        # analyse ASE JSON cluster structures
+    sansde radial -i json_dir         # analyse radial layer structure
     python -m sansde run params.json --fg
 """
 import argparse
@@ -13,13 +14,19 @@ import subprocess
 import sys
 from pathlib import Path
 
-from sansde.analysis import analyze_clusters, write_cluster_csv
+from sansde.analysis import (
+    analyze_clusters,
+    analyze_radial,
+    write_cluster_csv,
+    write_radial_csv,
+)
 from sansde.check import run_check
 from sansde.io import load_clusters, write_vasp_tasks
 from sansde.main import main as run_opt
 from sansde.plots import (
     plot_binding,
     plot_energy,
+    plot_radial,
     plot_reference,
     plot_shape,
     plot_similarity,
@@ -81,6 +88,74 @@ def main(argv: list[str] | None = None) -> None:
         default=6.0,
         metavar="N",
         help="first atom count shown in the shape plot (default: 6)",
+    )
+
+    radial = subparsers.add_parser(
+        "radial",
+        help="analyse radial layer structure from ASE JSON structures",
+    )
+    radial.add_argument(
+        "-i",
+        "--input",
+        type=Path,
+        required=True,
+        metavar="JSON_DIR",
+        help="directory containing ASE JSON structures",
+    )
+    radial.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=None,
+        metavar="CSV",
+        help="CSV output path (default: standard output)",
+    )
+    radial.add_argument(
+        "--k",
+        nargs="+",
+        type=int,
+        default=None,
+        metavar="K",
+        help="manual layer counts in ascending atom-count order",
+    )
+    radial.add_argument(
+        "--kmax",
+        type=int,
+        default=10,
+        metavar="K",
+        help="maximum layer count for automatic selection (default: 10)",
+    )
+    radial.add_argument(
+        "--method",
+        choices=("gap", "elbow"),
+        default="gap",
+        help="automatic layer selection method (default: gap)",
+    )
+    radial.add_argument(
+        "--gap-nref",
+        type=int,
+        default=100,
+        metavar="B",
+        help="reference sample count for the gap statistic (default: 100)",
+    )
+    radial.add_argument(
+        "--gap-seed",
+        type=int,
+        default=0,
+        metavar="SEED",
+        help="random seed for the gap statistic (default: 0)",
+    )
+    radial.add_argument(
+        "--plot",
+        action="store_true",
+        help="write the radial distance plot (default: disabled)",
+    )
+    radial.add_argument(
+        "--cyan-pos",
+        type=float,
+        default=1.0 / 6.0,
+        metavar="POS",
+        help="cyan position in the overlap color map (default: 1/6)",
     )
 
     checker = subparsers.add_parser(
@@ -147,6 +222,27 @@ def main(argv: list[str] | None = None) -> None:
             plot_similarity(rows, f"{prefix}_s.svg")
             plot_reference(rows, f"{prefix}_energy_ref.svg")
             plot_binding(rows, f"{prefix}_eb.svg")
+        return
+
+    if args.command == "radial":
+        clusters = load_clusters(args.input)
+        rows = analyze_radial(
+            clusters,
+            k=args.k,
+            kmax=args.kmax,
+            method=args.method,
+            gap_nref=args.gap_nref,
+            gap_seed=args.gap_seed,
+        )
+        write_radial_csv(rows, args.output)
+        if args.plot:
+            input_path = args.input.resolve()
+            prefix = input_path.stem if input_path.is_file() else input_path.name
+            plot_radial(
+                rows,
+                f"{prefix}_radial.svg",
+                cyan_pos=args.cyan_pos,
+            )
         return
 
     if args.command == "check":

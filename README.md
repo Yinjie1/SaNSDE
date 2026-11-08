@@ -44,6 +44,7 @@ sansde run params.json --fg       # foreground
 sansde xyz2vasp xyz2vasp.json     # export VASP task directories
 sansde check                      # inspect *.json in the current directory
 sansde analyse -i ase_json        # cluster analysis from ASE JSON structures
+sansde radial -i ase_json         # radial layer analysis from ASE JSON structures
 python -m sansde run params.json --fg
 ```
 
@@ -163,6 +164,30 @@ csv_text = format_cluster_csv(rows)
 `symbol`, `natoms`, `is_ref`, `energy`, `energy_per_atom`, `energy_minus_fit`,
 `second_difference`, `PG`, `lambda1/2/3`, `shape`, `S`, optional `S2`, optional
 `binding_energy_per_atom`, and `energy_diff_ref_per_atom`.
+
+## Radial analysis
+
+```bash
+sansde radial -i ase_json -o radial.csv
+sansde radial -i ase_json --k 1 12 30 --plot -o radial.csv
+sansde radial -i ase_json --method elbow --kmax 10
+```
+
+The CSV contains `system`, `symbol`, `natoms`, `is_ref`, `PG`, `n_layers`, `layer_sizes`,
+`layer_pg`, and `radial_distances`. Layer counts are selected with the gap statistic by default, or
+with `--method elbow`; `--k` supplies manual counts in ascending atom-count order. `--plot` writes
+`<input-name>_radial.svg`.
+
+The same analysis is available from Python:
+
+```python
+from sansde.analysis import analyze_radial, format_radial_csv
+from sansde.io import load_clusters
+
+clusters = load_clusters("ase_json")
+rows = analyze_radial(clusters, method="gap")
+csv_text = format_radial_csv(rows)
+```
 
 ## Optimization
 
