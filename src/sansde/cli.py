@@ -7,6 +7,7 @@ Usage:
     sansde check [directory]          # inspect run parameter files and outputs
     sansde analyse -i json_dir        # analyse ASE JSON cluster structures
     sansde radial -i json_dir         # analyse radial layer structure
+    sansde coordination -i json_dir   # analyse coordination numbers
     python -m sansde run params.json --fg
 """
 import argparse
@@ -16,8 +17,10 @@ from pathlib import Path
 
 from sansde.analysis import (
     analyze_clusters,
+    analyze_coordination,
     analyze_radial,
     write_cluster_csv,
+    write_coordination_csv,
     write_radial_csv,
 )
 from sansde.check import run_check
@@ -25,6 +28,7 @@ from sansde.io import load_clusters, write_vasp_tasks
 from sansde.main import main as run_opt
 from sansde.plots import (
     plot_binding,
+    plot_coordination,
     plot_energy,
     plot_radial,
     plot_reference,
@@ -131,6 +135,45 @@ def main(argv: list[str] | None = None) -> None:
         help="cyan position in the overlap color map (default: 1/6)",
     )
 
+    coordination = subparsers.add_parser(
+        "coordination",
+        help="analyse coordination numbers from ASE JSON structures",
+    )
+    coordination.add_argument(
+        "-i",
+        "--input",
+        type=Path,
+        required=True,
+        metavar="JSON_DIR",
+        help="directory containing ASE JSON structures",
+    )
+    coordination.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=None,
+        metavar="CSV",
+        help="CSV output path (default: standard output)",
+    )
+    coordination.add_argument(
+        "--cutoff",
+        type=float,
+        default=None,
+        metavar="A",
+        help="bonding cutoff; defaults to the bulk neighbor mean distance",
+    )
+    coordination.add_argument(
+        "--bulk-cn",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="compute and plot the bulk average coordination number",
+    )
+    coordination.add_argument(
+        "--plot",
+        action="store_true",
+        help="write the coordination plot (default: disabled)",
+    )
+
     checker = subparsers.add_parser(
         "check",
         help="check run parameter files and output directories in a directory",
@@ -195,6 +238,20 @@ def main(argv: list[str] | None = None) -> None:
             plot_similarity(rows, f"{prefix}_s.svg")
             plot_reference(rows, f"{prefix}_energy_ref.svg")
             plot_binding(rows, f"{prefix}_eb.svg")
+        return
+
+    if args.command == "coordination":
+        clusters = load_clusters(args.input)
+        rows = analyze_coordination(
+            clusters,
+            cutoff=args.cutoff,
+            show_bulk_cn=args.bulk_cn,
+        )
+        write_coordination_csv(rows, args.output)
+        if args.plot:
+            input_path = args.input.resolve()
+            prefix = input_path.stem if input_path.is_file() else input_path.name
+            plot_coordination(rows, f"{prefix}_coordination.svg")
         return
 
     if args.command == "radial":

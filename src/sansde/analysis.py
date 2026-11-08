@@ -3,6 +3,7 @@
 import csv
 import io
 import sys
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from itertools import combinations
 from pathlib import Path
@@ -10,6 +11,8 @@ from typing import TypeAlias
 
 import numpy as np
 from ase import Atoms
+from ase.build import bulk
+from ase.neighborlist import neighbor_list
 
 from sansde.io import load_ref_energies
 from sansde.operators import compute_point_group, similarity_function
@@ -19,16 +22,24 @@ SHAPE_RATIO = 0.8
 UL = 1.0
 
 AnalysisRow: TypeAlias = dict[str, object]
+CoordinationRow: TypeAlias = dict[str, object]
 
 __all__ = [
     "AnalysisRow",
+    "CoordinationRow",
     "RadialRow",
     "analyze_clusters",
+    "analyze_coordination",
     "analyze_radial",
     "angle_similarity_add_atom",
+    "average_bond_length",
+    "bulk_cn",
+    "bulk_cutoff",
+    "coordination_numbers",
     "eval_fit",
     "fit_energy",
     "format_cluster_csv",
+    "format_coordination_csv",
     "format_radial_csv",
     "radial_distances",
     "shape_indicator",
@@ -36,6 +47,7 @@ __all__ = [
     "similarity_add_atom",
     "split_layers",
     "write_cluster_csv",
+    "write_coordination_csv",
     "write_radial_csv",
 ]
 
@@ -491,6 +503,17 @@ RADIAL_FIELDS = [
     "radial_distances",
 ]
 
+COORDINATION_FIELDS = [
+    "system",
+    "symbol",
+    "natoms",
+    "is_ref",
+    "cn_atoms",
+    "cn_ratios",
+    "cn_avg",
+    "bond_length_avg",
+]
+
 
 def radial_distances(coords: np.ndarray | None) -> tuple[np.ndarray, np.ndarray]:
     """Return sorted radial distances and the matching atom indices.
@@ -734,6 +757,225 @@ def write_radial_csv(
 ) -> None:
     """Write radial analysis rows as CSV to a file or stdout."""
     text = format_radial_csv(rows)
+    if path is None:
+        sys.stdout.write(text)
+    else:
+        Path(path).write_text(text, encoding="utf-8")
+
+
+def bulk_cutoff(
+    symbol: str,
+    structure: str | None = None,
+    a: float | None = None,
+) -> tuple[float | None, float | None, float | None]:
+    """Return the bulk first/second neighbor mean distance.
+
+    Parameters
+    ----------
+    symbol : str
+        Element symbol.
+    structure : str | None, optional
+        Crystal structure passed to :func:`ase.build.bulk`.
+    a : float | None, optional
+        Lattice constant passed to :func:`ase.build.bulk`.
+
+    Returns
+    -------
+    tuple[float | None, float | None, float | None]
+        Bonding cutoff ``(d1 + d2) / 2``, first distance, and second distance.
+    """
+    kwargs: dict[str, object] = {}
+    if structure is not None:
+        kwargs["crystalstructure"] = structure
+    if a is not None:
+        kwargs["a"] = a
+    atoms = bulk(symbol, **kwargs).repeat((3, 3, 3))
+    distances = atoms.get_all_distances(mic=True)
+    upper = np.triu_indices(len(atoms), k=1)
+    values = np.unique(np.round(distances[upper], 6))
+    values = values[values > 1e-6]
+    if len(values) == 0:
+        return None, None, None
+    if len(values) < 2:
+        return float(values[0]), None, None
+    first = float(values[0])
+    second = float(values[1])
+    return 0.5 * (first + second), first, second
+
+
+def bulk_cn(
+    symbol: str,
+    cutoff: float,
+    structure: str | None = None,
+    a: float | None = None,
+) -> float:
+    """Return the average bulk coordination number at a cutoff."""
+    kwargs: dict[str, object] = {}
+    if structure is not None:
+        kwargs["crystalstructure"] = structure
+    if a is not None:
+        kwargs["a"] = a
+    atoms = bulk(symbol, **kwargs).repeat((3, 3, 3))
+    indices, _neighbors = neighbor_list("ij", atoms, cutoff)
+    return float(np.bincount(indices, minlength=len(atoms)).mean())
+
+
+def coordination_numbers(atoms: Atoms, cutoff: float) -> np.ndarray:
+    """Return the coordination number of every atom."""
+    count = len(atoms)
+    if count < 2:
+        return np.zeros(count, dtype=int)
+    indices, _neighbors = neighbor_list("ij", atoms, cutoff)
+    return np.bincount(indices, minlength=count).astype(int)
+
+
+def average_bond_length(atoms: Atoms, cutoff: float) -> float | None:
+    """Return the mean distance over all bonded pairs."""
+    if len(atoms) < 2:
+        return None
+    indices, neighbors = neighbor_list("ij", atoms, cutoff)
+    if len(indices) == 0:
+        return None
+    positions = atoms.get_positions()
+    distances = np.linalg.norm(
+        positions[indices] - positions[neighbors],
+        axis=1,
+    )
+    return float(distances.mean())
+
+
+def analyze_coordination(
+    clusters: Clusters,
+    *,
+    cutoff: float | None = None,
+    show_bulk_cn: bool = False,
+) -> list[CoordinationRow]:
+    """Analyze coordination numbers and average bond lengths.
+
+    Parameters
+    ----------
+    clusters : Clusters
+        Clusters to analyze.
+    cutoff : float | None, optional
+        Bonding cutoff. When omitted, the bulk first/second neighbor mean
+        distance of the most common element is used.
+    show_bulk_cn : bool, optional
+        Whether to compute the bulk average coordination number. Default
+        False.
+
+    Returns
+    -------
+    list[dict[str, object]]
+        One row per cluster.
+
+    Raises
+    ------
+    ValueError
+        If the bulk cutoff cannot be determined.
+    """
+    entries = sorted(
+        clusters,
+        key=lambda cluster: (
+            len(cluster),
+            str(cluster.info.get("system", cluster.get_chemical_formula())),
+        ),
+    )
+    if not entries:
+        return []
+
+    symbols = [
+        symbol
+        for cluster in entries
+        for symbol in cluster.get_chemical_symbols()
+    ]
+    element = Counter(symbols).most_common(1)[0][0]
+    if cutoff is None:
+        cutoff_value, _first, _second = bulk_cutoff(element)
+        if cutoff_value is None:
+            raise ValueError(f"cannot determine bulk cutoff for {element}")
+    else:
+        cutoff_value = float(cutoff)
+
+    bulk_value = bulk_cn(element, cutoff_value) if show_bulk_cn else None
+    numbers: list[np.ndarray] = []
+    maximum = 0
+    for cluster in entries:
+        values = coordination_numbers(cluster, cutoff_value)
+        numbers.append(values)
+        if values.size:
+            maximum = max(maximum, int(values.max()))
+
+    rows: list[CoordinationRow] = []
+    for cluster, values in zip(entries, numbers):
+        count = len(cluster)
+        counts = [0] * maximum
+        for value in values:
+            if 1 <= value <= maximum:
+                counts[value - 1] += 1
+        ratios = [
+            100.0 * value / count if count else 0.0
+            for value in counts
+        ]
+        average = float(np.mean(values)) if count else 0.0
+        bond_length = average_bond_length(cluster, cutoff_value)
+        rows.append(
+            {
+                "system": str(
+                    cluster.info.get("system", cluster.get_chemical_formula())
+                ),
+                "symbol": cluster.get_chemical_formula(),
+                "natoms": count,
+                "is_ref": int(cluster.info.get("is_ref", 0) or 0),
+                "cn_atoms": counts,
+                "cn_ratios": ratios,
+                "cn_avg": average,
+                "bond_length_avg": bond_length,
+                "cutoff": cutoff_value,
+                "bulk_cn": bulk_value,
+            }
+        )
+    return rows
+
+
+def format_coordination_csv(rows: Sequence[CoordinationRow]) -> str:
+    """Format coordination analysis rows as CSV text."""
+    buffer = io.StringIO()
+    writer = csv.DictWriter(
+        buffer,
+        fieldnames=COORDINATION_FIELDS,
+        extrasaction="ignore",
+        lineterminator="\n",
+    )
+    writer.writeheader()
+    for row in rows:
+        bond_length = row["bond_length_avg"]
+        writer.writerow(
+            {
+                "system": str(row["system"]),
+                "symbol": str(row["symbol"]),
+                "natoms": str(row["natoms"]),
+                "is_ref": str(row["is_ref"]),
+                "cn_atoms": "("
+                + " ".join(str(int(value)) for value in row["cn_atoms"])
+                + ")",
+                "cn_ratios": "("
+                + " ".join(f"{float(value):g}" for value in row["cn_ratios"])
+                + ")",
+                "cn_avg": f"{float(row['cn_avg']):.4f}",
+                "bond_length_avg": (
+                    "" if bond_length is None else f"{float(bond_length):.4f}"
+                ),
+            }
+        )
+    return buffer.getvalue()
+
+
+def write_coordination_csv(
+    rows: Sequence[CoordinationRow],
+    path: str | Path | None = None,
+) -> None:
+    """Write coordination analysis rows as CSV to a file or stdout."""
+    text = format_coordination_csv(rows)
     if path is None:
         sys.stdout.write(text)
     else:

@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import LinearSegmentedColormap
 
-from sansde.analysis import AnalysisRow, RadialRow
+from sansde.analysis import AnalysisRow, CoordinationRow, RadialRow
 
 X_STEP = 5.0
 Y_STEP = 1.0
@@ -28,6 +28,8 @@ COLOR_S = "#0000ff"
 COLOR_S2 = "#ff8000"
 COLOR_EREF = "#0000ff"
 COLOR_EB = "#0000ff"
+COLOR_COORD_AVG = "#0000ff"
+COLOR_COORD_BOND = "#ff0000"
 REF_BAND = "0.86"
 REF_BAND_DARK = "0.72"
 RADIAL_Y_STEP = 2.0
@@ -344,4 +346,112 @@ def plot_radial(
     ax.set_yticks(np.arange(0, rs.max() + RADIAL_Y_STEP, RADIAL_Y_STEP))
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
+    return _save_figure(fig, path)
+
+
+def plot_coordination(
+    rows: Sequence[CoordinationRow],
+    path: str | Path,
+) -> Path | None:
+    """Plot average coordination, bond length, and CN ratio bars."""
+    if not rows:
+        return None
+    ns = [int(row["natoms"]) for row in rows]
+    ratios = [[float(value) for value in row["cn_ratios"]] for row in rows]
+    averages = [float(row["cn_avg"]) for row in rows]
+    lengths = [
+        np.nan if row["bond_length_avg"] is None else float(row["bond_length_avg"])
+        for row in rows
+    ]
+    bulk_value = rows[0].get("bulk_cn")
+    reference_sizes = _ref_sizes(rows)
+    layer_count = len(ratios[0]) if ratios else 0
+
+    fig, (ax_average, ax_bar) = plt.subplots(
+        1,
+        2,
+        figsize=(22, 6),
+        gridspec_kw={"width_ratios": [0.6, 1.0]},
+    )
+    for index, (low, high) in enumerate(_spans(reference_sizes)):
+        ax_average.axvspan(
+            low - 0.5,
+            high + 0.5,
+            color=REF_BAND,
+            lw=0,
+            zorder=0,
+            label="ref-affected (N)" if index == 0 else None,
+        )
+        for edge in (low - 0.5, high + 0.5):
+            ax_bar.axvline(edge, color="0.45", ls="--", lw=1.0, zorder=5)
+
+    ax_average.plot(ns, averages, "o-", color=COLOR_COORD_AVG, label="average CN")
+    ax_average.set_xlim(0, max(ns) + 0.6)
+    ax_average.set_xticks(np.arange(0.0, max(ns) + 1e-9, X_STEP))
+    ax_average.set_xlabel("N")
+    ax_average.set_ylabel("average CN")
+    ax_average.grid(True, alpha=0.3)
+    if bulk_value is not None:
+        ax_average.axhline(
+            float(bulk_value),
+            ls="--",
+            color=COLOR_COORD_AVG,
+            label=f"bulk CN ({float(bulk_value):.2f})",
+        )
+
+    length_axis = ax_average.twinx()
+    length_axis.plot(
+        ns,
+        lengths,
+        "o-",
+        color=COLOR_COORD_BOND,
+        label="average bond length",
+    )
+    length_axis.set_ylabel("average bond length (A)")
+    finite_lengths = np.asarray(lengths, dtype=float)
+    finite_lengths = finite_lengths[np.isfinite(finite_lengths)]
+    if finite_lengths.size:
+        upper = int(np.floor(finite_lengths.max() / 0.05 + 1e-9)) + 1
+        length_axis.set_ylim(top=0.05 * upper + 0.5)
+
+    handles_average, labels_average = ax_average.get_legend_handles_labels()
+    handles_length, labels_length = length_axis.get_legend_handles_labels()
+    ax_average.legend(
+        handles_average + handles_length,
+        labels_average + labels_length,
+        loc="best",
+    )
+
+    cmap = plt.get_cmap("jet")
+    bottom = np.zeros(len(ns), dtype=float)
+    for index in range(layer_count):
+        values = np.asarray([row[index] for row in ratios], dtype=float)
+        color = cmap(index / (layer_count - 1)) if layer_count > 1 else cmap(0.0)
+        ax_bar.bar(
+            ns,
+            values,
+            bottom=bottom,
+            width=0.9,
+            color=color,
+            label=str(index + 1),
+        )
+        bottom += values
+
+    ax_bar.set_ylim(0, 100)
+    ax_bar.set_xlim(0, max(ns) + 0.6)
+    ax_bar.spines["left"].set_position(("data", 0))
+    ax_bar.set_xticks(np.arange(0.0, max(ns) + 1e-9, X_STEP))
+    ax_bar.set_xlabel("N")
+    ax_bar.set_ylabel("ratio (%)")
+    handles, labels = ax_bar.get_legend_handles_labels()
+    ax_bar.legend(
+        handles[::-1],
+        labels[::-1],
+        title="CN",
+        fontsize=8,
+        title_fontsize=9,
+        loc="center left",
+        bbox_to_anchor=(1.01, 0.5),
+    )
+    fig.subplots_adjust(left=0.04, right=0.92, top=0.95, bottom=0.10, wspace=0.15)
     return _save_figure(fig, path)
