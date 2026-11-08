@@ -26,13 +26,10 @@ __all__ = [
     "analyze_clusters",
     "analyze_radial",
     "angle_similarity_add_atom",
-    "choose_k",
-    "elbow_k",
     "eval_fit",
     "fit_energy",
     "format_cluster_csv",
     "format_radial_csv",
-    "gap_k",
     "radial_distances",
     "shape_indicator",
     "shape_label",
@@ -553,101 +550,21 @@ def _kmeans1d_dp(
     return inertias, cut
 
 
-def elbow_k(values: np.ndarray, kmax: int = 10) -> int:
-    """Choose the layer count with the elbow method."""
-    sorted_values = np.sort(np.asarray(values, dtype=float))
-    count = len(sorted_values)
-    if count == 0:
-        return 1
-    kmax = max(1, min(kmax, count))
-    if kmax == 1:
-        return 1
-    inertias, _cut = _kmeans1d_dp(sorted_values, kmax)
-    if inertias[0] <= count * 1e-6:
-        return 1
-    x = np.arange(1, kmax + 1, dtype=float)
-    y = np.asarray(inertias)
-    x0, x1, y0, y1 = x[0], x[-1], y[0], y[-1]
-    denominator = np.hypot(y1 - y0, x1 - x0)
-    if denominator < 1e-12:
-        return 1
-    distance = np.abs(
-        (y1 - y0) * x - (x1 - x0) * y + x1 * y0 - y1 * x0
-    ) / denominator
-    return max(1, int(x[int(np.argmax(distance))]))
-
-
-def gap_k(
-    values: np.ndarray,
-    kmax: int = 10,
-    nref: int = 100,
-    seed: int = 0,
-) -> int:
-    """Choose the layer count with the gap statistic."""
-    sorted_values = np.sort(np.asarray(values, dtype=float))
-    count = len(sorted_values)
-    if count < 2:
-        return 1
-    kmax = max(1, min(kmax, count))
-    if np.sum((sorted_values - sorted_values.mean()) ** 2) <= count * 1e-6:
-        return 1
-    low, high = sorted_values[0], sorted_values[-1]
-    if high - low < 1e-12:
-        return 1
-
-    epsilon = 1e-12
-    real = np.asarray(_kmeans1d_dp(sorted_values, kmax)[0])
-    rng = np.random.default_rng(seed)
-    reference = np.empty((nref, kmax))
-    for index in range(nref):
-        sample = np.sort(rng.uniform(low, high, count))
-        reference[index] = np.log(
-            np.maximum(np.asarray(_kmeans1d_dp(sample, kmax)[0]), epsilon)
-        )
-    log_real = np.log(np.maximum(real, epsilon))
-    mean_reference = reference.mean(axis=0)
-    standard_error = reference.std(axis=0, ddof=1) * np.sqrt(1.0 + 1.0 / nref)
-    gap = mean_reference - log_real
-    for layers in range(kmax - 1):
-        if gap[layers] >= gap[layers + 1] - standard_error[layers + 1]:
-            return layers + 1
-    return kmax
-
-
-def choose_k(
-    values: np.ndarray,
-    kmax: int = 10,
-    method: str = "gap",
-    gap_nref: int = 100,
-    gap_seed: int = 0,
-) -> int:
-    """Choose the layer count with the selected method."""
-    if method == "elbow":
-        return elbow_k(values, kmax)
-    if method == "gap":
-        return gap_k(values, kmax, gap_nref, gap_seed)
-    raise ValueError(f"unknown layer method: {method}")
-
-
 def split_layers(
     radii_sorted: np.ndarray,
-    kmax: int = 10,
-    k: int | None = None,
-    method: str = "gap",
-    gap_nref: int = 100,
-    gap_seed: int = 0,
-) -> list[list[int]]:
-    """Split sorted radial distances into one-dimensional layers."""
+    k: int | None,
+) -> list[list[int]] | None:
+    """Split sorted radial distances into layers with a manual layer count.
+
+    Returns ``None`` when ``k`` is not provided.
+    """
+    if k is None:
+        return None
     radii = np.asarray(radii_sorted, dtype=float)
     count = len(radii)
     if count == 0:
         return []
-    layer_count = (
-        choose_k(radii, kmax, method, gap_nref, gap_seed)
-        if k is None
-        else int(k)
-    )
-    layer_count = max(1, min(layer_count, count))
+    layer_count = max(1, min(int(k), count))
     if layer_count <= 1:
         return [list(range(count))]
 
@@ -667,10 +584,6 @@ def analyze_radial(
     clusters: Clusters,
     *,
     k: Sequence[int] | None = None,
-    kmax: int = 10,
-    method: str = "gap",
-    gap_nref: int = 100,
-    gap_seed: int = 0,
     pg_tolerance: float = 0.3,
 ) -> list[RadialRow]:
     """Analyze radial layer structure for every atom count.
@@ -681,15 +594,8 @@ def analyze_radial(
         Clusters to analyze.
     k : Sequence[int] | None, optional
         Manual layer counts in ascending atom-count order. The length must
-        match the number of systems.
-    kmax : int, optional
-        Maximum layer count considered by automatic selection. Default 10.
-    method : str, optional
-        Layer selection method, ``"gap"`` or ``"elbow"``. Default ``"gap"``.
-    gap_nref : int, optional
-        Number of reference samples for the gap statistic. Default 100.
-    gap_seed : int, optional
-        Random seed for the gap statistic. Default 0.
+        match the number of systems. When omitted, layer fields are left
+        empty.
     pg_tolerance : float, optional
         Point-group tolerance. Default 0.3.
 
@@ -735,25 +641,21 @@ def analyze_radial(
     for count in systems:
         cluster = lowest_by_count[count]
         radii, order = radial_distances(cluster.get_positions())
-        layers = split_layers(
-            radii,
-            kmax=kmax,
-            k=manual.get(count),
-            method=method,
-            gap_nref=gap_nref,
-            gap_seed=gap_seed,
-        )
-        sizes: list[int] = []
-        layer_groups: list[str | None] = []
-        for positions in layers:
-            atom_indices = order[np.asarray(positions, dtype=int)].tolist()
-            layer_atoms = cluster[atom_indices]
-            sizes.append(len(atom_indices))
-            layer_groups.append(
-                None
-                if len(atom_indices) < 2
-                else compute_point_group(layer_atoms, tolerance=pg_tolerance)
-            )
+        layers = split_layers(radii, manual.get(count))
+        sizes: list[int] | None = None
+        layer_groups: list[str | None] | None = None
+        if layers is not None:
+            sizes = []
+            layer_groups = []
+            for positions in layers:
+                atom_indices = order[np.asarray(positions, dtype=int)].tolist()
+                layer_atoms = cluster[atom_indices]
+                sizes.append(len(atom_indices))
+                layer_groups.append(
+                    None
+                    if len(atom_indices) < 2
+                    else compute_point_group(layer_atoms, tolerance=pg_tolerance)
+                )
         point_group = (
             None
             if count < 2
@@ -768,7 +670,7 @@ def analyze_radial(
                 "natoms": count,
                 "is_ref": int(cluster.info.get("is_ref", 0) or 0),
                 "PG": point_group,
-                "n_layers": len(layers),
+                "n_layers": None if layers is None else len(layers),
                 "layer_sizes": sizes,
                 "layer_pg": layer_groups,
                 "radial_distances": [float(value) for value in radii],
@@ -798,16 +700,26 @@ def format_radial_csv(rows: Sequence[RadialRow]) -> str:
                 "natoms": str(row["natoms"]),
                 "is_ref": str(row["is_ref"]),
                 "PG": "null" if row["PG"] is None else str(row["PG"]),
-                "n_layers": str(row["n_layers"]),
-                "layer_sizes": "("
-                + " ".join(str(int(value)) for value in layer_sizes)
-                + ")",
-                "layer_pg": "("
-                + " ".join(
-                    "null" if value is None else str(value)
-                    for value in layer_groups
-                )
-                + ")",
+                "n_layers": (
+                    "" if row["n_layers"] is None else str(row["n_layers"])
+                ),
+                "layer_sizes": (
+                    ""
+                    if layer_sizes is None
+                    else "("
+                    + " ".join(str(int(value)) for value in layer_sizes)
+                    + ")"
+                ),
+                "layer_pg": (
+                    ""
+                    if layer_groups is None
+                    else "("
+                    + " ".join(
+                        "null" if value is None else str(value)
+                        for value in layer_groups
+                    )
+                    + ")"
+                ),
                 "radial_distances": "("
                 + " ".join(f"{float(value):.3f}" for value in distances)
                 + ")",

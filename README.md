@@ -170,13 +170,12 @@ csv_text = format_cluster_csv(rows)
 ```bash
 sansde radial -i ase_json -o radial.csv
 sansde radial -i ase_json --k 1 12 30 --plot -o radial.csv
-sansde radial -i ase_json --method elbow --kmax 10
 ```
 
 The CSV contains `system`, `symbol`, `natoms`, `is_ref`, `PG`, `n_layers`, `layer_sizes`,
-`layer_pg`, and `radial_distances`. Layer counts are selected with the gap statistic by default, or
-with `--method elbow`; `--k` supplies manual counts in ascending atom-count order. `--plot` writes
-`<input-name>_radial.svg`.
+`layer_pg`, and `radial_distances`. Layer counts are manual; `--k` supplies counts in ascending
+atom-count order. When `--k` is omitted, `n_layers`, `layer_sizes` and `layer_pg` are empty.
+`--plot` writes `<input-name>_radial.svg`.
 
 The same analysis is available from Python:
 

@@ -119,33 +119,6 @@ def main(argv: list[str] | None = None) -> None:
         help="manual layer counts in ascending atom-count order",
     )
     radial.add_argument(
-        "--kmax",
-        type=int,
-        default=10,
-        metavar="K",
-        help="maximum layer count for automatic selection (default: 10)",
-    )
-    radial.add_argument(
-        "--method",
-        choices=("gap", "elbow"),
-        default="gap",
-        help="automatic layer selection method (default: gap)",
-    )
-    radial.add_argument(
-        "--gap-nref",
-        type=int,
-        default=100,
-        metavar="B",
-        help="reference sample count for the gap statistic (default: 100)",
-    )
-    radial.add_argument(
-        "--gap-seed",
-        type=int,
-        default=0,
-        metavar="SEED",
-        help="random seed for the gap statistic (default: 0)",
-    )
-    radial.add_argument(
         "--plot",
         action="store_true",
         help="write the radial distance plot (default: disabled)",
@@ -226,14 +199,7 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.command == "radial":
         clusters = load_clusters(args.input)
-        rows = analyze_radial(
-            clusters,
-            k=args.k,
-            kmax=args.kmax,
-            method=args.method,
-            gap_nref=args.gap_nref,
-            gap_seed=args.gap_seed,
-        )
+        rows = analyze_radial(clusters, k=args.k)
         write_radial_csv(rows, args.output)
         if args.plot:
             input_path = args.input.resolve()
