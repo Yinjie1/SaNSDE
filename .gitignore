@@ -1,6 +1,7 @@
 # ===== 本项目 =====
 opencode.jsonc
 docs/
+skills/
 
 # ===== Python 字节码 / 编译产物 =====
 __pycache__/

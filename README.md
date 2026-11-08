@@ -130,6 +130,23 @@ redirected, and can be disabled explicitly with `NO_COLOR=1`.
 
 `check` is read-only: it does not create, modify or delete any file.
 
+## Cluster analysis
+
+ASE JSON structures can be analyzed through the `sansde.analysis` module:
+
+```python
+from sansde.analysis import analyze_clusters, format_cluster_csv, load_clusters
+
+clusters = load_clusters("ase_json")
+rows = analyze_clusters(clusters, compute_s2=True)
+csv_text = format_cluster_csv(rows)
+```
+
+`load_clusters` keeps the lowest-energy structure for each chemical formula. The analysis rows contain
+`symbol`, `natoms`, `is_ref`, `energy`, `energy_per_atom`, `energy_minus_fit`,
+`second_difference`, `PG`, `lambda1/2/3`, `shape`, `S`, optional `S2`, optional
+`binding_energy_per_atom`, and `energy_diff_ref_per_atom`.
+
 ## Optimization
 
 `params.json` contains every run parameter; omitted keys keep their defaults.
