@@ -11,7 +11,6 @@ from typing import TypeAlias
 
 import numpy as np
 from ase import Atoms
-from ase.io.jsonio import read_json
 
 from sansde.operators import compute_point_group
 from sansde.pop import Clusters
@@ -124,27 +123,16 @@ def load_clusters(directory: str | Path) -> Clusters:
     clusters = Clusters()
     for file_path in files:
         try:
-            atoms = read_json(file_path)
+            formula = clusters.load_json(file_path, keep_lower=True)
+        except TypeError:
+            raise
         except Exception as e:
             raise ValueError(f"cannot read {file_path}: {e}") from e
-        if not isinstance(atoms, Atoms):
-            raise TypeError(f"{file_path} does not contain an ASE Atoms object")
-
-        atoms.info.setdefault("system", file_path.stem)
-        atoms.info.setdefault("is_ref", 0)
-        formula = atoms.get_chemical_formula()
-        if formula not in clusters.symbols:
-            clusters.add_cluster(atoms)
-            continue
 
         index = clusters.symbols.index(formula)
-        current = clusters[index]
-        new_energy = atoms.info.get("energy")
-        old_energy = current.info.get("energy")
-        if new_energy is not None and (
-            old_energy is None or float(new_energy) < float(old_energy)
-        ):
-            clusters.add_cluster(atoms, replace=True)
+        cluster = clusters[index]
+        cluster.info.setdefault("system", file_path.stem)
+        cluster.info.setdefault("is_ref", 0)
 
     if len(clusters) == 0:
         raise ValueError(f"no cluster structures found in {source}")

@@ -916,17 +916,24 @@ class Clusters(MultiAtoms):
             self.sort()
         return self.symbols.index(formula)
 
-    def load_json(self, filename: str | Path) -> str:
+    def load_json(
+        self,
+        filename: str | Path,
+        keep_lower: bool = False,
+    ) -> str:
         """Load one ASE JSON structure and return its chemical formula.
 
-        The structure is added with ``sort=False``. When the formula already
-        exists, ``add_cluster`` returns the existing index and the stored
-        cluster is kept unchanged.
+        The structure is added with ``sort=False``. With ``keep_lower=True``,
+        an existing structure with the same formula is replaced when the new
+        structure has a lower energy.
 
         Parameters
         ----------
         filename : str | pathlib.Path
             Path of the ASE JSON file.
+        keep_lower : bool, optional
+            Whether to keep the lower-energy structure when the formula already
+            exists. Default False.
 
         Returns
         -------
@@ -941,7 +948,16 @@ class Clusters(MultiAtoms):
         atoms = read_json(filename)
         if not isinstance(atoms, Atoms):
             raise TypeError(f"{filename} does not contain an ASE Atoms object")
-        index = self.add_cluster(atoms, sort=False)
+
+        index = self.add_cluster(atoms, replace=False, sort=False)
+        if keep_lower:
+            current_energy = self[index].info.get("energy")
+            new_energy = atoms.info.get("energy")
+            if new_energy is not None and (
+                current_energy is None
+                or float(new_energy) < float(current_energy)
+            ):
+                index = self.add_cluster(atoms, replace=True, sort=False)
         return self.symbols[index]
 
     def merge(self, clusters: Self) -> None:
