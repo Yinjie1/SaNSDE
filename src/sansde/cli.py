@@ -71,44 +71,9 @@ def main(argv: list[str] | None = None) -> None:
         help="isolated atom energy; defaults to the N=1 structure",
     )
     analyser.add_argument(
-        "--no-plot",
-        action="store_true",
-        help="do not write plot files",
-    )
-    analyser.add_argument(
         "--plot",
-        type=Path,
-        default=Path("cluster_energy.svg"),
-        metavar="SVG",
-        help="E - E_fit and delta2E plot (default: cluster_energy.svg)",
-    )
-    analyser.add_argument(
-        "--plot-shape",
-        type=Path,
-        default=Path("cluster_shape.svg"),
-        metavar="SVG",
-        help="shape eigenvalue plot (default: cluster_shape.svg)",
-    )
-    analyser.add_argument(
-        "--plot-s",
-        type=Path,
-        default=Path("cluster_s.svg"),
-        metavar="SVG",
-        help="similarity plot (default: cluster_s.svg)",
-    )
-    analyser.add_argument(
-        "--plot-ref",
-        type=Path,
-        default=Path("cluster_energy_ref.svg"),
-        metavar="SVG",
-        help="reference energy difference plot (default: cluster_energy_ref.svg)",
-    )
-    analyser.add_argument(
-        "--plot-eb",
-        type=Path,
-        default=Path("cluster_eb.svg"),
-        metavar="SVG",
-        help="binding energy plot (default: cluster_eb.svg)",
+        action="store_true",
+        help="write plot files (default: disabled)",
     )
     analyser.add_argument(
         "--shape-start",
@@ -174,13 +139,15 @@ def main(argv: list[str] | None = None) -> None:
             compute_s2=args.s2,
         )
         write_cluster_csv(rows, args.output)
-        if not args.no_plot:
+        if args.plot:
+            input_path = args.input.resolve()
+            prefix = input_path.stem if input_path.is_file() else input_path.name
             plots = [
-                plot_energy(rows, args.plot),
-                plot_shape(rows, args.plot_shape, shape_start=args.shape_start),
-                plot_similarity(rows, args.plot_s),
-                plot_reference(rows, args.plot_ref),
-                plot_binding(rows, args.plot_eb),
+                plot_energy(rows, f"{prefix}_energy.svg"),
+                plot_shape(rows, f"{prefix}_shape.svg", shape_start=args.shape_start),
+                plot_similarity(rows, f"{prefix}_s.svg"),
+                plot_reference(rows, f"{prefix}_energy_ref.svg"),
+                plot_binding(rows, f"{prefix}_eb.svg"),
             ]
             for path in plots:
                 if path is not None:

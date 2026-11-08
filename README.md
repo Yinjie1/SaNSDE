@@ -139,13 +139,14 @@ Run the analysis from the command line:
 ```bash
 sansde analyse -i ase_json -o cluster_analysis.csv
 sansde analyse -i ase_json --s2 > cluster_analysis.csv
-sansde analyse -i ase_json --ref reference.json -o cluster_analysis.csv
+sansde analyse -i ase_json --ref reference.json --plot -o cluster_analysis.csv
 ```
 
-By default the command writes `cluster_energy.svg`, `cluster_shape.svg`, `cluster_s.svg`,
-`cluster_energy_ref.svg` (when reference data is supplied), and `cluster_eb.svg`. Use `--no-plot` to
-skip plots, `--shape-start` to set the first atom count in the shape plot, `--ref` for reference data,
-and `--e1` for an explicit isolated-atom energy.
+Plot files are disabled by default. With `--plot`, the command writes files prefixed by the input
+directory name: `<name>_energy.svg`, `<name>_shape.svg`, `<name>_s.svg`,
+`<name>_energy_ref.svg` (when reference data is supplied), and `<name>_eb.svg`. Use `--shape-start`
+to set the first atom count in the shape plot, `--ref` for reference data, and `--e1` for an explicit
+isolated-atom energy.
 
 ASE JSON structures can also be analyzed through the `sansde.analysis` module:
 
