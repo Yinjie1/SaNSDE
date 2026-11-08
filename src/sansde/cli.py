@@ -142,16 +142,11 @@ def main(argv: list[str] | None = None) -> None:
         if args.plot:
             input_path = args.input.resolve()
             prefix = input_path.stem if input_path.is_file() else input_path.name
-            plots = [
-                plot_energy(rows, f"{prefix}_energy.svg"),
-                plot_shape(rows, f"{prefix}_shape.svg", shape_start=args.shape_start),
-                plot_similarity(rows, f"{prefix}_s.svg"),
-                plot_reference(rows, f"{prefix}_energy_ref.svg"),
-                plot_binding(rows, f"{prefix}_eb.svg"),
-            ]
-            for path in plots:
-                if path is not None:
-                    print(f"[plot] {path}", file=sys.stderr)
+            plot_energy(rows, f"{prefix}_energy.svg")
+            plot_shape(rows, f"{prefix}_shape.svg", shape_start=args.shape_start)
+            plot_similarity(rows, f"{prefix}_s.svg")
+            plot_reference(rows, f"{prefix}_energy_ref.svg")
+            plot_binding(rows, f"{prefix}_eb.svg")
         return
 
     if args.command == "check":
