@@ -775,7 +775,7 @@ class Population(MultiAtoms):
         if optimal_only:
             self._clusters = [self.best_cluster]
 
-    def import_xyz(self, filename: str | Path) -> None:
+    def load_xyz(self, filename: str | Path) -> None:
         """Import one structure and its candidate frames from an xyz file.
 
         The last frame is added to the population because candidates are

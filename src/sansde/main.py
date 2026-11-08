@@ -126,7 +126,7 @@ def run(
         if params['INIT_DIR']:
             for init_path in sorted(init_dir.glob(f"{expected_symbol}*.xyz")):
                 try:
-                    pop.import_xyz(init_path)
+                    pop.load_xyz(init_path)
                 except ValueError as e:
                     print(f"skip structure {init_path}: {e}")
                     continue
