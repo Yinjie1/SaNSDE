@@ -202,13 +202,13 @@ Image:
 
 ## Validation checklist
 
-- Empty CSV: confirm that `-i` points to a directory containing `*.json`.
-- Empty `energy` column: check `atoms.info["energy"]`.
-- Empty layer columns: confirm that `--k` was supplied.
-- Empty `energy_diff_ref_per_atom`: confirm that `--ref` was supplied and covers the requested sizes.
-- No images: confirm that `--plot` was supplied; use `--plot png` for PNG output.
-- Unexpected similarity, radial distances, or coordination numbers: verify unwrapped, centered, non-periodic coordinates.
-- Fewer systems than JSON files: duplicate chemical formulas keep only the lowest-energy structure.
+- [ ] Empty CSV: confirm that `-i` points to a directory containing `*.json`.
+- [ ] Empty `energy` column: check `atoms.info["energy"]`.
+- [ ] Empty layer columns: confirm that `--k` was supplied.
+- [ ] Empty `energy_diff_ref_per_atom`: confirm that `--ref` was supplied and covers the requested sizes.
+- [ ] No images: confirm that `--plot` was supplied; use `--plot png` for PNG output.
+- [ ] Unexpected similarity, radial distances, or coordination numbers: verify unwrapped, centered, non-periodic coordinates.
+- [ ] Fewer systems than JSON files: duplicate chemical formulas keep only the lowest-energy structure.
 
 ## Report checklist
 
