@@ -18,6 +18,11 @@ sansde radial  -i <ase_json_dir>   # radial distances and layers
 sansde cn      -i <ase_json_dir>   # coordination numbers and bond lengths
 ```
 
+## Scope
+
+If the user does not explicitly request specific metrics, perform exactly these analyses: `sansde
+analyse`, the two-pass `sansde radial` workflow, and `sansde cn`. Follow the recommended workflow strictly. Do not add other analyses, extra derived quantities, extra plots, or extra output files.
+
 ## When to use
 
 - Inspect energy trends and identify magic-number candidates.
