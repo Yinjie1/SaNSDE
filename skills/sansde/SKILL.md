@@ -18,14 +18,14 @@ sansde xyz2vasp   # optional VASP task export
 
 ## Scope
 
-Use `init`, `check`, and `run` for the default optimization workflow. Use `xyz2vasp` only when the user explicitly requests VASP task generation. ~~Do not add unrelated analyses, extra commands, or unrequested output files.~~
+Use `init`, `check`, and `run` for the default optimization workflow. Use `xyz2vasp` only when the user explicitly requests VASP task generation.
 
 ## Before running
 
 Confirm these items with the user or from the working context:
 
 - Element and atom-count range.
-- Potential: ~~Lennard-Jones or a DeePMD model, including the model path.~~
+- Potential: any ASE calculator configured through `SCRIPTS` and `POTENTIAL`, including any required model path or calculator parameters.
 - Working directory where results should be written.
 - Initial structures or initial population, if available.
 - Available compute resources and expected runtime.
@@ -101,7 +101,7 @@ For Lennard-Jones, use:
 
 Two input modes are available:
 
-- `INIT_DIR`: each matching `{element}{atom}*.xyz` file supplies an initial structure. The last frame is used as the ~~population seed~~.
+- `INIT_DIR`: each matching `{element}{atom}*.xyz` file supplies an initial structure. Only the lowest-energy structure (the last frame) is added to the population; the remaining structures are generated randomly.
 - `INIT_POP_DIR`: matching `{element}{atom}*.json` files supply saved populations. With `CONTINUE=true`, the whole population is imported; with `false`, only the lowest-energy structure is imported.
 
 If both directories are empty or no matching file exists, the population is generated randomly.
