@@ -242,7 +242,7 @@ def _available_xyz_symbols(directory: Path, color: bool) -> set[str]:
         return symbols
     for path in directory.glob("*.xyz"):
         try:
-            frames = read(path, index=":")  # type: ignore
+            frames: list[Atoms] = read(path, index=":")  # type: ignore
         except Exception as e:  # noqa: BLE001
             print(_paint(f"skip {path.name}: cannot read xyz ({e})", _YELLOW, color))
             continue

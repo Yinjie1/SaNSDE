@@ -17,6 +17,7 @@ from ase.io import iread, write
 from sansde.pop import Clusters, MultiAtoms
 
 __all__ = [
+    "DEFAULT_RUN_PARAMS",
     "append_stats_row",
     "load_clusters",
     "load_ref_energies",
@@ -33,6 +34,40 @@ LARGE_CLUSTER_UNIQUE: bool = True
 
 
 # ===== run IO: configuration and statistics =====
+
+DEFAULT_RUN_PARAMS: dict[str, Any] = {
+    'EXPORT': {},
+    'SCRIPTS': ["from ase.calculators.lj import LennardJones"],
+    'ELEMENT': 'Au',
+    'LATTICE_CONST': 2.88,
+    'MIN_ATOM': 3,
+    'MAX_ATOM': 20,
+    'ROUND': 1,
+    'INIT_DIR': 'init',
+    'INIT_POP_DIR': '',
+    'BEST_DIR': 'best',
+    'BETTER_DIR': 'better',
+    'KEEP_SNAPSHOTS': 1,
+    'POP_DIR': 'Populations',
+    'POP_SIZE': 12,
+    'MAX_GEN': 500,
+    'CONV_STEPS': 10,
+    'EDIFF': 1e-5,
+    'S_STRICT': 0.95,
+    'S_LOOSE': 0.98,
+    'CAND_SIZE': 10,
+    'FP_ADAPTIVE': True,
+    'LEARNING_PERIOD': 50,
+    'CR_PERIOD': 5,
+    'CRM_PERIOD': 25,
+    'CONTINUE': False,
+    'POTENTIAL': "LennardJones(epsilon=0.4443, sigma=2.6367)",
+    'USE_ZBL': True,
+    'ZBL_CUTOFF': 1.5,
+    'ZBL_SKIN': 0,
+    'RELAX_FMAX': 0.05,
+    'RELAX_STEPS': 300,
+}
 
 
 def read_run_params(params_path: Path) -> dict[str, Any]:
@@ -56,39 +91,6 @@ def read_run_params(params_path: Path) -> dict[str, Any]:
     TypeError
         If the JSON content is not an object.
     """
-    defaults: dict[str, Any] = {
-        'EXPORT': {},
-        'SCRIPTS': [],
-        'ELEMENT': 'Au',
-        'LATTICE_CONST': 2.88,
-        'MIN_ATOM': 3,
-        'MAX_ATOM': 5,
-        'ROUND': 1,
-        'INIT_DIR': 'init',
-        'INIT_POP_DIR': '',
-        'BEST_DIR': 'best',
-        'BETTER_DIR': 'better',
-        'KEEP_SNAPSHOTS': 1,
-        'POP_DIR': 'Populations',
-        'POP_SIZE': 12,
-        'MAX_GEN': 500,
-        'CONV_STEPS': 10,
-        'EDIFF': 1e-5,
-        'S_STRICT': 0.95,
-        'S_LOOSE': 0.98,
-        'CAND_SIZE': 2,
-        'FP_ADAPTIVE': True,
-        'LEARNING_PERIOD': 50,
-        'CR_PERIOD': 5,
-        'CRM_PERIOD': 25,
-        'CONTINUE': False,
-        'POTENTIAL': 'DP(model=Path("/home/linyj/02-linyj/potentials/dp/Au3c.pth"))',
-        'USE_ZBL': True,
-        'ZBL_CUTOFF': 1.5,
-        'ZBL_SKIN': 0,
-        'RELAX_FMAX': 0.05,
-        'RELAX_STEPS': 300,
-    }
     try:
         with params_path.open('r', encoding='utf-8') as handle:
             user_params = json.load(handle)
@@ -97,7 +99,7 @@ def read_run_params(params_path: Path) -> dict[str, Any]:
         print(f"load parameters from {params_path}")
     except FileNotFoundError:
         user_params = {}
-    return {**defaults, **user_params}
+    return {**DEFAULT_RUN_PARAMS, **user_params}
 
 
 def append_stats_row(

@@ -1,6 +1,7 @@
 """Command line interface for the sansde package.
 
 Usage:
+    sansde init                       # write params.json with default values
     sansde run params.json            # run in the background, log to params.log
     sansde run params.json --fg       # run in the foreground
     sansde xyz2vasp params.json       # export VASP tasks from JSON parameters
@@ -11,6 +12,7 @@ Usage:
     python -m sansde run params.json --fg
 """
 import argparse
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -24,7 +26,7 @@ from sansde.analysis import (
     write_radial_csv,
 )
 from sansde.check import run_check
-from sansde.io import load_clusters, write_vasp_tasks
+from sansde.io import DEFAULT_RUN_PARAMS, load_clusters, write_vasp_tasks
 from sansde.main import main as run_opt
 from sansde.plots import (
     plot_binding,
@@ -41,6 +43,11 @@ def main(argv: list[str] | None = None) -> None:
     """Parse command line arguments and dispatch the requested task."""
     parser = argparse.ArgumentParser(prog="sansde")
     subparsers = parser.add_subparsers(dest="command")
+
+    subparsers.add_parser(
+        "init",
+        help="write params.json with default values",
+    )
 
     analyser = subparsers.add_parser(
         "analyse",
@@ -232,6 +239,15 @@ def main(argv: list[str] | None = None) -> None:
         help="run in the foreground (default: run in the background)",
     )
     args = parser.parse_args(argv)
+
+    if args.command == "init":
+        output = Path("params.json")
+        output.write_text(
+            json.dumps(DEFAULT_RUN_PARAMS, indent=4) + "\n",
+            encoding="utf-8",
+        )
+        print(f"wrote {output}")
+        return
 
     if args.command == "analyse":
         clusters = load_clusters(args.input)

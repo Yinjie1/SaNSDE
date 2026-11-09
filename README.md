@@ -39,6 +39,7 @@ uv build
 ## Command line
 
 ```bash
+sansde init                       # write params.json with default values
 sansde run params.json            # background; log -> params.log, pid -> ./pid
 sansde run params.json --fg       # foreground
 sansde xyz2vasp xyz2vasp.json     # export VASP task directories
@@ -213,6 +214,14 @@ clusters = load_clusters("ase_json")
 rows = analyze_coordination(clusters, cutoff=3.0)
 csv_text = format_coordination_csv(rows)
 ```
+
+## Initialize configuration
+
+```bash
+sansde init
+```
+
+`sansde init` writes `params.json` in the current directory with all default values.
 
 ## Optimization
 
