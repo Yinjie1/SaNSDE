@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "sansde"
-version = "0.2.8"
+version = "0.2.9"
 requires-python = ">=3.10"
 
 [project.scripts]

@@ -51,10 +51,9 @@ converted to the same ASE JSON format.
 - `-i, --input` selects the ASE JSON directory.
 - `-o, --output` selects the CSV path. Without it, the CSV is written to standard output.
 - No images are written by default.
-- For `sansde analyse`, `--plot` writes PNG files; `--plot svg` and `--plot eps` write those formats.
-  Multiple formats are accepted, for example `--plot png svg eps`.
-- For `sansde radial` and `sansde cn`, `--plot` writes SVG files; `--plot png` writes both SVG and
-  PNG files.
+- `--plot` writes PNG files.
+- `--plot svg` and `--plot eps` select those formats.
+- Multiple formats are accepted, for example `--plot png svg eps`.
 - Image names use the input directory name as prefix. For `test/ase_json`, images start with
   `ase_json_`.
 
@@ -111,7 +110,7 @@ Images:
 - `<name>_s.png`: similarity `S` and optional `S2`.
 - `<name>_energy_ref.png`: per-atom energy difference from reference data; written with `--ref`.
 - `<name>_eb.png`: per-atom binding energy; written when an isolated-atom energy is available.
-- `--plot svg` writes the same names with `.svg`.
+- `--plot svg` writes the same names with `.svg`; `--plot eps` writes `.eps`.
 
 ## 2. Radial distances and layers
 
@@ -120,7 +119,7 @@ Layer counts are specified manually. The recommended workflow has two passes.
 ### First pass: inspect radial distances
 
 ```bash
-sansde radial -i ase_json -o radial_pass1.csv --plot png
+sansde radial -i ase_json -o radial_pass1.csv --plot
 ```
 
 Without `--k`:
@@ -134,7 +133,7 @@ Without `--k`:
 Determine the layer count for each system from the radial-distance plot and `radial_distances`, then pass counts in ascending atom-count order:
 
 ```bash
-sansde radial -i ase_json --k K1 K2 K3 -o radial_final.csv --plot png
+sansde radial -i ase_json --k K1 K2 K3 -o radial_final.csv --plot
 ```
 
 Rules:
@@ -163,9 +162,9 @@ Interpretation:
 ## 3. Coordination numbers and average bond length
 
 ```bash
-sansde cn -i ase_json -o coordination.csv --plot png
-sansde cn -i ase_json --cutoff 3.0 --plot png -o coordination.csv
-sansde cn -i ase_json --bulk-cn --plot png
+sansde cn -i ase_json -o coordination.csv --plot
+sansde cn -i ase_json --cutoff 3.0 --plot -o coordination.csv
+sansde cn -i ase_json --bulk-cn --plot
 ```
 
 Options:
@@ -173,7 +172,7 @@ Options:
 - `--cutoff <A>` sets the bonding cutoff. Without it, the cutoff is the mean of the first and second
   bulk neighbor distances of the most common element.
 - `--bulk-cn` and `--no-bulk-cn` control whether the bulk average coordination number is computed and plotted.
-- `--plot png` writes both SVG and PNG.
+- `--plot` writes PNG. `--plot svg` and `--plot eps` select those formats; combine formats as needed.
 
 CSV columns:
 
@@ -210,7 +209,8 @@ Image:
 - [ ] Empty `energy` column: check `atoms.info["energy"]`.
 - [ ] Empty layer columns: confirm that `--k` was supplied.
 - [ ] Empty `energy_diff_ref_per_atom`: confirm that `--ref` was supplied and covers the requested sizes.
-- [ ] No images: confirm that `--plot` was supplied. For `sansde analyse`, the default is PNG; `--plot svg` requests SVG.
+- [ ] No images: confirm that `--plot` was supplied. The default is PNG; `--plot svg` or `--plot eps`
+      selects another format.
 - [ ] Unexpected similarity, radial distances, or coordination numbers: verify unwrapped, centered, non-periodic coordinates.
 - [ ] Fewer systems than JSON files: duplicate chemical formulas keep only the lowest-energy structure.
 

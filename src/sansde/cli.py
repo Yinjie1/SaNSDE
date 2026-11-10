@@ -134,12 +134,11 @@ def main(argv: list[str] | None = None) -> None:
     )
     radial.add_argument(
         "--plot",
-        nargs="?",
-        const="svg",
-        choices=("svg", "png"),
+        nargs="*",
+        choices=("svg", "png", "eps"),
         default=None,
         metavar="FORMAT",
-        help="write SVG plots; pass png to also write PNG",
+        help="write PNG plots by default; pass one or more of svg, png and eps",
     )
     radial.add_argument(
         "--cyan-pos",
@@ -184,12 +183,11 @@ def main(argv: list[str] | None = None) -> None:
     )
     coordination.add_argument(
         "--plot",
-        nargs="?",
-        const="svg",
-        choices=("svg", "png"),
+        nargs="*",
+        choices=("svg", "png", "eps"),
         default=None,
         metavar="FORMAT",
-        help="write SVG plots; pass png to also write PNG",
+        help="write PNG plots by default; pass one or more of svg, png and eps",
     )
 
     checker = subparsers.add_parser(
@@ -281,10 +279,10 @@ def main(argv: list[str] | None = None) -> None:
             show_bulk_cn=args.bulk_cn,
         )
         write_coordination_csv(rows, args.output)
-        if args.plot:
+        if args.plot is not None:
             input_path = args.input.resolve()
             prefix = input_path.stem if input_path.is_file() else input_path.name
-            formats = ("svg",) if args.plot == "svg" else ("svg", "png")
+            formats = list(dict.fromkeys(args.plot or ["png"]))
             for suffix in formats:
                 plot_coordination(rows, f"{prefix}_cn.{suffix}")
         return
@@ -293,10 +291,10 @@ def main(argv: list[str] | None = None) -> None:
         clusters = load_clusters(args.input)
         rows = analyze_radial(clusters, k=args.k)
         write_radial_csv(rows, args.output)
-        if args.plot:
+        if args.plot is not None:
             input_path = args.input.resolve()
             prefix = input_path.stem if input_path.is_file() else input_path.name
-            formats = ("svg",) if args.plot == "svg" else ("svg", "png")
+            formats = list(dict.fromkeys(args.plot or ["png"]))
             for suffix in formats:
                 plot_radial(
                     rows,

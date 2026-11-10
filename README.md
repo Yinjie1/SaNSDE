@@ -178,7 +178,8 @@ sansde radial -i ase_json --k 1 12 30 --plot -o radial.csv
 The CSV contains `system`, `symbol`, `natoms`, `is_ref`, `PG`, `n_layers`, `layer_sizes`,
 `layer_pg`, and `radial_distances`. Layer counts are manual; `--k` supplies counts in ascending
 atom-count order. When `--k` is omitted, `n_layers`, `layer_sizes` and `layer_pg` are empty.
-`--plot` writes `<input-name>_radial.svg`; `--plot png` writes both SVG and PNG.
+`--plot` writes `<input-name>_radial.png`. Supported formats are `png`, `svg`, and `eps`; combine
+formats such as `--plot png svg` to write several.
 
 The same analysis is available from Python:
 
@@ -202,8 +203,8 @@ sansde cn -i ase_json --bulk-cn --plot
 The bonding cutoff defaults to the mean of the first and second bulk neighbor distances of the most
 common element; `--cutoff` supplies an explicit value. The CSV contains `system`, `symbol`, `natoms`,
 `is_ref`, `cn_atoms`, `cn_ratios`, `cn_avg`, and `bond_length_avg`. `--bulk-cn` computes the bulk
-average coordination number for the plot. `--plot` writes `<input-name>_cn.svg`; `--plot png` writes
-both SVG and PNG.
+average coordination number for the plot. `--plot` writes `<input-name>_cn.png`. Supported formats are
+`png`, `svg`, and `eps`; combine formats such as `--plot png svg` to write several.
 
 The analysis is also available from Python:
 
