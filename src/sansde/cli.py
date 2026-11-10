@@ -91,11 +91,11 @@ def main(argv: list[str] | None = None) -> None:
     analyser.add_argument(
         "--plot",
         nargs="?",
-        const="svg",
+        const="png",
         choices=("svg", "png"),
         default=None,
         metavar="FORMAT",
-        help="write SVG plots; pass png to also write PNG",
+        help="write PNG plots; pass svg to write SVG instead",
     )
     analyser.add_argument(
         "--shape-start",
@@ -261,17 +261,16 @@ def main(argv: list[str] | None = None) -> None:
         if args.plot:
             input_path = args.input.resolve()
             prefix = input_path.stem if input_path.is_file() else input_path.name
-            formats = ("svg",) if args.plot == "svg" else ("svg", "png")
-            for suffix in formats:
-                plot_energy(rows, f"{prefix}_energy.{suffix}")
-                plot_shape(
-                    rows,
-                    f"{prefix}_shape.{suffix}",
-                    shape_start=args.shape_start,
-                )
-                plot_similarity(rows, f"{prefix}_s.{suffix}")
-                plot_reference(rows, f"{prefix}_energy_ref.{suffix}")
-                plot_binding(rows, f"{prefix}_eb.{suffix}")
+            suffix = args.plot
+            plot_energy(rows, f"{prefix}_energy.{suffix}")
+            plot_shape(
+                rows,
+                f"{prefix}_shape.{suffix}",
+                shape_start=args.shape_start,
+            )
+            plot_similarity(rows, f"{prefix}_s.{suffix}")
+            plot_reference(rows, f"{prefix}_energy_ref.{suffix}")
+            plot_binding(rows, f"{prefix}_eb.{suffix}")
         return
 
     if args.command == "cn":

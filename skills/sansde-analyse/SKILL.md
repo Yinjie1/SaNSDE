@@ -51,8 +51,9 @@ converted to the same ASE JSON format.
 - `-i, --input` selects the ASE JSON directory.
 - `-o, --output` selects the CSV path. Without it, the CSV is written to standard output.
 - No images are written by default.
-- `--plot` writes SVG files.
-- `--plot png` writes both SVG and PNG files.
+- For `sansde analyse`, `--plot` writes PNG files; `--plot svg` writes SVG files instead.
+- For `sansde radial` and `sansde cn`, `--plot` writes SVG files; `--plot png` writes both SVG and
+  PNG files.
 - Image names use the input directory name as prefix. For `test/ase_json`, images start with
   `ase_json_`.
 
@@ -61,7 +62,7 @@ Use `-o` in automation so the CSV stays separate from other output.
 ## 1. Energy, shape, and similarity
 
 ```bash
-sansde analyse -i ase_json -o cluster_analysis.csv --plot png
+sansde analyse -i ase_json -o cluster_analysis.csv --plot
 ```
 
 Options:
@@ -72,7 +73,7 @@ Options:
 - `--e1 <value>` supplies the isolated-atom energy. Without it, the energy of the N=1 structure is
   used.
 - `--shape-start <N>` sets the first atom count shown in the shape plot.
-- `--plot png` writes both SVG and PNG.
+- `--plot` writes PNG files. `--plot svg` writes SVG files instead.
 
 CSV columns:
 
@@ -103,11 +104,12 @@ Interpretation:
 
 Images:
 
-- `<name>_energy.svg`: `E - E_fit` and second energy difference.
-- `<name>_shape.svg`: shape eigenvalues.
-- `<name>_s.svg`: similarity `S` and optional `S2`.
-- `<name>_energy_ref.svg`: per-atom energy difference from reference data; written with `--ref`.
-- `<name>_eb.svg`: per-atom binding energy; written when an isolated-atom energy is available.
+- `<name>_energy.png`: `E - E_fit` and second energy difference.
+- `<name>_shape.png`: shape eigenvalues.
+- `<name>_s.png`: similarity `S` and optional `S2`.
+- `<name>_energy_ref.png`: per-atom energy difference from reference data; written with `--ref`.
+- `<name>_eb.png`: per-atom binding energy; written when an isolated-atom energy is available.
+- `--plot svg` writes the same names with `.svg`.
 
 ## 2. Radial distances and layers
 
@@ -194,7 +196,7 @@ Image:
 ## Recommended workflow
 
 1. Confirm the ASE JSON directory, elements, energy units, and reference data.
-2. Run `sansde analyse`, save the CSV, and use `--plot png` when images are needed.
+2. Run `sansde analyse`, save the CSV, and use `--plot` when images are needed.
 3. Run `sansde radial` once without `--k`, inspect radial distances and images, and determine layer counts.
 4. Run `sansde radial` again with `--k`; use the second-pass CSV as the final result.
 5. Run `sansde cn`, setting `--cutoff` or `--bulk-cn` when required.
@@ -206,7 +208,7 @@ Image:
 - [ ] Empty `energy` column: check `atoms.info["energy"]`.
 - [ ] Empty layer columns: confirm that `--k` was supplied.
 - [ ] Empty `energy_diff_ref_per_atom`: confirm that `--ref` was supplied and covers the requested sizes.
-- [ ] No images: confirm that `--plot` was supplied; use `--plot png` for PNG output.
+- [ ] No images: confirm that `--plot` was supplied. For `sansde analyse`, the default is PNG; `--plot svg` requests SVG.
 - [ ] Unexpected similarity, radial distances, or coordination numbers: verify unwrapped, centered, non-periodic coordinates.
 - [ ] Fewer systems than JSON files: duplicate chemical formulas keep only the lowest-energy structure.
 
