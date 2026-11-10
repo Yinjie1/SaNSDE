@@ -51,7 +51,8 @@ converted to the same ASE JSON format.
 - `-i, --input` selects the ASE JSON directory.
 - `-o, --output` selects the CSV path. Without it, the CSV is written to standard output.
 - No images are written by default.
-- For `sansde analyse`, `--plot` writes PNG files; `--plot svg` writes SVG files instead.
+- For `sansde analyse`, `--plot` writes PNG files; `--plot svg` writes SVG files. Multiple formats are
+  accepted, for example `--plot png svg` writes both.
 - For `sansde radial` and `sansde cn`, `--plot` writes SVG files; `--plot png` writes both SVG and
   PNG files.
 - Image names use the input directory name as prefix. For `test/ase_json`, images start with
@@ -73,7 +74,7 @@ Options:
 - `--e1 <value>` supplies the isolated-atom energy. Without it, the energy of the N=1 structure is
   used.
 - `--shape-start <N>` sets the first atom count shown in the shape plot.
-- `--plot` writes PNG files. `--plot svg` writes SVG files instead.
+- `--plot` writes PNG files. `--plot svg` writes SVG files. `--plot png svg` writes both.
 
 CSV columns:
 

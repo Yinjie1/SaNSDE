@@ -90,12 +90,11 @@ def main(argv: list[str] | None = None) -> None:
     )
     analyser.add_argument(
         "--plot",
-        nargs="?",
-        const="png",
+        nargs="*",
         choices=("svg", "png"),
         default=None,
         metavar="FORMAT",
-        help="write PNG plots; pass svg to write SVG instead",
+        help="write PNG plots by default; pass one or more of svg and png",
     )
     analyser.add_argument(
         "--shape-start",
@@ -258,19 +257,20 @@ def main(argv: list[str] | None = None) -> None:
             compute_s2=args.s2,
         )
         write_cluster_csv(rows, args.output)
-        if args.plot:
+        if args.plot is not None:
             input_path = args.input.resolve()
             prefix = input_path.stem if input_path.is_file() else input_path.name
-            suffix = args.plot
-            plot_energy(rows, f"{prefix}_energy.{suffix}")
-            plot_shape(
-                rows,
-                f"{prefix}_shape.{suffix}",
-                shape_start=args.shape_start,
-            )
-            plot_similarity(rows, f"{prefix}_s.{suffix}")
-            plot_reference(rows, f"{prefix}_energy_ref.{suffix}")
-            plot_binding(rows, f"{prefix}_eb.{suffix}")
+            formats = list(dict.fromkeys(args.plot or ["png"]))
+            for suffix in formats:
+                plot_energy(rows, f"{prefix}_energy.{suffix}")
+                plot_shape(
+                    rows,
+                    f"{prefix}_shape.{suffix}",
+                    shape_start=args.shape_start,
+                )
+                plot_similarity(rows, f"{prefix}_s.{suffix}")
+                plot_reference(rows, f"{prefix}_energy_ref.{suffix}")
+                plot_binding(rows, f"{prefix}_eb.{suffix}")
         return
 
     if args.command == "cn":
