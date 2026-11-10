@@ -91,10 +91,10 @@ def main(argv: list[str] | None = None) -> None:
     analyser.add_argument(
         "--plot",
         nargs="*",
-        choices=("svg", "png"),
+        choices=("svg", "png", "eps"),
         default=None,
         metavar="FORMAT",
-        help="write PNG plots by default; pass one or more of svg and png",
+        help="write PNG plots by default; pass one or more of svg, png and eps",
     )
     analyser.add_argument(
         "--shape-start",

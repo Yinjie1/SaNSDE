@@ -147,10 +147,10 @@ sansde analyse -i ase_json --ref reference.json --plot -o cluster_analysis.csv
 
 Plot files are disabled by default. `--plot` writes PNG files prefixed by the input directory name:
 `<name>_energy.png`, `<name>_shape.png`, `<name>_s.png`, `<name>_energy_ref.png` (when reference data
-is supplied), and `<name>_eb.png`. `--plot svg` writes SVG files with the same names. Combine formats
-to write both, for example `--plot png svg` or `--plot svg png`. Use `--shape-start` to set the first
-atom count in the shape plot, `--ref` for reference data, and `--e1` for an explicit isolated-atom
-energy.
+is supplied), and `<name>_eb.png`. Supported formats are `png`, `svg`, and `eps`. Use
+`--plot svg`, `--plot eps`, or combine formats such as `--plot png svg eps`. Use `--shape-start` to
+set the first atom count in the shape plot, `--ref` for reference data, and `--e1` for an explicit
+isolated-atom energy.
 
 ASE JSON structures can also be analyzed through the `sansde.analysis` module:
 
