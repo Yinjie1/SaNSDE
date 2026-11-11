@@ -25,6 +25,9 @@ _SCREENING_TERMS: tuple[tuple[float, float], ...] = (
 )
 """Coefficients and exponents of the universal ZBL screening function."""
 
+_SMOOTH_ONSET_FRACTION = 0.66
+"""Onset of the smooth cutoff relative to the cutoff, as in ASE LennardJones."""
+
 
 def _screening(x: RadialValue) -> RadialValue:
     """Evaluate the ZBL screening function phi(x)."""
@@ -109,44 +112,74 @@ def zbl_force(z_i: RadialValue, z_j: RadialValue, r: RadialValue) -> RadialValue
     )
 
 
+def _cutoff_switch(r: RadialValue, cutoff: float, onset: float) -> RadialValue:
+    """Evaluate the quintic switch that falls from 1 at onset to 0 at cutoff."""
+    t = np.clip((np.asarray(r) - onset) / (cutoff - onset), 0.0, 1.0)
+    return 1.0 - t**3 * (10.0 - 15.0 * t + 6.0 * t**2)
+
+
+def _cutoff_switch_derivative(
+    r: RadialValue, cutoff: float, onset: float
+) -> RadialValue:
+    """Evaluate d(switch)/dr, zero outside the transition region."""
+    t = np.clip((np.asarray(r) - onset) / (cutoff - onset), 0.0, 1.0)
+    return -30.0 * t**2 * (1.0 - t) ** 2 / (cutoff - onset)
+
+
 class ZBLCalculator(Calculator):
     """ASE calculator for the ZBL short-range nuclear repulsion.
 
-    The energy is the sum of the ZBL pair energies over all pairs inside the
-    neighbor list, shifted by the ZBL energy at the interaction range so that
-    the total energy is continuous when a pair enters or leaves the list:
+    With ``cutoff`` set, the energy is the sum of the ZBL pair energies over
+    all pairs inside the cutoff. Two truncation modes are available:
 
-    .. math::
-        E = \\sum_{i<j} \\left[ E_{ZBL}(r_{ij}) - E_{ZBL}(r_{c}) \\right],
-        \\quad r_c = \\text{cutoff} + 2 \\cdot \\text{skin}.
+    * hard cutoff (``smooth=False``): plain ZBL pair energies, truncated when a
+      pair leaves the neighbor list,
 
-    The unshifted ZBL energy is still finite at ``r_c``, so without the shift
-    the calculator would add a step of tens of eV for heavy elements. Forces
-    are analytic derivatives of the pair energies; the constant shift does not
-    contribute to them. Periodic cells are handled through the neighbor list
-    offsets, so the calculator also works for isolated clusters with a zero
-    cell.
+      .. math::
+          E = \\sum_{i<j} E_{ZBL}(r_{ij}).
+
+      This mode reproduces ``hiphive.calculators.zbl.ZBLCalculator`` exactly:
+      the energy jumps by ``E_ZBL(cutoff)`` at the cutoff, while the forces jump
+      to zero.
+    * smooth cutoff (``smooth=True``): every pair energy is multiplied by the
+      quintic switch ``s(r)``,
+
+      .. math::
+          E = \\sum_{i<j} E_{ZBL}(r_{ij})\\, s(r_{ij}),
+          \\qquad
+          s(r) = 1 - t^3 (10 - 15 t + 6 t^2),
+          \\quad
+          t = \\frac{r - r_{on}}{r_c - r_{on}},
+
+      with ``t`` clipped to ``[0, 1]`` and ``r_on = 0.66 * cutoff``. Both
+      energy and forces are continuous at the cutoff.
+
+    With ``cutoff=None`` all pairs are summed with the bare ZBL energy and
+    ``smooth`` has no effect. This mode requires a non-periodic system, since a
+    periodic lattice has no finite pair sum.
 
     Args:
-        cutoff: Nominal interaction cutoff in Angstrom.
-        skin: Extra neighbor search distance in Angstrom. ASE adds ``skin`` to
-            every atomic radius, hence the pair range ``cutoff + 2 * skin``.
-            Default 0.0.
+        cutoff: Interaction cutoff in Angstrom. ``None`` sums all pairs.
+        smooth: Multiply the pair energies by the smooth switch at the cutoff.
+            Only used when ``cutoff`` is set. Default False.
         **kwargs: Forwarded to :class:`ase.calculators.calculator.Calculator`.
 
     Attributes:
-        cutoff: Nominal interaction cutoff in Angstrom.
-        skin: Extra neighbor search distance in Angstrom.
-        interaction_range: Pair distance reach ``cutoff + 2 * skin``.
+        cutoff: Interaction cutoff in Angstrom, ``None`` when unused.
+        smooth: Whether the smooth switch is requested. It is only applied
+            when ``cutoff`` is set.
+        smooth_onset: Onset radius ``0.66 * cutoff`` of the smooth switch, or
+            ``None`` when no cutoff is set.
 
     Raises:
-        ValueError: If ``cutoff`` is not positive or ``skin`` is negative.
+        ValueError: If ``cutoff`` is not positive, or if a periodic system is
+            evaluated without a cutoff.
 
     Examples:
         >>> from ase import Atoms
         >>> from sansde.calc import ZBLCalculator
         >>> atoms = Atoms("Au2", positions=[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
-        >>> atoms.calc = ZBLCalculator(cutoff=1.5, skin=0.0)
+        >>> atoms.calc = ZBLCalculator(cutoff=1.5)
         >>> bool(atoms.get_potential_energy() > 0.0)
         True
         >>> atoms.get_forces().sum(axis=0)
@@ -157,19 +190,19 @@ class ZBLCalculator(Calculator):
 
     def __init__(
         self,
-        cutoff: float,
-        skin: float = 0.0,
+        cutoff: float | None = None,
+        smooth: bool = False,
         **kwargs: Any,
     ) -> None:
         """Store the cutoff settings and initialize the ASE calculator."""
-        if cutoff <= 0:
+        if cutoff is not None and cutoff <= 0:
             raise ValueError(f"cutoff must be positive, got {cutoff}")
-        if skin < 0:
-            raise ValueError(f"skin must be non-negative, got {skin}")
         super().__init__(**kwargs)
-        self.cutoff = float(cutoff)
-        self.skin = float(skin)
-        self.interaction_range = self.cutoff + 2.0 * self.skin
+        self.cutoff = None if cutoff is None else float(cutoff)
+        self.smooth = bool(smooth)
+        self.smooth_onset = (
+            None if self.cutoff is None else _SMOOTH_ONSET_FRACTION * self.cutoff
+        )
 
     def calculate(
         self,
@@ -177,7 +210,7 @@ class ZBLCalculator(Calculator):
         properties: list[str] | None = None,
         system_changes: list[str] = all_changes,
     ) -> None:
-        """Evaluate the shifted ZBL energy and forces.
+        """Evaluate the ZBL energy and forces.
 
         Args:
             atoms: Structure to evaluate. Defaults to the attached atoms.
@@ -192,22 +225,31 @@ class ZBLCalculator(Calculator):
             return
 
         atoms = self.atoms
-        numbers = atoms.numbers.astype(np.float64)
         positions = atoms.positions
-        cell = atoms.cell.array
+        numbers = atoms.numbers.astype(np.float64)
 
-        indices_i, indices_j, offsets = neighbor_list(
-            "ijS",
-            atoms,
-            self.interaction_range,
-            self_interaction=False,
-        )
-        # ASE returns every pair in both directions; keep one direction only.
-        keep = indices_i < indices_j
-        indices_i = indices_i[keep]
-        indices_j = indices_j[keep]
-        offsets = offsets[keep]
-        vectors = positions[indices_j] + offsets @ cell - positions[indices_i]
+        if self.cutoff is None:
+            if atoms.pbc.any():
+                raise ValueError(
+                    "ZBLCalculator without a cutoff cannot sum a periodic cell"
+                )
+            indices_i, indices_j = np.triu_indices(len(atoms), k=1)
+            vectors = positions[indices_j] - positions[indices_i]
+        else:
+            indices_i, indices_j, offsets = neighbor_list(
+                "ijS",
+                atoms,
+                self.cutoff,
+                self_interaction=False,
+            )
+            # ASE returns every pair in both directions; keep one direction.
+            keep = indices_i < indices_j
+            indices_i = indices_i[keep]
+            indices_j = indices_j[keep]
+            offsets = offsets[keep]
+            cell = atoms.cell.array
+            vectors = positions[indices_j] + offsets @ cell - positions[indices_i]
+
         distances = np.linalg.norm(vectors, axis=1)
         z_i = numbers[indices_i]
         z_j = numbers[indices_j]
@@ -215,9 +257,16 @@ class ZBLCalculator(Calculator):
         energy = 0.0
         forces = np.zeros_like(positions)
         if len(distances) > 0:
-            shift = zbl_energy(z_i, z_j, self.interaction_range)
-            energy = float(np.sum(zbl_energy(z_i, z_j, distances) - shift))
+            pair_energy = zbl_energy(z_i, z_j, distances)
             radial = zbl_force(z_i, z_j, distances)
+            if self.cutoff is not None and self.smooth:
+                switch = _cutoff_switch(distances, self.cutoff, self.smooth_onset)
+                switch_derivative = _cutoff_switch_derivative(
+                    distances, self.cutoff, self.smooth_onset
+                )
+                radial = radial * switch - pair_energy * switch_derivative
+                pair_energy = pair_energy * switch
+            energy = float(np.sum(pair_energy))
             pair_forces = radial[:, None] * vectors / distances[:, None]
             np.add.at(forces, indices_j, pair_forces)
             np.add.at(forces, indices_i, -pair_forces)
