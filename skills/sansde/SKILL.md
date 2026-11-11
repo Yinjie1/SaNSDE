@@ -44,6 +44,8 @@ This writes `params.json` in the current directory. Use strict JSON.
 {
   "SCRIPTS": ["from deepmd.calculator import DP"],
   "ELEMENT": "Au",
+  "ELEMENT2": "",
+  "TOTAL_ATOM": 0,
   "LATTICE_CONST": 2.88,
   "MIN_ATOM": 2,
   "MAX_ATOM": 20,
@@ -73,6 +75,8 @@ Key parameters:
 - `SCRIPTS`: Python statements executed in order before the run. Use them to import ASE calculators.
 - `POTENTIAL`: expression that evaluates to an ASE calculator. `Path` is available.
 - `ELEMENT`: element symbol.
+- `ELEMENT2`: second element symbol; when non-empty, binary alloy clusters are optimized with `TOTAL_ATOM - atom` atoms of `ELEMENT2` and `atom` atoms of `ELEMENT`.
+- `TOTAL_ATOM`: total atom count of the binary cluster; must be larger than `MAX_ATOM`.
 - `LATTICE_CONST`: initial bond-length scale for random clusters.
 - `MIN_ATOM`, `MAX_ATOM`: inclusive size range.
 - `ROUND`: number of optimization rounds.

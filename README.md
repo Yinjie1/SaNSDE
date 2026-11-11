@@ -242,6 +242,8 @@ sansde init
       "from deepmd.calculator import DP"
     ],
     "ELEMENT": "Au",
+    "ELEMENT2": "",
+    "TOTAL_ATOM": 0,
     "LATTICE_CONST": 2.88,
     "MIN_ATOM": 2,
     "MAX_ATOM": 30,
@@ -278,6 +280,7 @@ Key points:
 - `EXPORT` is a dictionary of environment variables applied to the current process before `SCRIPTS`, for example thread limits for DP. [How to control the parallelism of a job?](https://docs.deepmodeling.com/projects/deepmd/en/stable/troubleshooting/howtoset_num_nodes.html)
 - `SCRIPTS` is a list of Python snippets executed in order before the other parameters are read; they can import calculators or modify `params`, e.g. `["from ase.calculators.lj import LennardJones"]`.
 - `POTENTIAL` must be an ASE `Calculator`. A string expression is also accepted, but it must evaluate to a calculator; it is evaluated in the module namespace where `DP`, `LennardJones` and any name imported by `SCRIPTS` are available. For a Lennard-Jones test use `"POTENTIAL": "LennardJones(epsilon=0.4443, sigma=2.6367)"`.
+- `ELEMENT2` and `TOTAL_ATOM` enable binary alloy clusters: when `ELEMENT2` is non-empty, each size holds `atom` atoms of `ELEMENT` and `TOTAL_ATOM - atom` atoms of `ELEMENT2`, so `atom` (from `MIN_ATOM` to `MAX_ATOM`) counts only the first element. `TOTAL_ATOM` must be larger than `MAX_ATOM`. Output files use the chemical formula, e.g. `Ag3Au3_best.xyz`.
 - `sansde.calc` provides `ZBLCalculator` (built-in) and `GuptaCalculator` (delegating to `asap3.Gupta`). A Gupta run needs `"SCRIPTS": ["from sansde.calc import GuptaCalculator"]` and `"POTENTIAL": "GuptaCalculator({'Au': [10.229, 4.036, 0.2061, 1.790, 2.884]})"`, with parameters `[p, q, A, xi, r0]` in the asap3 order.
 - `USE_ZBL` adds the built-in ZBL short-range repulsion on top of `POTENTIAL` with cutoff `ZBL_CUTOFF`. With `ZBL_SMOOTH` false the energy and forces at a given geometry match `hiphive.calculators.zbl.ZBLCalculator` with `skin=0`; with `ZBL_SMOOTH` true both are continuous at the cutoff.
 - `ROUND` is the number of optimization rounds. With `ROUND > 1`, custom `INIT_DIR`, `BEST_DIR` and `INIT_POP_DIR` are ignored: round 1 reads `init/` and writes `best1/`, round `r` reads `best{r-1}/` and writes `best{r}/`.

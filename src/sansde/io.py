@@ -39,6 +39,8 @@ DEFAULT_RUN_PARAMS: dict[str, Any] = {
     'EXPORT': {},
     'SCRIPTS': ["from ase.calculators.lj import LennardJones"],
     'ELEMENT': 'Au',
+    'ELEMENT2': '',
+    'TOTAL_ATOM': 0,
     'LATTICE_CONST': 2.88,
     'MIN_ATOM': 3,
     'MAX_ATOM': 20,

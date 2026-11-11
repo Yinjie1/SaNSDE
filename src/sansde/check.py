@@ -52,6 +52,8 @@ class _RunConfig:
     init_pop_dir: str
     scripts: object
     potential: object
+    element2: str
+    total_atom: int
     use_zbl: bool
     zbl_cutoff: float
     zbl_smooth: bool
@@ -70,6 +72,14 @@ def _float_setting(data: dict[str, object], key: str, default: float) -> float:
         return float(data.get(key, default))  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return math.nan
+
+
+def _int_setting(data: dict[str, object], key: str, default: int) -> int:
+    """Return an int setting, falling back to the default when invalid."""
+    try:
+        return int(data.get(key, default))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
 
 
 def _read_run_configs(directory: Path, color: bool) -> list[_RunConfig]:
@@ -104,6 +114,27 @@ def _read_run_configs(directory: Path, color: bool) -> list[_RunConfig]:
         if rounds < 1:
             print(_paint(f"skip {path.name}: ROUND must be >= 1", _YELLOW, color))
             continue
+        element2 = str(data.get("ELEMENT2", "") or "")
+        if element2:
+            if element2 == str(data.get("ELEMENT", "Au")):
+                print(
+                    _paint(
+                        f"error: {path.name}: ELEMENT2 must differ from ELEMENT",
+                        _RED,
+                        color,
+                    )
+                )
+                continue
+            if _int_setting(data, "TOTAL_ATOM", 0) <= max_atom:
+                print(
+                    _paint(
+                        f"error: {path.name}: TOTAL_ATOM must be larger than "
+                        "MAX_ATOM when ELEMENT2 is set",
+                        _RED,
+                        color,
+                    )
+                )
+                continue
         configs.append(
             _RunConfig(
                 path=path,
@@ -117,6 +148,8 @@ def _read_run_configs(directory: Path, color: bool) -> list[_RunConfig]:
                 init_pop_dir=_dir_setting(data, "INIT_POP_DIR", ""),
                 scripts=data.get("SCRIPTS", []),
                 potential=data.get("POTENTIAL"),
+                element2=element2,
+                total_atom=_int_setting(data, "TOTAL_ATOM", 0),
                 use_zbl=bool(data.get("USE_ZBL", True)),
                 zbl_cutoff=_float_setting(data, "ZBL_CUTOFF", 1.5),
                 zbl_smooth=bool(data.get("ZBL_SMOOTH", False)),
@@ -137,21 +170,46 @@ def _merge_ranges(ranges: list[tuple[int, int]]) -> list[tuple[int, int]]:
     return merged
 
 
-def _format_range(element: str, start: int, end: int) -> str:
-    """Format an element and inclusive atom-count range."""
-    if start == end:
-        return f"{element}{start}"
-    return f"{element}{start}-{end}"
+def _cluster_symbol(config: _RunConfig, atom: int) -> str:
+    """Return the chemical formula of one cluster in a configuration."""
+    if not config.element2:
+        return f"{config.element}{atom}"
+    second_count = config.total_atom - atom
+    if second_count <= 0:
+        return f"{config.element}{atom}"
+    formula = f"{config.element}{atom}{config.element2}{second_count}"
+    return Atoms(formula).get_chemical_formula()
+
+
+def _format_range(config: _RunConfig, start: int, end: int) -> str:
+    """Format the atom-count range of a configuration."""
+    first = (
+        f"{config.element}{start}"
+        if start == end
+        else f"{config.element}{start}-{end}"
+    )
+    if not config.element2:
+        return first
+    second_start = config.total_atom - end
+    second_end = config.total_atom - start
+    second = (
+        f"{config.element2}{second_start}"
+        if second_start == second_end
+        else f"{config.element2}{second_start}-{second_end}"
+    )
+    return f"{first}+{second}"
 
 
 def _find_overlaps(
     configs: list[_RunConfig],
-) -> list[tuple[Path, Path, str, int, int]]:
-    """Return pairwise overlaps as ``(path_a, path_b, element, start, end)``."""
-    overlaps: list[tuple[Path, Path, str, int, int]] = []
+) -> list[tuple[Path, Path, _RunConfig, int, int]]:
+    """Return pairwise overlaps as ``(path_a, path_b, config, start, end)``."""
+    overlaps: list[tuple[Path, Path, _RunConfig, int, int]] = []
     for index, config_a in enumerate(configs):
         for config_b in configs[index + 1:]:
-            if config_a.element != config_b.element:
+            composition_a = (config_a.element, config_a.element2, config_a.total_atom)
+            composition_b = (config_b.element, config_b.element2, config_b.total_atom)
+            if composition_a != composition_b:
                 continue
             start = max(config_a.min_atom, config_b.min_atom)
             end = min(config_a.max_atom, config_b.max_atom)
@@ -160,7 +218,7 @@ def _find_overlaps(
                     (
                         config_a.path,
                         config_b.path,
-                        config_a.element,
+                        config_a,
                         start,
                         end,
                     )
@@ -196,7 +254,7 @@ def _existing_outputs(
 
     existing: dict[str, list[Path]] = {}
     for atom in range(config.min_atom, config.max_atom + 1):
-        symbol = f"{config.element}{atom}"
+        symbol = _cluster_symbol(config, atom)
 
         for best_dir in best_dirs:
             best_path = best_dir / f"{symbol}_best.xyz"
@@ -230,7 +288,7 @@ def _warn_existing_outputs(
     if not existing:
         return False
 
-    systems = _format_range(config.element, config.min_atom, config.max_atom)
+    systems = _format_range(config, config.min_atom, config.max_atom)
     print(
         f"{_paint('warning:', _RED, color)} "
         f"{config.path.name} ({systems}) has existing output files:"
@@ -284,9 +342,7 @@ def _available_population_symbols(directory: Path, color: bool) -> set[str]:
 
 def _missing_systems(
     directory: Path,
-    element: str,
-    min_atom: int,
-    max_atom: int,
+    expected: list[str],
     suffix: str,
     color: bool,
 ) -> list[str]:
@@ -295,11 +351,7 @@ def _missing_systems(
         available = _available_xyz_symbols(directory, color)
     else:
         available = _available_population_symbols(directory, color)
-    return [
-        f"{element}{atom}"
-        for atom in range(min_atom, max_atom + 1)
-        if f"{element}{atom}" not in available
-    ]
+    return [symbol for symbol in expected if symbol not in available]
 
 
 def _warn_initial_inputs(
@@ -312,7 +364,11 @@ def _warn_initial_inputs(
     init_pop_dir_value = config.init_pop_dir
     has_init_dir = bool(init_dir_value.strip())
     has_init_pop = bool(init_pop_dir_value.strip())
-    systems = _format_range(config.element, config.min_atom, config.max_atom)
+    systems = _format_range(config, config.min_atom, config.max_atom)
+    expected = [
+        _cluster_symbol(config, atom)
+        for atom in range(config.min_atom, config.max_atom + 1)
+    ]
 
     if not has_init_dir and not has_init_pop:
         print(
@@ -323,14 +379,7 @@ def _warn_initial_inputs(
 
     if has_init_pop:
         init_path = _resolve_dir(directory, init_pop_dir_value)
-        missing = _missing_systems(
-            init_path,
-            config.element,
-            config.min_atom,
-            config.max_atom,
-            ".json",
-            color,
-        )
+        missing = _missing_systems(init_path, expected, ".json", color)
         if missing:
             label = _display_path(init_path, directory)
             print(
@@ -342,14 +391,7 @@ def _warn_initial_inputs(
         return
 
     init_path = _resolve_dir(directory, init_dir_value)
-    missing = _missing_systems(
-        init_path,
-        config.element,
-        config.min_atom,
-        config.max_atom,
-        ".xyz",
-        color,
-    )
+    missing = _missing_systems(init_path, expected, ".xyz", color)
     if missing:
         label = _display_path(init_path, directory)
         print(
@@ -550,18 +592,21 @@ def run_check(
         print(f"parameter directory: {params_dir.resolve()}")
         print(f"working directory: {work_dir}")
 
-    ranges_by_element: dict[str, list[tuple[int, int]]] = {}
+    ranges_by_composition: dict[tuple[str, str, int], list[tuple[int, int]]] = {}
+    representatives: dict[tuple[str, str, int], _RunConfig] = {}
     for config in configs:
-        ranges_by_element.setdefault(config.element, []).append(
+        key = (config.element, config.element2, config.total_atom)
+        ranges_by_composition.setdefault(key, []).append(
             (config.min_atom, config.max_atom)
         )
+        representatives.setdefault(key, config)
 
     print(f"read {len(configs)} run parameter file(s)")
     parts: list[str] = []
-    for element in sorted(ranges_by_element):
-        merged = _merge_ranges(ranges_by_element[element])
+    for key in sorted(ranges_by_composition):
+        merged = _merge_ranges(ranges_by_composition[key])
         parts.extend(
-            _format_range(element, start, end)
+            _format_range(representatives[key], start, end)
             for start, end in merged
         )
     print(f"{_paint('optimization systems:', _BLUE, color)} {', '.join(parts)}")
@@ -572,10 +617,10 @@ def run_check(
             f"{_paint('warning:', _RED, color)} "
             "overlapping optimization systems exist"
         )
-        for path_a, path_b, element, start, end in overlaps:
+        for path_a, path_b, config, start, end in overlaps:
             print(
                 f"  {path_a.name} <-> {path_b.name}: "
-                f"{_format_range(element, start, end)}"
+                f"{_format_range(config, start, end)}"
             )
     else:
         print(_paint("no overlapping optimization systems", _GREEN, color))

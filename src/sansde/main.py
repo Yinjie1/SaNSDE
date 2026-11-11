@@ -45,7 +45,8 @@ def run(
     Parameters
     ----------
     atom : int
-        Number of atoms in the cluster.
+        Number of ``ELEMENT`` atoms in the cluster. When ``ELEMENT2`` is set,
+        the cluster also holds ``TOTAL_ATOM - atom`` atoms of ``ELEMENT2``.
     round_index : int, optional
         Current optimization round, used to derive the round directories.
         Default 1.
@@ -75,7 +76,15 @@ def run(
 
     # 1) 初始化种群: init_pop_dir 非空时按尺寸加载给定种群;
     #    否则从 init/ 目录加载单个最优结构, 再随机补足至 pop_size.
-    expected_symbol = f"{params['ELEMENT']}{atom}"
+    element = str(params['ELEMENT'])
+    element2 = str(params['ELEMENT2'] or '')
+    if element2:
+        second_count = int(params['TOTAL_ATOM']) - atom
+        expected_symbol = Atoms(
+            f"{element}{atom}{element2}{second_count}"
+        ).get_chemical_formula()
+    else:
+        expected_symbol = f"{element}{atom}"
     pop = Population(symbol=expected_symbol)
     init_from_pop = False
 
@@ -90,7 +99,7 @@ def run(
                 print(f"skip initial population {init_pop_path}: symbol mismatch")
                 continue
             init_from_pop = True
-            print(f"load initial population {params['ELEMENT']}{atom} from {init_pop_path}...")
+            print(f"load initial population {expected_symbol} from {init_pop_path}...")
             break
         if init_from_pop:
             # 初始种群可能来自旧势, 用当前势重算团簇和候选团簇的能量与力.
@@ -254,7 +263,7 @@ def run(
         # 每代写一行统计到统计 CSV.
         append_stats_row(
             stats_path=stats_path,
-            symbol=f"{params['ELEMENT']}{atom}",
+            symbol=expected_symbol,
             atom=atom,
             gen=gen,
             pop=pop_next,
@@ -279,17 +288,16 @@ def run(
         prev_best = current_best
         prev_pg = current_pg
         prev_best_cluster = best_cluster.copy()
-        # pop.dump(f"{params['ELEMENT']}{atom}_best")
-        pop.dump_xyz(f"{params['ELEMENT']}{atom}_best")
+        pop.dump_xyz(f"{expected_symbol}_best")
         snapshot_path = pop.export(
-            name=f"{params['ELEMENT']}{atom}_gen{gen}",
+            name=f"{expected_symbol}_gen{gen}",
             dir=params['POP_DIR'],
         )
 
         # 清理超出保留数量的旧快照
         if gen > int(params['KEEP_SNAPSHOTS']):
             old = gen - int(params['KEEP_SNAPSHOTS'])
-            for f in Path(params['POP_DIR']).glob(f"{params['ELEMENT']}{atom}_gen{old}*.json"):
+            for f in Path(params['POP_DIR']).glob(f"{expected_symbol}_gen{old}*.json"):
                 f.unlink()
 
         # CONV_STEPS=0 means no early stopping: run until MAX_GEN.
@@ -303,7 +311,7 @@ def run(
             break
 
     # 5) 导出最终结果: 候选列表写入 best/ 的 extxyz.
-    pop.dump_xyz(f"{params['ELEMENT']}{atom}_best", candidate=True, dir=best_dir)
+    pop.dump_xyz(f"{expected_symbol}_best", candidate=True, dir=best_dir)
     print(f"atom={atom} final_snapshot={snapshot_path}")
 
 
@@ -338,6 +346,16 @@ def main(params_path: Path) -> None:
         raise TypeError("SCRIPTS must be a list of Python code strings")
     for script in SCRIPTS:
         exec(script, globals())  # noqa: S102, user-provided calculator setup
+
+    # Binary alloy runs: ELEMENT2 non-empty activates them. Each size then
+    # holds `atom` atoms of ELEMENT and TOTAL_ATOM - atom atoms of ELEMENT2.
+    if str(params['ELEMENT2'] or ''):
+        if str(params['ELEMENT2']) == str(params['ELEMENT']):
+            raise ValueError("ELEMENT2 must differ from ELEMENT")
+        if int(params['TOTAL_ATOM']) <= int(params['MAX_ATOM']):
+            raise ValueError(
+                "TOTAL_ATOM must be larger than MAX_ATOM when ELEMENT2 is set"
+            )
 
     # Potential energy surface.
     # With USE_ZBL the built-in ZBL short-range repulsion is added on top of
