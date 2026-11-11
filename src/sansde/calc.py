@@ -15,11 +15,60 @@ __all__ = ["ZBLCalculator", "zbl_energy", "zbl_force"]
 
 RadialValue: TypeAlias = float | npt.NDArray[np.float64]
 
-_PREFACTOR = 14.399645481316385
-"""Coulomb prefactor alpha * hbar * c in eV * Angstrom."""
+# ---------------------------------------------------------------------------
+# Shared pair helpers
+# ---------------------------------------------------------------------------
 
 _SMOOTH_ONSET_FRACTION = 0.66
 """Onset of the smooth cutoff relative to the cutoff, as in ASE LennardJones."""
+
+
+@numba.njit
+def _cutoff_switch(r: float, cutoff: float, onset: float) -> float:
+    """Evaluate the quintic switch that falls from 1 at onset to 0 at cutoff."""
+    t = (r - onset) / (cutoff - onset)
+    if t < 0.0:
+        t = 0.0
+    elif t > 1.0:
+        t = 1.0
+    return 1.0 - t**3 * (10.0 - 15.0 * t + 6.0 * t**2)
+
+
+@numba.njit
+def _cutoff_switch_derivative(r: float, cutoff: float, onset: float) -> float:
+    """Evaluate d(switch)/dr, zero outside the transition region."""
+    t = (r - onset) / (cutoff - onset)
+    if t < 0.0:
+        t = 0.0
+    elif t > 1.0:
+        t = 1.0
+    return -30.0 * t**2 * (1.0 - t) ** 2 / (cutoff - onset)
+
+
+@numba.njit
+def _add_pair_force(
+    forces: npt.NDArray[np.float64],
+    index_i: int,
+    index_j: int,
+    force_x: float,
+    force_y: float,
+    force_z: float,
+) -> None:
+    """Add the force of one pair to both atoms in place."""
+    forces[index_j, 0] += force_x
+    forces[index_j, 1] += force_y
+    forces[index_j, 2] += force_z
+    forces[index_i, 0] -= force_x
+    forces[index_i, 1] -= force_y
+    forces[index_i, 2] -= force_z
+
+
+# ---------------------------------------------------------------------------
+# ZBL screened Coulomb repulsion
+# ---------------------------------------------------------------------------
+
+_PREFACTOR = 14.399645481316385
+"""Coulomb prefactor alpha * hbar * c in eV * Angstrom."""
 
 
 @numba.njit
@@ -109,28 +158,6 @@ def zbl_force(z_i: RadialValue, z_j: RadialValue, r: RadialValue) -> RadialValue
 
 
 @numba.njit
-def _cutoff_switch(r: float, cutoff: float, onset: float) -> float:
-    """Evaluate the quintic switch that falls from 1 at onset to 0 at cutoff."""
-    t = (r - onset) / (cutoff - onset)
-    if t < 0.0:
-        t = 0.0
-    elif t > 1.0:
-        t = 1.0
-    return 1.0 - t**3 * (10.0 - 15.0 * t + 6.0 * t**2)
-
-
-@numba.njit
-def _cutoff_switch_derivative(r: float, cutoff: float, onset: float) -> float:
-    """Evaluate d(switch)/dr, zero outside the transition region."""
-    t = (r - onset) / (cutoff - onset)
-    if t < 0.0:
-        t = 0.0
-    elif t > 1.0:
-        t = 1.0
-    return -30.0 * t**2 * (1.0 - t) ** 2 / (cutoff - onset)
-
-
-@numba.njit
 def _pair_energy_force(
     z_i: float,
     z_j: float,
@@ -172,15 +199,14 @@ def _accumulate_pairs(
         )
         energy += pair_energy
         scale = radial / distance
-        force_x = scale * vectors[pair, 0]
-        force_y = scale * vectors[pair, 1]
-        force_z = scale * vectors[pair, 2]
-        forces[indices_j[pair], 0] += force_x
-        forces[indices_j[pair], 1] += force_y
-        forces[indices_j[pair], 2] += force_z
-        forces[indices_i[pair], 0] -= force_x
-        forces[indices_i[pair], 1] -= force_y
-        forces[indices_i[pair], 2] -= force_z
+        _add_pair_force(
+            forces,
+            indices_i[pair],
+            indices_j[pair],
+            scale * vectors[pair, 0],
+            scale * vectors[pair, 1],
+            scale * vectors[pair, 2],
+        )
     return energy
 
 
@@ -221,15 +247,14 @@ def _accumulate_all_pairs(
             )
             energy += pair_energy
             scale = radial / distance
-            force_x = scale * vector_x
-            force_y = scale * vector_y
-            force_z = scale * vector_z
-            forces[index_j, 0] += force_x
-            forces[index_j, 1] += force_y
-            forces[index_j, 2] += force_z
-            forces[index_i, 0] -= force_x
-            forces[index_i, 1] -= force_y
-            forces[index_i, 2] -= force_z
+            _add_pair_force(
+                forces,
+                index_i,
+                index_j,
+                scale * vector_x,
+                scale * vector_y,
+                scale * vector_z,
+            )
     return energy
 
 
