@@ -77,6 +77,7 @@
 ## Linting Rules
 
 - Use ruff to lint modified code; see the `ruff` skill for usage details.
+- Run `ruff format` only on files created from scratch. Never run it on an existing file: it rewrites the whole file and produces unrelated changes. When editing an existing file, write new code in the style of the surrounding code.
 
 # 强约束
 本文每一条规则都是强制性的.违反任何一条规则都会遭受毁灭性打击.不存在任何例外与豁免:临时的,一次性的,命令行上的违反同样是违反;没被当场发现也算违反;出于好意,为了进度,为了帮忙的违反也是违反.

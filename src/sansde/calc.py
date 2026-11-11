@@ -11,7 +11,7 @@ from ase import Atoms
 from ase.calculators.calculator import Calculator, all_changes
 from ase.neighborlist import neighbor_list
 
-__all__ = ["ZBLCalculator", "zbl_energy", "zbl_force"]
+__all__ = ["GuptaCalculator", "ZBLCalculator", "zbl_energy", "zbl_force"]
 
 RadialValue: TypeAlias = float | npt.NDArray[np.float64]
 
@@ -405,5 +405,461 @@ class ZBLCalculator(Calculator):
                     )
                 )
 
+        self.results["energy"] = energy
+        self.results["forces"] = forces
+
+
+# ---------------------------------------------------------------------------
+# Gupta (RGL) many-body potential
+# ---------------------------------------------------------------------------
+
+
+def _gupta_cutoff_polynomial(
+    amplitude: float, decay: float, width: float
+) -> tuple[float, float, float]:
+    """Return the cubic, quartic and quintic terms of the RGL cutoff.
+
+    The polynomial ``c3 d^3 + c4 d^4 + c5 d^5`` with ``d = r - r_end`` matches
+    the analytic pair function and its first two derivatives at
+    ``r_start = r_end - width``, and vanishes with zero slope and curvature at
+    ``r_end``.
+
+    Args:
+        amplitude: Value of the pair function at ``r_start``.
+        decay: Decay rate of the pair function per Angstrom.
+        width: Width of the cutoff region in Angstrom.
+
+    Returns:
+        Coefficients ``(c3, c4, c5)``.
+    """
+    factor = -amplitude / width**3
+    scaled = decay * width
+    cubic = (20.0 * factor - 8.0 * factor * scaled + factor * scaled**2) / 2.0
+    quartic = (15.0 * factor - 7.0 * factor * scaled + factor * scaled**2) / width
+    quintic = (
+        12.0 * factor - 6.0 * factor * scaled + factor * scaled**2
+    ) / (2.0 * width**2)
+    return cubic, quartic, quintic
+
+
+def _gupta_arrays(
+    parameters: dict[object, tuple[float, float, float, float, float]],
+    cutoff: float,
+    cutoff_width: float,
+) -> dict[str, object]:
+    """Build the element mapping and per-pair parameter matrices.
+
+    Args:
+        parameters: Element symbol or symbol pair mapped to
+            ``[p, q, A, xi, r0]``, the parameter order of
+            ``asap3.Internal.BuiltinPotentials.RGL``.
+        cutoff: Start of the cutoff region in units of the equilibrium
+            nearest-neighbor distance.
+        cutoff_width: Width of the cutoff region in units of the same distance.
+
+    Returns:
+        Mapping with the element symbols, the symbol-to-index lookup, the
+        per-pair matrices and the cutoff radii.
+
+    Raises:
+        TypeError: If ``parameters`` is not a dictionary.
+        ValueError: If a parameter entry is malformed, a pair is missing, or the
+            parameters give an unreasonable nearest-neighbor distance.
+    """
+    if not isinstance(parameters, dict):
+        raise TypeError("parameters must be a dictionary")
+
+    symbols = sorted(
+        {
+            symbol
+            for key in parameters
+            for symbol in (key if isinstance(key, tuple) else (key,))
+        }
+    )
+    index = {symbol: position for position, symbol in enumerate(symbols)}
+    n_elements = len(symbols)
+    p = np.zeros((n_elements, n_elements))
+    q = np.zeros((n_elements, n_elements))
+    a = np.zeros((n_elements, n_elements))
+    xi = np.zeros((n_elements, n_elements))
+    r0 = np.zeros((n_elements, n_elements))
+    defined = np.zeros((n_elements, n_elements), dtype=bool)
+
+    for key, values in parameters.items():
+        if len(values) != 5:
+            raise ValueError(f"parameters for {key} must hold [p, q, A, xi, r0]")
+        if isinstance(key, tuple):
+            if len(key) != 2:
+                raise ValueError(f"pair key must hold two symbols, got {key}")
+            element_i, element_j = index[key[0]], index[key[1]]
+        else:
+            element_i = element_j = index[key]
+        p[element_i, element_j] = float(values[0])
+        q[element_i, element_j] = float(values[1])
+        a[element_i, element_j] = float(values[2])
+        xi[element_i, element_j] = float(values[3])
+        r0[element_i, element_j] = float(values[4])
+        defined[element_i, element_j] = True
+        defined[element_j, element_i] = True
+
+    if not defined.all():
+        missing = [
+            (symbols[i], symbols[j])
+            for i in range(n_elements)
+            for j in range(i, n_elements)
+            if not defined[i, j]
+        ]
+        raise ValueError(f"missing Gupta parameters for {missing}")
+
+    nearest = (np.log(np.sqrt(12.0) * a * p / (xi * q)) / (p - q) + 1.0) * r0
+    if not np.all((nearest > 1.0) & (nearest < 10.0)):
+        raise ValueError(
+            "unreasonable Gupta parameters, nearest-neighbor distance "
+            f"span [{nearest.min():.3f}, {nearest.max():.3f}]"
+        )
+
+    r_start = cutoff * float(nearest.max())
+    width = cutoff_width * float(nearest.max())
+    r_end = r_start + width
+
+    p3 = np.zeros((n_elements, n_elements))
+    p4 = np.zeros((n_elements, n_elements))
+    p5 = np.zeros((n_elements, n_elements))
+    q3 = np.zeros((n_elements, n_elements))
+    q4 = np.zeros((n_elements, n_elements))
+    q5 = np.zeros((n_elements, n_elements))
+    for element_i in range(n_elements):
+        for element_j in range(n_elements):
+            scaled_start = r_start / r0[element_i, element_j] - 1.0
+            p3[element_i, element_j], p4[element_i, element_j], p5[
+                element_i, element_j
+            ] = _gupta_cutoff_polynomial(
+                a[element_i, element_j] * np.exp(-p[element_i, element_j] * scaled_start),
+                p[element_i, element_j] / r0[element_i, element_j],
+                width,
+            )
+            q3[element_i, element_j], q4[element_i, element_j], q5[
+                element_i, element_j
+            ] = _gupta_cutoff_polynomial(
+                xi[element_i, element_j] * np.exp(-q[element_i, element_j] * scaled_start),
+                q[element_i, element_j] / r0[element_i, element_j],
+                width,
+            )
+
+    return {
+        "symbols": symbols,
+        "index": index,
+        "p": p,
+        "q": q,
+        "a": a,
+        "qsi2": xi**2,
+        "r0": r0,
+        "p3": p3,
+        "p4": p4,
+        "p5": p5,
+        "q3": q3,
+        "q4": q4,
+        "q5": q5,
+        "r_start": r_start,
+        "r_end": r_end,
+    }
+
+
+@numba.njit
+def _gupta_accumulate(
+    positions: npt.NDArray[np.float64],
+    elements: npt.NDArray[np.int64],
+    p: npt.NDArray[np.float64],
+    q: npt.NDArray[np.float64],
+    a: npt.NDArray[np.float64],
+    qsi2: npt.NDArray[np.float64],
+    r0: npt.NDArray[np.float64],
+    p3: npt.NDArray[np.float64],
+    p4: npt.NDArray[np.float64],
+    p5: npt.NDArray[np.float64],
+    q3: npt.NDArray[np.float64],
+    q4: npt.NDArray[np.float64],
+    q5: npt.NDArray[np.float64],
+    r_start: float,
+    r_end: float,
+    forces: npt.NDArray[np.float64],
+) -> float:
+    """Sum the Gupta energy and add the forces in place.
+
+    The first pass accumulates the repulsive sum and the density sum of every
+    atom, the second pass turns them into forces.
+    """
+    n_atoms = positions.shape[0]
+    sigma_p = np.zeros(n_atoms)
+    sigma_q = np.zeros(n_atoms)
+    cutoff_squared = r_end * r_end
+
+    for index_i in range(n_atoms - 1):
+        x_i = positions[index_i, 0]
+        y_i = positions[index_i, 1]
+        z_i = positions[index_i, 2]
+        element_i = elements[index_i]
+        for index_j in range(index_i + 1, n_atoms):
+            vector_x = positions[index_j, 0] - x_i
+            vector_y = positions[index_j, 1] - y_i
+            vector_z = positions[index_j, 2] - z_i
+            squared_distance = (
+                vector_x * vector_x + vector_y * vector_y + vector_z * vector_z
+            )
+            if squared_distance >= cutoff_squared:
+                continue
+            distance = np.sqrt(squared_distance)
+            element_j = elements[index_j]
+            if distance < r_start:
+                scaled = distance / r0[element_i, element_j] - 1.0
+                pair = a[element_i, element_j] * np.exp(
+                    -p[element_i, element_j] * scaled
+                )
+                density = qsi2[element_i, element_j] * np.exp(
+                    -2.0 * q[element_i, element_j] * scaled
+                )
+            else:
+                delta = distance - r_end
+                delta2 = delta * delta
+                delta3 = delta2 * delta
+                pair = (
+                    p3[element_i, element_j] * delta3
+                    + p4[element_i, element_j] * delta3 * delta
+                    + p5[element_i, element_j] * delta3 * delta2
+                )
+                amplitude = (
+                    q3[element_i, element_j] * delta3
+                    + q4[element_i, element_j] * delta3 * delta
+                    + q5[element_i, element_j] * delta3 * delta2
+                )
+                density = amplitude * amplitude
+            sigma_p[index_i] += pair
+            sigma_p[index_j] += pair
+            sigma_q[index_i] += density
+            sigma_q[index_j] += density
+
+    energy = 0.0
+    for index_i in range(n_atoms):
+        energy += sigma_p[index_i] - np.sqrt(sigma_q[index_i])
+
+    for index_i in range(n_atoms - 1):
+        x_i = positions[index_i, 0]
+        y_i = positions[index_i, 1]
+        z_i = positions[index_i, 2]
+        element_i = elements[index_i]
+        for index_j in range(index_i + 1, n_atoms):
+            vector_x = positions[index_j, 0] - x_i
+            vector_y = positions[index_j, 1] - y_i
+            vector_z = positions[index_j, 2] - z_i
+            squared_distance = (
+                vector_x * vector_x + vector_y * vector_y + vector_z * vector_z
+            )
+            if squared_distance >= cutoff_squared:
+                continue
+            distance = np.sqrt(squared_distance)
+            element_j = elements[index_j]
+            if distance < r_start:
+                scaled = distance / r0[element_i, element_j] - 1.0
+                pair_slope = (
+                    -2.0
+                    * a[element_i, element_j]
+                    * p[element_i, element_j]
+                    * np.exp(-p[element_i, element_j] * scaled)
+                    / r0[element_i, element_j]
+                )
+                density_slope = (
+                    -qsi2[element_i, element_j]
+                    * q[element_i, element_j]
+                    * np.exp(-2.0 * q[element_i, element_j] * scaled)
+                    / r0[element_i, element_j]
+                )
+            else:
+                delta = distance - r_end
+                delta2 = delta * delta
+                delta3 = delta2 * delta
+                pair_slope = 2.0 * (
+                    5.0 * p5[element_i, element_j] * delta3 * delta
+                    + 4.0 * p4[element_i, element_j] * delta3
+                    + 3.0 * p3[element_i, element_j] * delta2
+                )
+                amplitude = (
+                    q3[element_i, element_j] * delta3
+                    + q4[element_i, element_j] * delta3 * delta
+                    + q5[element_i, element_j] * delta3 * delta2
+                )
+                amplitude_slope = (
+                    5.0 * q5[element_i, element_j] * delta3 * delta
+                    + 4.0 * q4[element_i, element_j] * delta3
+                    + 3.0 * q3[element_i, element_j] * delta2
+                )
+                density_slope = amplitude * amplitude_slope
+
+            coefficient = (
+                pair_slope
+                - density_slope
+                * (
+                    1.0 / np.sqrt(sigma_q[index_i])
+                    + 1.0 / np.sqrt(sigma_q[index_j])
+                )
+            ) / distance
+            force_x = coefficient * vector_x
+            force_y = coefficient * vector_y
+            force_z = coefficient * vector_z
+            forces[index_i, 0] += force_x
+            forces[index_i, 1] += force_y
+            forces[index_i, 2] += force_z
+            forces[index_j, 0] -= force_x
+            forces[index_j, 1] -= force_y
+            forces[index_j, 2] -= force_z
+
+    return energy
+
+
+class GuptaCalculator(Calculator):
+    """ASE calculator for the Gupta (RGL) many-body potential.
+
+    The energy is the second-moment tight-binding form used by the RGL
+    implementation of asap3,
+
+    .. math::
+        E = \\sum_i \\left( \\sum_{j \\neq i} V_{ij} - \\sqrt{\\rho_i} \\right),
+        \\qquad
+        V_{ij} = A_{ij} e^{-p_{ij} (r_{ij}/r_{0,ij} - 1)},
+        \\quad
+        \\rho_i = \\sum_{j \\neq i} \\xi_{ij}^2
+        e^{-2 q_{ij} (r_{ij}/r_{0,ij} - 1)}.
+
+    The pair functions are analytic below ``r_start`` and replaced by a quintic
+    polynomial between ``r_start`` and ``r_end``. The polynomial matches the
+    value, slope and curvature at ``r_start`` and vanishes with zero slope and
+    curvature at ``r_end``, so energy and forces are continuous. The density
+    cutoff polynomial acts on the density amplitude ``xi e^{-q (r/r0 - 1)}``
+    and is squared, as in asap3.
+
+    ``r_start`` and ``r_end`` follow the asap3 convention: the equilibrium
+    nearest-neighbor distance of each element pair is
+
+    .. math::
+        a_1 = r_0 \\left[ 1 + \\frac{\\ln(\\sqrt{12} A p / (\\xi q))}{p - q}
+        \\right],
+
+    ``r_start = cutoff * a_1,max`` and ``r_end = r_start + cutoff_width *
+    a_1,max``.
+
+    Args:
+        parameters: Element symbol or symbol pair mapped to
+            ``[p, q, A, xi, r0]``, the parameter order of
+            ``asap3.Internal.BuiltinPotentials.RGL``. Mixed pairs need an
+            explicit ``(symbol_i, symbol_j)`` entry.
+        cutoff: Start of the cutoff region in units of the equilibrium
+            nearest-neighbor distance. Default 1.73, as in asap3.
+        cutoff_width: Width of the cutoff region in the same units. Default
+            0.15, as in asap3.
+        **kwargs: Forwarded to :class:`ase.calculators.calculator.Calculator`.
+
+    Attributes:
+        symbols: Element symbols covered by the parameters.
+        cutoff_start: Start radius of the cutoff region in Angstrom.
+        cutoff_end: End radius of the cutoff region in Angstrom.
+
+    Raises:
+        ValueError: If the parameters are malformed or incomplete, if the
+            structure holds an element without parameters, or if it is
+            periodic.
+
+    Examples:
+        >>> from ase import Atoms
+        >>> from sansde.calc import GuptaCalculator
+        >>> atoms = Atoms("Au2", positions=[[0.0, 0.0, 0.0], [2.6, 0.0, 0.0]])
+        >>> atoms.calc = GuptaCalculator({"Au": [10.229, 4.036, 0.2061, 1.790, 2.884]})
+        >>> bool(atoms.get_potential_energy() < 0.0)
+        True
+    """
+
+    implemented_properties: ClassVar[list[str]] = ["energy", "forces"]
+
+    def __init__(
+        self,
+        parameters: dict[object, tuple[float, float, float, float, float]],
+        cutoff: float = 1.73,
+        cutoff_width: float = 0.15,
+        **kwargs: Any,
+    ) -> None:
+        """Store the Gupta parameters and initialize the ASE calculator."""
+        if cutoff <= 0:
+            raise ValueError(f"cutoff must be positive, got {cutoff}")
+        if cutoff_width <= 0:
+            raise ValueError(f"cutoff_width must be positive, got {cutoff_width}")
+        super().__init__(**kwargs)
+        data = _gupta_arrays(parameters, float(cutoff), float(cutoff_width))
+        self.symbols: list[str] = data["symbols"]  # type: ignore[assignment]
+        self.cutoff_start: float = data["r_start"]  # type: ignore[assignment]
+        self.cutoff_end: float = data["r_end"]  # type: ignore[assignment]
+        self._index: dict[str, int] = data["index"]  # type: ignore[assignment]
+        self._p = data["p"]
+        self._q = data["q"]
+        self._a = data["a"]
+        self._qsi2 = data["qsi2"]
+        self._r0 = data["r0"]
+        self._p3 = data["p3"]
+        self._p4 = data["p4"]
+        self._p5 = data["p5"]
+        self._q3 = data["q3"]
+        self._q4 = data["q4"]
+        self._q5 = data["q5"]
+
+    def calculate(
+        self,
+        atoms: Atoms | None = None,
+        properties: list[str] | None = None,
+        system_changes: list[str] = all_changes,
+    ) -> None:
+        """Evaluate the Gupta energy and forces.
+
+        Args:
+            atoms: Structure to evaluate. Defaults to the attached atoms.
+            properties: Requested properties. Default ``["energy"]``.
+            system_changes: ASE change flags, unused here.
+        """
+        if properties is None:
+            properties = ["energy"]
+        Calculator.calculate(self, atoms, properties, system_changes)
+
+        if "energy" not in properties and "forces" not in properties:
+            return
+
+        atoms = self.atoms
+        if atoms.pbc.any():
+            raise ValueError("GuptaCalculator only supports non-periodic systems")
+
+        try:
+            elements = np.array(
+                [self._index[symbol] for symbol in atoms.get_chemical_symbols()],
+                dtype=np.int64,
+            )
+        except KeyError as e:
+            raise ValueError(f"missing Gupta parameters for element {e}") from e
+
+        forces = np.zeros_like(atoms.positions)
+        energy = float(
+            _gupta_accumulate(
+                atoms.positions,
+                elements,
+                self._p,
+                self._q,
+                self._a,
+                self._qsi2,
+                self._r0,
+                self._p3,
+                self._p4,
+                self._p5,
+                self._q3,
+                self._q4,
+                self._q5,
+                self.cutoff_start,
+                self.cutoff_end,
+                forces,
+            )
+        )
         self.results["energy"] = energy
         self.results["forces"] = forces
