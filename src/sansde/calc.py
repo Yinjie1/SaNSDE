@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, ClassVar, TypeAlias
 
+import numba
 import numpy as np
 import numpy.typing as npt
 from ase import Atoms
@@ -17,41 +18,41 @@ RadialValue: TypeAlias = float | npt.NDArray[np.float64]
 _PREFACTOR = 14.399645481316385
 """Coulomb prefactor alpha * hbar * c in eV * Angstrom."""
 
-_SCREENING_TERMS: tuple[tuple[float, float], ...] = (
-    (0.18175, 3.19980),
-    (0.50986, 0.94229),
-    (0.28022, 0.40290),
-    (0.02817, 0.20162),
-)
-"""Coefficients and exponents of the universal ZBL screening function."""
-
 _SMOOTH_ONSET_FRACTION = 0.66
 """Onset of the smooth cutoff relative to the cutoff, as in ASE LennardJones."""
 
 
+@numba.njit
 def _screening(x: RadialValue) -> RadialValue:
     """Evaluate the ZBL screening function phi(x)."""
-    return sum(
-        coefficient * np.exp(-exponent * x)
-        for coefficient, exponent in _SCREENING_TERMS
+    return (
+        0.18175 * np.exp(-3.19980 * x)
+        + 0.50986 * np.exp(-0.94229 * x)
+        + 0.28022 * np.exp(-0.40290 * x)
+        + 0.02817 * np.exp(-0.20162 * x)
     )
 
 
+@numba.njit
 def _screening_derivative(x: RadialValue) -> RadialValue:
     """Evaluate dphi/dx of the ZBL screening function."""
-    return sum(
-        -coefficient * exponent * np.exp(-exponent * x)
-        for coefficient, exponent in _SCREENING_TERMS
+    return (
+        -3.19980 * 0.18175 * np.exp(-3.19980 * x)
+        - 0.94229 * 0.50986 * np.exp(-0.94229 * x)
+        - 0.40290 * 0.28022 * np.exp(-0.40290 * x)
+        - 0.20162 * 0.02817 * np.exp(-0.20162 * x)
     )
 
 
+@numba.njit
 def _screening_length(z_i: RadialValue, z_j: RadialValue) -> RadialValue:
     """Return the Firsov screening length a_ij in Angstrom."""
-    return 0.46850 / (np.asarray(z_i) ** 0.23 + np.asarray(z_j) ** 0.23)
+    return 0.46850 / (z_i**0.23 + z_j**0.23)
 
 
+@numba.njit
 def zbl_energy(z_i: RadialValue, z_j: RadialValue, r: RadialValue) -> RadialValue:
-    """Evaluate the unshifted Ziegler-Biersack-Littmark pair energy.
+    """Evaluate the Ziegler-Biersack-Littmark pair energy.
 
     The ZBL energy is the screened Coulomb repulsion between two nuclei,
 
@@ -73,17 +74,12 @@ def zbl_energy(z_i: RadialValue, z_j: RadialValue, r: RadialValue) -> RadialValu
 
     Examples:
         >>> zbl_energy(79, 79, 1.0)
-        np.float64(471.25...)
+        471.2526265793471
     """
-    return (
-        _PREFACTOR
-        * z_i
-        * z_j
-        / r
-        * _screening(np.asarray(r) / _screening_length(z_i, z_j))
-    )
+    return _PREFACTOR * z_i * z_j / r * _screening(r / _screening_length(z_i, z_j))
 
 
+@numba.njit
 def zbl_force(z_i: RadialValue, z_j: RadialValue, r: RadialValue) -> RadialValue:
     """Evaluate the radial Ziegler-Biersack-Littmark force.
 
@@ -100,10 +96,10 @@ def zbl_force(z_i: RadialValue, z_j: RadialValue, r: RadialValue) -> RadialValue
 
     Examples:
         >>> zbl_force(79, 79, 1.0)
-        np.float64(2124.37...)
+        2124.3717461872957
     """
     screening_length = _screening_length(z_i, z_j)
-    x = np.asarray(r) / screening_length
+    x = r / screening_length
     return (
         -_PREFACTOR
         * z_i
@@ -112,18 +108,129 @@ def zbl_force(z_i: RadialValue, z_j: RadialValue, r: RadialValue) -> RadialValue
     )
 
 
-def _cutoff_switch(r: RadialValue, cutoff: float, onset: float) -> RadialValue:
+@numba.njit
+def _cutoff_switch(r: float, cutoff: float, onset: float) -> float:
     """Evaluate the quintic switch that falls from 1 at onset to 0 at cutoff."""
-    t = np.clip((np.asarray(r) - onset) / (cutoff - onset), 0.0, 1.0)
+    t = (r - onset) / (cutoff - onset)
+    if t < 0.0:
+        t = 0.0
+    elif t > 1.0:
+        t = 1.0
     return 1.0 - t**3 * (10.0 - 15.0 * t + 6.0 * t**2)
 
 
-def _cutoff_switch_derivative(
-    r: RadialValue, cutoff: float, onset: float
-) -> RadialValue:
+@numba.njit
+def _cutoff_switch_derivative(r: float, cutoff: float, onset: float) -> float:
     """Evaluate d(switch)/dr, zero outside the transition region."""
-    t = np.clip((np.asarray(r) - onset) / (cutoff - onset), 0.0, 1.0)
+    t = (r - onset) / (cutoff - onset)
+    if t < 0.0:
+        t = 0.0
+    elif t > 1.0:
+        t = 1.0
     return -30.0 * t**2 * (1.0 - t) ** 2 / (cutoff - onset)
+
+
+@numba.njit
+def _pair_energy_force(
+    z_i: float,
+    z_j: float,
+    distance: float,
+    cutoff: float,
+    onset: float,
+    smooth: bool,
+) -> tuple[float, float]:
+    """Return the pair energy and radial force, optionally switched."""
+    pair_energy = zbl_energy(z_i, z_j, distance)
+    radial = zbl_force(z_i, z_j, distance)
+    if smooth:
+        switch = _cutoff_switch(distance, cutoff, onset)
+        switch_derivative = _cutoff_switch_derivative(distance, cutoff, onset)
+        radial = radial * switch - pair_energy * switch_derivative
+        pair_energy = pair_energy * switch
+    return pair_energy, radial
+
+
+@numba.njit
+def _accumulate_pairs(
+    vectors: npt.NDArray[np.float64],
+    distances: npt.NDArray[np.float64],
+    z_i: npt.NDArray[np.float64],
+    z_j: npt.NDArray[np.float64],
+    indices_i: npt.NDArray[np.int64],
+    indices_j: npt.NDArray[np.int64],
+    forces: npt.NDArray[np.float64],
+    cutoff: float,
+    onset: float,
+    smooth: bool,
+) -> float:
+    """Sum the pair energies of listed pairs and add their forces in place."""
+    energy = 0.0
+    for pair in range(distances.shape[0]):
+        distance = distances[pair]
+        pair_energy, radial = _pair_energy_force(
+            z_i[pair], z_j[pair], distance, cutoff, onset, smooth
+        )
+        energy += pair_energy
+        scale = radial / distance
+        force_x = scale * vectors[pair, 0]
+        force_y = scale * vectors[pair, 1]
+        force_z = scale * vectors[pair, 2]
+        forces[indices_j[pair], 0] += force_x
+        forces[indices_j[pair], 1] += force_y
+        forces[indices_j[pair], 2] += force_z
+        forces[indices_i[pair], 0] -= force_x
+        forces[indices_i[pair], 1] -= force_y
+        forces[indices_i[pair], 2] -= force_z
+    return energy
+
+
+@numba.njit
+def _accumulate_all_pairs(
+    positions: npt.NDArray[np.float64],
+    numbers: npt.NDArray[np.float64],
+    forces: npt.NDArray[np.float64],
+    cutoff: float,
+    onset: float,
+    smooth: bool,
+) -> float:
+    """Sum all pair energies inside the cutoff and add their forces in place."""
+    energy = 0.0
+    cutoff_squared = cutoff * cutoff
+    n_atoms = positions.shape[0]
+    for index_i in range(n_atoms - 1):
+        x_i = positions[index_i, 0]
+        y_i = positions[index_i, 1]
+        z_i = positions[index_i, 2]
+        for index_j in range(index_i + 1, n_atoms):
+            vector_x = positions[index_j, 0] - x_i
+            vector_y = positions[index_j, 1] - y_i
+            vector_z = positions[index_j, 2] - z_i
+            squared_distance = (
+                vector_x * vector_x + vector_y * vector_y + vector_z * vector_z
+            )
+            if squared_distance >= cutoff_squared:
+                continue
+            distance = np.sqrt(squared_distance)
+            pair_energy, radial = _pair_energy_force(
+                numbers[index_i],
+                numbers[index_j],
+                distance,
+                cutoff,
+                onset,
+                smooth,
+            )
+            energy += pair_energy
+            scale = radial / distance
+            force_x = scale * vector_x
+            force_y = scale * vector_y
+            force_z = scale * vector_z
+            forces[index_j, 0] += force_x
+            forces[index_j, 1] += force_y
+            forces[index_j, 2] += force_z
+            forces[index_i, 0] -= force_x
+            forces[index_i, 1] -= force_y
+            forces[index_i, 2] -= force_z
+    return energy
 
 
 class ZBLCalculator(Calculator):
@@ -132,8 +239,8 @@ class ZBLCalculator(Calculator):
     With ``cutoff`` set, the energy is the sum of the ZBL pair energies over
     all pairs inside the cutoff. Two truncation modes are available:
 
-    * hard cutoff (``smooth=False``): plain ZBL pair energies, truncated when a
-      pair leaves the neighbor list,
+    * hard cutoff (``smooth=False``): plain ZBL pair energies, truncated at the
+      cutoff,
 
       .. math::
           E = \\sum_{i<j} E_{ZBL}(r_{ij}).
@@ -227,15 +334,22 @@ class ZBLCalculator(Calculator):
         atoms = self.atoms
         positions = atoms.positions
         numbers = atoms.numbers.astype(np.float64)
+        cutoff = np.inf if self.cutoff is None else self.cutoff
+        onset = 0.0 if self.smooth_onset is None else self.smooth_onset
+        smooth = self.smooth and self.cutoff is not None
 
-        if self.cutoff is None:
-            if atoms.pbc.any():
+        energy = 0.0
+        forces = np.zeros_like(positions)
+
+        if not atoms.pbc.any():
+            energy = float(
+                _accumulate_all_pairs(positions, numbers, forces, cutoff, onset, smooth)
+            )
+        else:
+            if self.cutoff is None:
                 raise ValueError(
                     "ZBLCalculator without a cutoff cannot sum a periodic cell"
                 )
-            indices_i, indices_j = np.triu_indices(len(atoms), k=1)
-            vectors = positions[indices_j] - positions[indices_i]
-        else:
             indices_i, indices_j, offsets = neighbor_list(
                 "ijS",
                 atoms,
@@ -247,29 +361,24 @@ class ZBLCalculator(Calculator):
             indices_i = indices_i[keep]
             indices_j = indices_j[keep]
             offsets = offsets[keep]
-            cell = atoms.cell.array
-            vectors = positions[indices_j] + offsets @ cell - positions[indices_i]
-
-        distances = np.linalg.norm(vectors, axis=1)
-        z_i = numbers[indices_i]
-        z_j = numbers[indices_j]
-
-        energy = 0.0
-        forces = np.zeros_like(positions)
-        if len(distances) > 0:
-            pair_energy = zbl_energy(z_i, z_j, distances)
-            radial = zbl_force(z_i, z_j, distances)
-            if self.cutoff is not None and self.smooth:
-                switch = _cutoff_switch(distances, self.cutoff, self.smooth_onset)
-                switch_derivative = _cutoff_switch_derivative(
-                    distances, self.cutoff, self.smooth_onset
+            vectors = positions[indices_j] + offsets @ atoms.cell.array
+            vectors -= positions[indices_i]
+            distances = np.linalg.norm(vectors, axis=1)
+            if len(distances) > 0:
+                energy = float(
+                    _accumulate_pairs(
+                        vectors,
+                        distances,
+                        numbers[indices_i],
+                        numbers[indices_j],
+                        indices_i,
+                        indices_j,
+                        forces,
+                        cutoff,
+                        onset,
+                        smooth,
+                    )
                 )
-                radial = radial * switch - pair_energy * switch_derivative
-                pair_energy = pair_energy * switch
-            energy = float(np.sum(pair_energy))
-            pair_forces = radial[:, None] * vectors / distances[:, None]
-            np.add.at(forces, indices_j, pair_forces)
-            np.add.at(forces, indices_i, -pair_forces)
 
         self.results["energy"] = energy
         self.results["forces"] = forces
