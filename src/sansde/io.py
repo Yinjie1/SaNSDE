@@ -53,7 +53,7 @@ DEFAULT_RUN_PARAMS: dict[str, Any] = {
     'POP_DIR': 'Populations',
     'POP_SIZE': 12,
     'MAX_GEN': 500,
-    'CONV_STEPS': 10,
+    'CONV_STEPS': 250,
     'EDIFF': 1e-5,
     'S_STRICT': 0.95,
     'S_LOOSE': 0.98,
@@ -66,7 +66,7 @@ DEFAULT_RUN_PARAMS: dict[str, Any] = {
     'POTENTIAL': "LennardJones(epsilon=0.4443, sigma=2.6367)",
     'USE_ZBL': True,
     'ZBL_CUTOFF': 1.5,
-    'ZBL_SMOOTH': False,
+    'ZBL_SMOOTH': True,
     'RELAX_FMAX': 0.05,
     'RELAX_STEPS': 300,
 }
@@ -90,17 +90,18 @@ def read_run_params(params_path: Path) -> dict[str, Any]:
 
     Raises
     ------
+    FileNotFoundError
+        If ``params_path`` does not exist.
     TypeError
         If the JSON content is not an object.
     """
-    try:
-        with params_path.open('r', encoding='utf-8') as handle:
-            user_params = json.load(handle)
-        if not isinstance(user_params, dict):
-            raise TypeError(f"{params_path} must contain a JSON object")
-        print(f"load parameters from {params_path}")
-    except FileNotFoundError:
-        user_params = {}
+    if not params_path.is_file():
+        raise FileNotFoundError(f"run parameter file not found: {params_path}")
+    with params_path.open('r', encoding='utf-8') as handle:
+        user_params = json.load(handle)
+    if not isinstance(user_params, dict):
+        raise TypeError(f"{params_path} must contain a JSON object")
+    print(f"load parameters from {params_path}")
     return {**DEFAULT_RUN_PARAMS, **user_params}
 
 

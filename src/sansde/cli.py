@@ -314,6 +314,10 @@ def main(argv: list[str] | None = None) -> None:
     if args.command != "run":
         parser.error("missing command")
 
+    if not Path(args.params).is_file():
+        print(f"error: parameter file not found: {args.params}", file=sys.stderr)
+        raise SystemExit(1)
+
     if args.foreground:
         # Explicit foreground: run in the current process, output stays on the terminal.
         run_opt(args.params)
