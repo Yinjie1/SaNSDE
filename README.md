@@ -2,7 +2,7 @@
 
 SaNSDE is a Python package for global optimization of isolated atomic nanoclusters. It combines a self-adaptive differential-evolution search with ASE local relaxation: candidates are produced by mutation, crossover and cluster-specific transformations, relaxed with BFGS, and selected by energy/similarity criteria. Structures are deduplicated by point group and geometric similarity to keep the population diverse.
 
-Any ASE calculator can be used as the potential. The default is a DeePMD-kit model with an optional hiphive ZBL short-range term; Lennard-Jones is available for fast tests.
+Any ASE calculator can be used as the potential. The default is a DeePMD-kit model with an optional built-in ZBL short-range term; Lennard-Jones is available for fast tests.
 
 ## Features
 
@@ -17,10 +17,10 @@ Any ASE calculator can be used as the potential. The default is a DeePMD-kit mod
 
 - Python >= 3.10
 - `numpy`, `ase`
+- `numba` (for the built-in ZBL calculator)
 - `pymatgen` (for point group calculation)
 - `matplotlib` (for cluster analysis plots)
 - `deepmd-kit` (optional, for DP potentials)
-- `hiphive` (optional, for the ZBL short-range term)
 
 ## Installation
 
@@ -110,11 +110,11 @@ potential ok: params.json (Au): LennardJones
 error: params.json (Au): potential check failed: name 'LennardJones' is not defined
 ```
 
-If `USE_ZBL` is true (the default), `check` also verifies that `hiphive.calculators.zbl` can be
-imported. Only the first JSON with `USE_ZBL` true is checked:
+If `USE_ZBL` is true (the default), `check` also validates `ZBL_CUTOFF` and `ZBL_SMOOTH`.
+Only the first JSON with `USE_ZBL` true is checked:
 
 ```text
-zbl ok: hiphive.calculators.zbl
+zbl ok: sansde.calc (hard cutoff=1.5 A)
 ```
 
 With `ROUND > 1`, the round directories `best1/`, `best2/`, ... are checked instead of `BEST_DIR`.
@@ -266,7 +266,7 @@ sansde init
     "POTENTIAL": "DP(model=Path('/home/linyj/02-linyj/potentials/dp/Au3c.pth'))",
     "USE_ZBL": true,
     "ZBL_CUTOFF": 1.5,
-    "ZBL_SKIN": 0,
+    "ZBL_SMOOTH": false,
     "RELAX_FMAX": 0.05,
     "RELAX_STEPS": 300
 }
@@ -277,7 +277,7 @@ Key points:
 - `EXPORT` is a dictionary of environment variables applied to the current process before `SCRIPTS`, for example thread limits for DP. [How to control the parallelism of a job?](https://docs.deepmodeling.com/projects/deepmd/en/stable/troubleshooting/howtoset_num_nodes.html)
 - `SCRIPTS` is a list of Python snippets executed in order before the other parameters are read; they can import calculators or modify `params`, e.g. `["from ase.calculators.lj import LennardJones"]`.
 - `POTENTIAL` must be an ASE `Calculator`. A string expression is also accepted, but it must evaluate to a calculator; it is evaluated in the module namespace where `DP`, `LennardJones` and any name imported by `SCRIPTS` are available. For a Lennard-Jones test use `"POTENTIAL": "LennardJones(epsilon=0.4443, sigma=2.6367)"`.
-- `USE_ZBL` adds the hiphive ZBL short-range repulsion on top of `POTENTIAL` with range `ZBL_CUTOFF + 2 * ZBL_SKIN`.
+- `USE_ZBL` adds the built-in ZBL short-range repulsion on top of `POTENTIAL` with cutoff `ZBL_CUTOFF`. With `ZBL_SMOOTH` false the energy and forces at a given geometry match `hiphive.calculators.zbl.ZBLCalculator` with `skin=0`; with `ZBL_SMOOTH` true both are continuous at the cutoff.
 - `ROUND` is the number of optimization rounds. With `ROUND > 1`, custom `INIT_DIR`, `BEST_DIR` and `INIT_POP_DIR` are ignored: round 1 reads `init/` and writes `best1/`, round `r` reads `best{r-1}/` and writes `best{r}/`.
 - `INIT_DIR` is scanned for `{element}{atom}*.xyz`; the last frame is used as the initial structure (candidate frames are written worst-first, so the best is last) and its energy is recomputed. An empty `INIT_DIR` disables initial-structure loading.
 - `INIT_POP_DIR`, when non-empty, loads `{element}{atom}*.json` population snapshots instead of `INIT_DIR`.

@@ -1,6 +1,5 @@
 """Checks for sansde run parameter files and working directories."""
 
-import importlib
 import json
 import math
 import os
@@ -54,6 +53,8 @@ class _RunConfig:
     scripts: object
     potential: object
     use_zbl: bool
+    zbl_cutoff: float
+    zbl_smooth: bool
     rounds: int
 
 
@@ -61,6 +62,14 @@ def _dir_setting(data: dict[str, object], key: str, default: str) -> str:
     """Return a directory setting, using the default only when it is missing."""
     value = data.get(key, default)
     return default if value is None else str(value)
+
+
+def _float_setting(data: dict[str, object], key: str, default: float) -> float:
+    """Return a float setting, or NaN when the stored value is not numeric."""
+    try:
+        return float(data.get(key, default))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return math.nan
 
 
 def _read_run_configs(directory: Path, color: bool) -> list[_RunConfig]:
@@ -109,6 +118,8 @@ def _read_run_configs(directory: Path, color: bool) -> list[_RunConfig]:
                 scripts=data.get("SCRIPTS", []),
                 potential=data.get("POTENTIAL"),
                 use_zbl=bool(data.get("USE_ZBL", True)),
+                zbl_cutoff=_float_setting(data, "ZBL_CUTOFF", 1.5),
+                zbl_smooth=bool(data.get("ZBL_SMOOTH", False)),
                 rounds=rounds,
             )
         )
@@ -488,20 +499,21 @@ def _check_potential(config: _RunConfig, color: bool) -> str | None:
 
 
 def _check_zbl(config: _RunConfig, color: bool) -> None:
-    """Check that the hiphive ZBL module can be imported when USE_ZBL is true."""
+    """Validate the ZBL settings when USE_ZBL is true."""
     if not config.use_zbl:
         return
-    module = "hiphive.calculators.zbl"
-    try:
-        importlib.import_module(module)
-    except Exception as e:  # noqa: BLE001
-        detail = str(e) or type(e).__name__
+    if not math.isfinite(config.zbl_cutoff) or config.zbl_cutoff <= 0:
         print(
             f"{_paint('error:', _RED, color)} "
-            f"{config.path.name}: zbl check failed: {detail}"
+            f"{config.path.name}: ZBL_CUTOFF must be a positive number, "
+            f"got {config.zbl_cutoff}"
         )
         return
-    print(f"{_paint('zbl ok:', _GREEN, color)} {module}")
+    mode = "smooth" if config.zbl_smooth else "hard"
+    print(
+        f"{_paint('zbl ok:', _GREEN, color)} sansde.calc "
+        f"({mode} cutoff={config.zbl_cutoff:g} A)"
+    )
 
 
 def run_check(

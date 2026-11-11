@@ -10,15 +10,11 @@ from typing import Any
 
 import numpy as np
 from ase import Atoms
-from ase.calculators.calculator import Calculator
+from ase.calculators.calculator import BaseCalculator
 from ase.calculators.mixing import SumCalculator
 from ase.optimize import BFGS
 
-try:
-    from hiphive.calculators.zbl import ZBLCalculator
-except ImportError:
-    ZBLCalculator = None  # type: ignore[assignment]
-
+from sansde.calc import ZBLCalculator
 from sansde.io import append_stats_row, read_run_params
 from sansde.operators import (
     crossover,
@@ -39,7 +35,7 @@ def run(
     round_index: int = 1,
     *,
     params: dict[str, Any],
-    potential: Calculator,
+    potential: BaseCalculator,
     relax: Callable[..., Any],
     stats_path: Path,
     run_start: float,
@@ -55,7 +51,7 @@ def run(
         Default 1.
     params : dict[str, Any]
         Parsed run parameters.
-    potential : Calculator
+    potential : BaseCalculator
         ASE calculator used to re-evaluate imported structures.
     relax : Callable
         Local optimization callable.
@@ -343,29 +339,24 @@ def main(params_path: Path) -> None:
     for script in SCRIPTS:
         exec(script, globals())  # noqa: S102, user-provided calculator setup
 
-    # 势能面
-    # use_zbl=True 时在 POTENTIAL 上叠加 hiphive 的 ZBL 短程排斥
-    # E_total = E_POTENTIAL + E_ZBL; 注意 ZBL 的有效作用距离约为
-    # r_eff = cutoff + 2 * skin.
+    # Potential energy surface.
+    # With USE_ZBL the built-in ZBL short-range repulsion is added on top of
+    # POTENTIAL: E_total = E_POTENTIAL + E_ZBL.
     potential_spec = params['POTENTIAL']
     if isinstance(potential_spec, str):
         potential_spec = eval(potential_spec, globals())
-    if not isinstance(potential_spec, Calculator):
+    if not isinstance(potential_spec, BaseCalculator):
         raise TypeError(
-            "POTENTIAL must be an ase Calculator or an expression that "
+            "POTENTIAL must be an ASE calculator or an expression that "
             f"evaluates to one, got {type(potential_spec).__name__}"
         )
-    POTENTIAL: Calculator = potential_spec
-    use_zbl = bool(params['USE_ZBL'])
-    if use_zbl and ZBLCalculator is None:
-        print("Warning: hiphive is not installed; ZBL is disabled.")
-        use_zbl = False
+    POTENTIAL: BaseCalculator = potential_spec
 
-    if use_zbl:
+    if bool(params['USE_ZBL']):
         zbl = ZBLCalculator(
             cutoff=float(params['ZBL_CUTOFF']),
-            skin=float(params['ZBL_SKIN']),
-        )  # type: ignore
+            smooth=bool(params['ZBL_SMOOTH']),
+        )
         potential = SumCalculator([POTENTIAL, zbl])
     else:
         potential = POTENTIAL

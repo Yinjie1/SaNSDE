@@ -2,7 +2,7 @@
 name: sansde
 description: "Run nanocluster global optimization with the `sansde` CLI: initialize parameters, validate inputs and outputs, run the self-adaptive differential evolution workflow, and optionally export selected structures to VASP tasks. Use when the user wants to optimize nanoclusters with LJ or DeePMD potentials. Treat `sansde` as a black-box CLI."
 license: MIT
-compatibility: Requires the `sansde` executable on PATH. The potential is configured through `SCRIPTS` and `POTENTIAL`; optional DeePMD and hiphive features require their own installations.
+compatibility: Requires the `sansde` executable on PATH. The potential is configured through `SCRIPTS` and `POTENTIAL`; optional DeePMD features require their own installation.
 ---
 
 # SaNSDE optimization
@@ -62,7 +62,7 @@ This writes `params.json` in the current directory. Use strict JSON.
   "POTENTIAL": "DP(model=Path('/path/to/model.pth'))",
   "USE_ZBL": true,
   "ZBL_CUTOFF": 1.5,
-  "ZBL_SKIN": 0,
+  "ZBL_SMOOTH": false,
   "RELAX_FMAX": 0.05,
   "RELAX_STEPS": 300
 }
@@ -85,7 +85,7 @@ Key parameters:
 - `EDIFF`: energy tolerance for stagnation.
 - `CAND_SIZE`: candidate archive size.
 - `BEST_DIR`, `BETTER_DIR`, `POP_DIR`: output directories.
-- `USE_ZBL`: add the hiphive ZBL short-range term on top of `POTENTIAL`.
+- `USE_ZBL`: add the built-in ZBL short-range term on top of `POTENTIAL`.
 - `RELAX_FMAX`, `RELAX_STEPS`: local relaxation settings.
 
 For Lennard-Jones, use:
@@ -122,7 +122,7 @@ sansde check
 - existing output files that may be overwritten;
 - missing initial structures or populations;
 - whether the configured potential can be invoked;
-- whether the ZBL module can be imported when `USE_ZBL` is true.
+- whether the ZBL settings are valid when `USE_ZBL` is true.
 
 Act on these results:
 

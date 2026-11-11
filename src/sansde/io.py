@@ -64,7 +64,7 @@ DEFAULT_RUN_PARAMS: dict[str, Any] = {
     'POTENTIAL': "LennardJones(epsilon=0.4443, sigma=2.6367)",
     'USE_ZBL': True,
     'ZBL_CUTOFF': 1.5,
-    'ZBL_SKIN': 0,
+    'ZBL_SMOOTH': False,
     'RELAX_FMAX': 0.05,
     'RELAX_STEPS': 300,
 }
