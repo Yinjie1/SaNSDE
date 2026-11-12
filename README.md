@@ -25,9 +25,9 @@ uv pip install sansde
 ## Quick start
 
 ```bash
-sansde init                      # write params.json by default
+sansde init                      # write params.json by default (can be renamed)
 sansde check                     # sanity-check the setup
-sansde run params.json           # background run, log in params.log (can be renamed)
+sansde run params.json           # background run, log in params.log
 ```
 
 `sansde init` writes `params.json` with all defaults filled in. A minimal configuration looks like this:
