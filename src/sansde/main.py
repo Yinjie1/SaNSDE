@@ -194,7 +194,7 @@ def run(
         # 2) 变异 + 交叉 + 球切交叉 + 局部变换.
         pop_mut = mutate(pop, a=20 * float(params['LATTICE_CONST']), debug=True)
         pop_cross = crossover(pop, pop_mut)
-        pop_splice = sphere_cut_splice(pop, pop_cross, r=0.8, relax=relax, debug=True)
+        pop_splice = sphere_cut_splice(pop, pop_cross, relax=relax)
         pop_trans = local_transformation(pop_splice, r=0.25, relax=relax)
 
         # 3) 选择下一代并输出每代指标.

@@ -643,173 +643,129 @@ def crossover(pop1: Population, pop2: Population) -> Population:
 def sphere_cut_splice(
     pop: Population,
     trial: Population,
-    r: float = 0.8,
     relax: Callable[[Population | Atoms], Population | Atoms] | None = None,
-    debug: bool = False,
 ) -> Population:
-    """球切交叉:按球面划分并交换外层原子坐标,择优进入下一代.
+    """Sphere-cut crossover driven by the sum of atomic coordinates.
+
+    For every individual the parent ``pop[i]`` is the father and the crossover
+    offspring ``trial[i]`` is the mother. Both structures are moved to the
+    origin, every atom gets the scalar ``x + y + z`` of its position, and both
+    atom lists are sorted by that scalar. A cut position is a rank where the
+    relative order of the two sorted lists flips; one such rank is drawn at
+    random and used as the threshold. One child keeps the father core and takes
+    the mother shell, the other keeps the mother core and takes the father
+    shell. Both children are relaxed and the lower-energy one is kept.
+
+    Only coordinates are exchanged, so each child keeps the chemical
+    composition of its template. Every individual always produces one
+    offspring, so there is no failure or retry branch.
 
     Parameters
     ----------
     pop : Population
-        父代种群.
+        Parent population.
     trial : Population
-        试验种群(crossover 产生的候选).
-    r : float, optional
-        半径缩放系数,取值范围 (0, 1].
-        球面半径定义为 R = dmax_a * r.
+        Crossover offspring; ``trial[i]`` is crossed with ``pop[i]``.
     relax : Callable, optional
-        局域优化函数. 可传入偏函数 relax() 或函数对象 local_optimize().
-        若使用默认值 None, 则直接报错.
-    debug : bool, optional
-        是否输出重选过程信息. Default False.
+        Local optimization callable. ``None`` raises ``ValueError``.
 
-    The splice pairs clusters randomly, so the per-individual crossover rates
-    are restored by population order afterwards: the offspring at index ``i``
-    receives the CR of ``trial[i]``.
+    Returns
+    -------
+    Population
+        Offspring population with the same length as ``pop``.
+
+    Raises
+    ------
+    ValueError
+        If the populations differ in symbol or length, or ``relax`` is missing.
+    TypeError
+        If ``relax`` does not return an ``Atoms`` object.
     """
     if pop.symbol != trial.symbol:
         raise ValueError("Population symbols must match for sphere_cut_splice")
     if len(pop) != len(trial):
         raise ValueError("Population sizes must match for sphere_cut_splice")
-    if len(pop) < 2:
-        raise ValueError("sphere_cut_splice requires at least 2 clusters per population")
-    if not (0.0 < r <= 1.0):
-        raise ValueError("r must be in (0, 1]")
+    if relax is None:
+        raise ValueError("sphere_cut_splice requires explicit relax callable")
 
     temp_clusters = Population(symbol=pop.symbol)
     temp_clusters.info = pop.info.copy()
 
-    if relax is None:
-        raise ValueError("sphere_cut_splice requires explicit relax callable")
+    for index in range(len(pop)):
+        father = pop[index]
+        mother = trial[index]
 
-    def splice_one(cluster_a: Atoms, cluster_b: Atoms) -> Atoms | None:
-        work_a = cluster_a.copy()
-        work_b = cluster_b.copy()
+        father_positions = np.asarray(father.get_positions(), dtype=float)
+        mother_positions = np.asarray(mother.get_positions(), dtype=float)
+        father_positions = father_positions - np.mean(father_positions, axis=0)
+        mother_positions = mother_positions - np.mean(mother_positions, axis=0)
 
-        # 这里按需求使用质心(center of mass)移动到原点,不使用几何中心.
-        work_a.set_center_of_mass([0.0, 0.0, 0.0])
-        work_b.set_center_of_mass([0.0, 0.0, 0.0])
+        father_sum = np.sum(father_positions, axis=1)
+        mother_sum = np.sum(mother_positions, axis=1)
+        father_rank = np.copy(father_sum)
+        mother_rank = np.copy(mother_sum)
 
-        positions_a = work_a.get_positions().copy()
-        positions_b = work_b.get_positions().copy()
-        symbols_a = work_a.get_chemical_symbols()
-        symbols_b = work_b.get_chemical_symbols()
+        n_atoms = len(father)
+        for i in range(n_atoms - 1):
+            for j in range(i + 1, n_atoms):
+                if father_sum[i] == father_sum[j]:
+                    father_sum[i] += (2.0 + np.random.random()) * 1e-16
+                    father_rank[i] = father_sum[i]
+                if mother_sum[i] == mother_sum[j]:
+                    mother_sum[i] += (2.0 + np.random.random()) * 1e-16
+                    mother_rank[i] = mother_sum[i]
 
-        dist_a = np.linalg.norm(positions_a, axis=1)
-        dist_b = np.linalg.norm(positions_b, axis=1)
+        father_rank.sort()
+        mother_rank.sort()
 
-        dmax_a = float(np.max(dist_a))
-        radius = dmax_a * r
+        crossings = [
+            k
+            for k in range(1, n_atoms)
+            if mother_rank[k - 1] < father_rank[k - 1]
+            and father_rank[k] < mother_rank[k]
+        ]
 
-        symbol_set = sorted(set(symbols_a))
-        swap_pairs: list[tuple[int, int]] = []
+        child1_positions = father_positions.copy()
+        child2_positions = mother_positions.copy()
+        if crossings:
+            middle = int(np.ceil(len(crossings) * np.random.random()))
+            if middle == 0:
+                middle = 1
+            cut = crossings[middle - 1]
+            father_cut = father_rank[cut]
+            mother_cut = mother_rank[cut]
 
-        for symbol in symbol_set:
-            outer_indices_a = [
-                i for i, atom_symbol in enumerate(symbols_a)
-                if atom_symbol == symbol and dist_a[i] > radius
-            ]
+            mother_shell = mother_sum > mother_cut + 1e-16
+            child1_positions[mother_shell] = mother_positions[mother_shell]
+            father_shell = father_sum > father_cut + 1e-16
+            child2_positions[father_shell] = father_positions[father_shell]
 
-            count_outer = len(outer_indices_a)
-            if count_outer == 0:
-                continue
+        children: list[Atoms] = []
+        for template, positions in (
+            (father, child1_positions),
+            (mother, child2_positions),
+        ):
+            cluster = template.copy()
+            cluster.set_positions(positions)
+            relaxed = relax(cluster)
+            if not isinstance(relaxed, Atoms):
+                raise TypeError("relax must return Atoms when input is Atoms")
+            if relaxed.info.get('energy') is None:
+                raise ValueError(
+                    "relax result must contain energy for sphere_cut_splice"
+                )
+            children.append(relaxed)
 
-            candidate_indices_b = [
-                i for i, atom_symbol in enumerate(symbols_b)
-                if atom_symbol == symbol
-            ]
-            candidate_indices_b.sort(key=lambda i: dist_b[i], reverse=True)
-            selected_indices_b = candidate_indices_b[:count_outer]
+        winner = children[1]
+        if float(children[0].info['energy']) < float(children[1].info['energy']):
+            winner = children[0]
 
-            if len(selected_indices_b) < count_outer:
-                return None
+        for key in ('cr', 'scale_factor_tag', 'strategy_tag', 'F'):
+            value = mother.info.get(key)
+            if value is not None:
+                winner.info[key] = value
 
-            # 若团簇2被选中交换的原子里出现 <= dmax_a*r/2,则本次交换失败并重选.
-            threshold = radius / 2.0
-            if any(dist_b[idx] <= threshold for idx in selected_indices_b):
-                return None
-
-            outer_indices_a.sort(key=lambda i: dist_a[i], reverse=True)
-            selected_indices_b.sort(key=lambda i: dist_b[i], reverse=True)
-            swap_pairs.extend(zip(outer_indices_a, selected_indices_b))
-
-        trial_a = work_a.copy()
-        trial_b = work_b.copy()
-        trial_pos_a = trial_a.get_positions().copy()
-        trial_pos_b = trial_b.get_positions().copy()
-
-        for index_a, index_b in swap_pairs:
-            cache = trial_pos_a[index_a].copy()
-            trial_pos_a[index_a] = trial_pos_b[index_b]
-            trial_pos_b[index_b] = cache
-
-        trial_a.set_positions(trial_pos_a)
-        trial_b.set_positions(trial_pos_b)
-
-        relaxed_a = relax(trial_a)
-        relaxed_b = relax(trial_b)
-        if not isinstance(relaxed_a, Atoms) or not isinstance(relaxed_b, Atoms):
-            raise TypeError("relax must return Atoms when input is Atoms")
-
-        # Propagate scale_factor_tag and F like crossover does.
-        scale_factor_tag = cluster_b.info.get('scale_factor_tag')
-        if scale_factor_tag is not None:
-            relaxed_a.info['scale_factor_tag'] = scale_factor_tag
-            relaxed_b.info['scale_factor_tag'] = scale_factor_tag
-        f_value = cluster_b.info.get('F')
-        if f_value is not None:
-            relaxed_a.info['F'] = f_value
-            relaxed_b.info['F'] = f_value
-        strategy_tag = cluster_b.info.get('strategy_tag')
-        if strategy_tag is not None:
-            relaxed_a.info['strategy_tag'] = strategy_tag
-            relaxed_b.info['strategy_tag'] = strategy_tag
-
-        energy_a = relaxed_a.info.get('energy')
-        energy_b = relaxed_b.info.get('energy')
-        if energy_a is None or energy_b is None:
-            raise ValueError("relax result must contain energy for sphere_cut_splice")
-
-        return relaxed_a if float(energy_a) <= float(energy_b) else relaxed_b
-
-    target_size = len(pop)
-    max_retries = target_size * 200
-    retry_count = 0
-
-    while len(temp_clusters) < target_size:
-        if retry_count >= max_retries:
-            raise RuntimeError("sphere_cut_splice failed to generate enough offspring after retries")
-        retry_count += 1
-
-        selected_1 = np.random.choice(len(pop), size=2, replace=False)
-        selected_2 = np.random.choice(len(trial), size=2, replace=False)
-
-        winners: list[Atoms] = []
-        round_failed = False
-        for local_index in range(2):
-            winner = splice_one(pop[int(selected_1[local_index])], trial[int(selected_2[local_index])])
-            if winner is None:
-                round_failed = True
-                break
-            winners.append(winner)
-
-        if round_failed:
-            if debug:
-                print(f"SphereCutSplice failed, retry_count={retry_count}")
-            continue
-
-        for winner in winners:
-            if len(temp_clusters) >= target_size:
-                break
-            temp_clusters.add_cluster(winner)
-
-    # Restore the CR of each population index: the splice pairs random cluster
-    # indexes, so record the current CR values and assign them back by order.
-    for index, cluster in enumerate(temp_clusters):
-        cross_rate = trial[index].info.get('cr')
-        if cross_rate is not None:
-            cluster.info['cr'] = float(cross_rate)
+        temp_clusters.add_cluster(winner)
 
     return temp_clusters
 
