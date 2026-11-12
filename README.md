@@ -1,5 +1,7 @@
 # SaNSDE
 
+[![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
+
 SaNSDE is a Python package for global optimization of isolated atomic nanoclusters. It combines a self-adaptive differential-evolution search with ASE local relaxation: candidates are produced by mutation, crossover and cluster-specific transformations, relaxed with BFGS, and selected by energy/similarity criteria. Structures are deduplicated by point group and geometric similarity to keep the population diverse.
 
 Any ASE calculator can be used as the potential. The default is a DeePMD-kit model with an optional built-in ZBL short-range term; Lennard-Jones is available for fast tests.
@@ -24,6 +26,16 @@ Any ASE calculator can be used as the potential. The default is a DeePMD-kit mod
 - `asap3` (optional, for `GuptaCalculator`)
 
 ## Installation
+
+```bash
+pip install sansde            # core dependencies
+pip install "sansde[pg]"      # point-group analysis (pymatgen)
+pip install "sansde[dp]"      # DeePMD-kit calculators
+pip install "sansde[gupta]"   # asap3-backed Gupta calculator
+pip install "sansde[all]"     # every optional dependency
+```
+
+For development, install the working tree:
 
 ```bash
 uv pip install -e .

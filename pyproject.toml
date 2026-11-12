@@ -5,7 +5,33 @@ build-backend = "uv_build"
 [project]
 name = "sansde"
 version = "0.3.1"
+description = "Self-adaptive differential evolution for nanocluster global optimization"
+readme = "README.md"
 requires-python = ">=3.10"
+authors = [{ name = "Yinjie1", email = "779602381@qq.com" }]
+keywords = ["cluster", "global optimization", "differential evolution", "ase", "nanoparticles"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Chemistry",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+    "numpy",
+    "ase",
+    "numba",
+    "matplotlib",
+]
+
+[project.optional-dependencies]
+pg = ["pymatgen"]
+dp = ["deepmd-kit"]
+gupta = ["asap3"]
+all = ["pymatgen", "deepmd-kit", "asap3"]
+
+[project.urls]
+Homepage = "https://github.com/Yinjie1/SaNSDE"
+Repository = "https://github.com/Yinjie1/SaNSDE"
 
 [project.scripts]
 sansde = "sansde.cli:main"
