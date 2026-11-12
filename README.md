@@ -1,8 +1,7 @@
 # SaNSDE
 
+[![GitHub](https://img.shields.io/badge/GitHub-Yinjie1%2FSaNSDE-181717?logo=github&logoColor=white)](https://github.com/Yinjie1/SaNSDE)
 [![PyPI](https://img.shields.io/pypi/v/sansde.svg)](https://pypi.org/project/sansde)
-[![Python](https://img.shields.io/pypi/pyversions/sansde.svg)](https://pypi.org/project/sansde)
-[![GitHub](https://img.shields.io/github/stars/Yinjie1/SaNSDE.svg)](https://github.com/Yinjie1/SaNSDE)
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 
 SaNSDE is a self-adaptive differential evolution with neighborhood search for finding low-energy structures of isolated nanoclusters. The whole workflow is built on [ASE](https://ase-lib.org/) and accepts any ASE calculator object as the potential, so the same input works with [DeePMD-kit](https://github.com/deepmodeling/deepmd-kit) models, [asap3](https://asap3.readthedocs.io/en/latest/) potentials, or something you write yourself.
