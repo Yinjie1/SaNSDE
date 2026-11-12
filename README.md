@@ -5,13 +5,22 @@
 [![GitHub](https://img.shields.io/github/stars/Yinjie1/SaNSDE.svg)](https://github.com/Yinjie1/SaNSDE)
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 
-SaNSDE is a self-adaptive differential evolution with neighborhood search for finding low-energy structures of isolated nanoclusters. The whole workflow is built on [ASE](https://ase-lib.org/) and accepts any ASE calculator object as the potential, so the same input works with DeePMD-kit models, asap3 potentials, or something you write yourself.
+SaNSDE is a self-adaptive differential evolution with neighborhood search for finding low-energy structures of isolated nanoclusters. The whole workflow is built on [ASE](https://ase-lib.org/) and accepts any ASE calculator object as the potential, so the same input works with [DeePMD-kit](https://github.com/deepmodeling/deepmd-kit) models, [asap3](https://asap3.readthedocs.io/en/latest/) potentials, or something you write yourself.
 
 ## Install
 
+As a command-line tool:
+
 ```bash
 uv tool install sansde
+# check that the tool is installed
 uv tool list
+```
+
+It can also be installed into a Python environment for custom workflows:
+
+```bash
+uv pip install sansde
 ```
 
 ## Quick start
