@@ -11,15 +11,15 @@ SaNSDE is a self-adaptive differential evolution with neighborhood search for fi
 
 ```bash
 uv tool install sansde
+uv tool list
 ```
 
 ## Quick start
 
 ```bash
-sansde init                      # write default params.json
+sansde init                      # write params.json by default
 sansde check                     # sanity-check the setup
-sansde run params.json           # background run, log in params.log
-sansde run params.json --fg      # stay in the terminal
+sansde run params.json           # background run, log in params.log (can be renamed)
 ```
 
 `sansde init` writes `params.json` with all defaults filled in. A minimal configuration looks like this:
@@ -38,7 +38,7 @@ Anything you leave out keeps its default. `sansde check` lists the systems that 
 
 ## Potentials
 
-`POTENTIAL` is an ASE calculator, built from a Python expression after `SCRIPTS` has run. Any ASE calculator works; two common choices:
+`POTENTIAL` is an ASE calculator object, built from a Python expression after `SCRIPTS` has run. Any ASE calculator works; two common choices:
 
 ```jsonc
 // DeePMD-kit (requires deepmd-kit)
@@ -50,7 +50,7 @@ Anything you leave out keeps its default. `sansde check` lists the systems that 
 "POTENTIAL": "GuptaCalculator({'Au': [10.229, 4.036, 0.2061, 1.790, 2.884]})"
 ```
 
-`USE_ZBL` is on by default. It adds a short-range repulsion wall so atoms cannot collapse onto each other when the potential is evaluated outside the region it was trained for. Turn it off for potentials that already handle close contacts.
+`USE_ZBL` is on by default. It adds a short-range repulsion wall so atoms cannot collapse onto each other when the potential is evaluated outside the region it was trained for. Usually only some machine-learning potentials need it; turn it off for potentials that already handle close contacts.
 
 ## Alloy clusters
 
@@ -66,9 +66,9 @@ Give a second element and the total cluster size to search fixed-composition all
 
 ## Results
 
-- `best/{formula}_best.xyz` — best candidates found, worst first, best last.
-- `better/{formula}_better.xyz` — every structure that improved the search.
-- `Populations/` — saved populations; point `INIT_POP_DIR` at them to continue.
+- `best/{formula}_best.xyz` — best and next-best clusters found, ordered from higher to lower energy (best last).
+- `better/{formula}_better.xyz` — best and next-best clusters found, excluding the initial ones.
+- `Populations/` — population snapshots; point `INIT_POP_DIR` at them to continue.
 - `params.csv` — per-generation statistics, `params.log` — the run log.
 
 With `"ROUND": 2` or more, each round writes its own `best1/`, `best2/`, ... and starts from the previous round's structures.
