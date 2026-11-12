@@ -7,9 +7,12 @@
 
 ```bash
 python3 scripts/check_relax.py <vasp_root> --json-out ase_json
-python3 scripts/check_relax.py <vasp_root>                 # CSV + S/S2 plot only
-python3 scripts/check_relax.py <vasp_root> --no-plot        # CSV only
+python3 scripts/check_relax.py <vasp_root>                    # CSV only
+python3 scripts/check_relax.py <vasp_root> --plot             # CSV + PNG plot
+python3 scripts/check_relax.py <vasp_root> --plot svg eps     # other formats
 ```
+
+Images are named `<root-directory>_check_s.<format>` in the current directory, following the convention of the analysis commands. Without `--plot` no image is written.
 
 A calculation directory is any directory that contains at least one of `POSCAR`, `CONTCAR`, `OSZICAR` or `OUTCAR`. The script walks the whole tree, so a root holding several generations or datasets works in one call.
 

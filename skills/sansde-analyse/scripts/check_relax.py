@@ -15,8 +15,7 @@ ionic step) and ``atoms.info["is_ref"]`` (1 when the directory holds an
 ``IS_REF`` marker).
 
 Usage:
-    python3 check_relax.py [VASP_ROOT] [--json-out ase_json]
-                           [--plot check_s.svg | --no-plot]
+    python3 check_relax.py [VASP_ROOT] [--json-out ase_json] [--plot [FORMAT ...]]
 """
 
 from __future__ import annotations
@@ -47,7 +46,6 @@ STRUCT_CONV_MARKER = (
 )
 IONIC_RE = re.compile(r"^\s*\d+\s+F=")
 
-PLOT_FILE = "check_s.svg"
 X_STEP = 5
 COLOR_S = "#0000ff"
 COLOR_S2 = "#ff0000"
@@ -384,7 +382,7 @@ def make_plot(rows: list[dict[str, object]], outfile: Path) -> None:
     axes.grid(True, alpha=0.3)
     axes.legend(loc="lower left")
     figure.tight_layout()
-    figure.savefig(outfile, format="svg" if outfile.suffix.lower() == ".svg" else None)
+    figure.savefig(outfile, format=outfile.suffix.lstrip("."))
     plt.close(figure)
 
 
@@ -398,8 +396,14 @@ def main() -> int:
         metavar="DIR",
         help="also write one ASE JSON file per calculation directory",
     )
-    parser.add_argument("--plot", default=PLOT_FILE, metavar="OUT.svg")
-    parser.add_argument("--no-plot", action="store_true")
+    parser.add_argument(
+        "--plot",
+        nargs="*",
+        choices=("svg", "png", "eps"),
+        default=None,
+        metavar="FORMAT",
+        help="write PNG plots by default; pass one or more of svg, png and eps",
+    )
     args = parser.parse_args()
 
     root = Path(args.path)
@@ -504,9 +508,13 @@ def main() -> int:
         else:
             print(f"[json] {exported} systems -> {json_dir}", file=sys.stderr)
 
-    if not args.no_plot and plot_rows:
-        make_plot(plot_rows, Path(args.plot))
-        print(f"[plot] {args.plot}", file=sys.stderr)
+    if args.plot is not None and plot_rows:
+        formats = list(dict.fromkeys(args.plot or ["png"]))
+        prefix = root.resolve().name
+        for suffix in formats:
+            outfile = Path(f"{prefix}_check_s.{suffix}")
+            make_plot(plot_rows, outfile)
+            print(f"[plot] {outfile}", file=sys.stderr)
     return 0
 
 
