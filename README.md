@@ -1,5 +1,8 @@
 # SaNSDE
 
+[![PyPI](https://img.shields.io/pypi/v/sansde.svg)](https://pypi.org/project/sansde)
+[![Python](https://img.shields.io/pypi/pyversions/sansde.svg)](https://pypi.org/project/sansde)
+[![GitHub](https://img.shields.io/github/stars/Yinjie1/SaNSDE.svg)](https://github.com/Yinjie1/SaNSDE)
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 
 SaNSDE is a Python package for global optimization of isolated atomic nanoclusters. It combines a self-adaptive differential-evolution search with ASE local relaxation: candidates are produced by mutation, crossover and cluster-specific transformations, relaxed with BFGS, and selected by energy/similarity criteria. Structures are deduplicated by point group and geometric similarity to keep the population diverse.
