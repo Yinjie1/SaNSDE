@@ -99,6 +99,27 @@ def run(
                 print(f"skip initial population {init_pop_path}: symbol mismatch")
                 continue
             init_from_pop = True
+            if not bool(params['CONTINUE']):
+                # A fresh run imports only the best structure, so the adaptive
+                # state of the old snapshot must not leak into the new run.
+                pop.info.update(
+                    fp=0.5,
+                    p=0.5,
+                    crm=0.5,
+                    ns1=0,
+                    ns2=0,
+                    nf1=0,
+                    nf2=0,
+                    nsg=0,
+                    nsc=0,
+                    nfg=0,
+                    nfc=0,
+                    cr_rec=[],
+                    delta_rec=[],
+                )
+                for cluster in [*pop.clusters, *pop.candidate]:
+                    for key in ('cr', 'scale_factor_tag', 'strategy_tag', 'F'):
+                        cluster.info.pop(key, None)
             print(f"load initial population {expected_symbol} from {init_pop_path}...")
             break
         if init_from_pop:

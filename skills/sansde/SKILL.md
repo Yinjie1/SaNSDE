@@ -82,7 +82,7 @@ Key parameters:
 - `ROUND`: number of optimization rounds.
 - `INIT_DIR`: directory containing initial `{element}{atom}*.xyz` files.
 - `INIT_POP_DIR`: directory containing population snapshot `*.json` files.
-- `CONTINUE`: with `INIT_POP_DIR`, import the whole population instead of only the best structure.
+- `CONTINUE`: with `INIT_POP_DIR`, import the whole population instead of only the best structure. With `false` the adaptive parameters (`fp`, `p`, `CRm`), success counters and CR records are reset to their defaults; with `true` they are imported as saved.
 - `POP_SIZE`: population size.
 - `MAX_GEN`: maximum generations.
 - `CONV_STEPS`: stagnant generations before early stop; 0 disables early stopping.
@@ -106,7 +106,7 @@ For Lennard-Jones, use:
 Two input modes are available:
 
 - `INIT_DIR`: each matching `{element}{atom}*.xyz` file supplies an initial structure. Only the lowest-energy structure (the last frame) is added to the population; the remaining structures are generated randomly.
-- `INIT_POP_DIR`: matching `{element}{atom}*.json` files supply saved populations. With `CONTINUE=true`, the whole population is imported; with `false`, only the lowest-energy structure is imported.
+- `INIT_POP_DIR`: matching `{element}{atom}*.json` files supply saved populations. With `CONTINUE=true`, the whole population and its adaptive state are imported; with `false`, only the lowest-energy structure is imported and the adaptive state is reset.
 
 If both directories are empty or no matching file exists, the population is generated randomly.
 With `ROUND > 1`, round 1 reads `init/`, and later rounds read the previous `best*` directory.
