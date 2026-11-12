@@ -29,7 +29,7 @@ analyse`, the two-pass `sansde radial` workflow, and `sansde cn`. Follow the rec
 - Check point groups, overall shape, and similarity between adjacent sizes.
 - Analyze radial layers and point groups of individual layers.
 - Analyze coordination-number distributions, average coordination, and average bond length.
-- Compare energies against reference data.
+- Convert VASP relaxation outputs to ASE JSON and check whether the relaxations are reliable.
 
 ## Input data
 
@@ -43,8 +43,18 @@ Structure requirements:
 - `atoms.info["is_ref"]` is optional. A value of 1 marks a reference structure; missing values count as 0.
 - If several JSON files share a chemical formula, only the lowest-energy structure is kept.
 
-Do not mix VASP inputs or outputs into this directory. Structures from other programs must first be
-converted to the same ASE JSON format.
+VASP relaxation outputs can be converted first with the bundled script (see below). Structures from
+other programs must be written in the same ASE JSON format.
+
+## Preparing input from VASP
+
+VASP relaxation outputs can be converted to ASE JSON and checked for reliability with the bundled `scripts/check_relax.py`. Run it on the dataset root and point the analysis commands at the exported directory:
+
+```bash
+python3 scripts/check_relax.py <vasp_root> --json-out ase_json
+```
+
+See `references/vasp_check_relax.md` for the CSV columns, the export details and the reliability rules.
 
 ## Common conventions
 
