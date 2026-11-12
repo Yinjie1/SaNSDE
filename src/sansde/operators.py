@@ -878,6 +878,7 @@ def select(
     relax: Callable[[Population | Atoms], Population | Atoms],
     pg_tolerance: float = 0.3,
     update_crm: bool = False,
+    ediff: float = 1e-5,
 ) -> Population:
     """Select the next generation and accumulate adaptive statistics.
 
@@ -897,6 +898,9 @@ def select(
     update_crm : bool, optional
         Whether to update crm from the recorded successful CR values.
         Default False; the caller enables it at the end of a CRm period.
+    ediff : float, optional
+        能量容差. 候选个体的能量比父代低超过 ediff 时才算胜出并进入下一代;
+        ``ediff = 0`` 时退化为 ``energy2 < energy1``. Default 1e-5.
     """
     if pop1.symbol != pop2.symbol:
         raise ValueError("Population symbols must match for selection")
@@ -990,7 +994,8 @@ def select(
         scale_factor_tag = pop2_candidate.info.get('scale_factor_tag')
         strategy_tag = pop2_candidate.info.get('strategy_tag')
 
-        choose_pop2 = energy2 < energy1
+        # 候选需要比父代低超过 ediff 才算胜出; ediff=0 时即 energy2 < energy1.
+        choose_pop2 = energy2 < energy1 - ediff
 
         if choose_pop2:
             temp_clusters.add_cluster(pop2_candidate)

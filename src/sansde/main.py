@@ -203,6 +203,7 @@ def run(
             pop_trans,
             relax=relax,
             update_crm=int(params['CRM_PERIOD']) > 0 and gen % int(params['CRM_PERIOD']) == 0,
+            ediff=float(params['EDIFF']),
         )
         # p and fp are updated only when the learning period ends.
         if int(params['LEARNING_PERIOD']) > 0 and gen % int(params['LEARNING_PERIOD']) == 0:
