@@ -35,72 +35,13 @@ Run `sansde init` and edit the generated `params.json`. Omitted keys use built-i
 ## Initialize parameters
 
 ```bash
-sansde init
+sansde init        # write params.json with all defaults
+sansde init -h     # parameter manual: type, default and meaning of every key
 ```
 
-This writes `params.json` in the current directory. Use strict JSON.
+`params.json` uses strict JSON. Omitted keys keep their defaults. Run `sansde init -h` when you need the type or meaning of a parameter; do not guess.
 
-```json
-{
-  "SCRIPTS": ["from deepmd.calculator import DP"],
-  "ELEMENT": "Au",
-  "ELEMENT2": "",
-  "TOTAL_ATOM": 0,
-  "LATTICE_CONST": 2.88,
-  "CELL": null,
-  "PBC": null,
-  "MIN_ATOM": 2,
-  "MAX_ATOM": 20,
-  "ROUND": 1,
-  "INIT_DIR": "init",
-  "INIT_POP_DIR": "",
-  "CONTINUE": false,
-  "BEST_DIR": "best",
-  "BETTER_DIR": "better",
-  "POP_DIR": "Populations",
-  "POP_SIZE": 12,
-  "GROW_PREV": 0,
-  "MAX_GEN": 500,
-  "CONV_STEPS": 100,
-  "EDIFF": 1e-5,
-  "SELECT_TOLE": null,
-  "CAND_SIZE": 10,
-  "POTENTIAL": "DP(model=Path('/path/to/model.pth'))",
-  "USE_ZBL": true,
-  "ZBL_CUTOFF": 1.5,
-  "ZBL_SMOOTH": false,
-  "RELAX_FMAX": 0.05,
-  "RELAX_STEPS": 300
-}
-```
-
-Key parameters:
-
-- `SCRIPTS`: Python statements executed in order before the run. Use them to import ASE calculators.
-- `POTENTIAL`: expression that evaluates to an ASE calculator. `Path` is available.
-- `ELEMENT`: element symbol.
-- `ELEMENT2`: second element symbol; when non-empty, binary alloy clusters are optimized with `TOTAL_ATOM - atom` atoms of `ELEMENT2` and `atom` atoms of `ELEMENT`.
-- `TOTAL_ATOM`: total atom count of the binary cluster; must be larger than `MAX_ATOM`.
-- `LATTICE_CONST`: initial bond-length scale for random clusters.
-- `CELL`: optional six-number list `[a, b, c, alpha, beta, gamma]` (Angstrom and degrees) attached to each structure while a calculator is called, for potentials that require a cell. `null` (default) adds no cell.
-- `PBC`: optional boolean or three-element list of booleans enabling periodic boundaries along a, b and c; a single boolean applies to all axes. Only used together with `CELL`; without `CELL` it has no effect. `null` (default) means `false`.
-- `MIN_ATOM`, `MAX_ATOM`: inclusive size range.
-- `ROUND`: number of optimization rounds.
-- `INIT_DIR`: directory containing initial `{element}{atom}*.xyz` files.
-- `INIT_POP_DIR`: directory containing population snapshot `*.json` files.
-- `CONTINUE`: with `INIT_POP_DIR`, import the whole population instead of only the best structure. With `false` the adaptive parameters (`fp`, `p`, `CRm`), success counters and CR records are reset to their defaults; with `true` they are imported as saved.
-- `POP_SIZE`: population size.
-- `GROW_PREV`: number of initial structures grown by adding one atom to the best structure of the previous size. Must satisfy `0 <= GROW_PREV < POP_SIZE - 1`; `0` disables it. Seeds are skipped when the previous size has no best structure yet.
-- `MAX_GEN`: maximum generations.
-- `CONV_STEPS`: stagnant generations before early stop; 0 disables early stopping.
-- `EDIFF`: energy tolerance for stagnation.
-- `SELECT_TOLE`: energy tolerance used when selecting the next generation. Empty or `null` falls back to `EDIFF`.
-- `CAND_SIZE`: candidate archive size.
-- `BEST_DIR`, `BETTER_DIR`, `POP_DIR`: output directories.
-- `USE_ZBL`: add the built-in ZBL short-range term on top of `POTENTIAL`.
-- `RELAX_FMAX`, `RELAX_STEPS`: local relaxation settings.
-
-For Lennard-Jones, use:
+The potential is configured with `SCRIPTS` and `POTENTIAL`. For Lennard-Jones, for example:
 
 ```jsonc
 {
@@ -182,33 +123,10 @@ Use this step only when the user asks for VASP inputs.
 
 ```bash
 sansde xyz2vasp xyz2vasp.json
+sansde xyz2vasp -h            # manual: type, default and meaning of every key
 ```
 
-Example configuration:
-
-```json
-{
-  "input": ["best"],
-  "template": "input",
-  "frame": 3,
-  "similarity": [0.99, 0.98],
-  "cell": [15.0, 15.0, 15.0, 90.0, 90.0, 90.0],
-  "large_cluster_cell": [20.0, 20.0, 20.0, 90.0, 90.0, 90.0],
-  "large_cluster_atom_count": 40,
-  "large_cluster_unique": true,
-  "output": "relax.Au",
-  "compress": false
-}
-```
-
-- `input`: xyz files or directories.
-- `template`: directory containing `INCAR`, `KPOINTS`, and optionally `POTCAR`.
-- `frame`: number of frames read from the end of each xyz file. The best candidates are last.
-- `cell`: cell for clusters below `large_cluster_atom_count`.
-- `large_cluster_cell`: cell for clusters at or above the threshold.
-- `large_cluster_unique`: keep only the lowest-energy structure per formula for large clusters.
-- `output`: output directory for task folders.
-- `compress`: pack the output directory into a `.tgz` archive.
+Run `sansde xyz2vasp -h` when you need the meaning of a setting; do not guess.
 
 The export writes `merged.xyz`, `merged_xyz/`, and `merged_json/` before creating task directories.
 This command prepares VASP inputs. It does not run VASP.

@@ -15,6 +15,7 @@ import argparse
 import json
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 
 from sansde.analysis import (
@@ -38,15 +39,136 @@ from sansde.plots import (
     plot_similarity,
 )
 
+_RUN_DESCRIPTIONS: dict[str, str] = {
+    "EXPORT": "Environment variables applied before the numerical libraries are imported and before SCRIPTS.",
+    "SCRIPTS": "Python snippets executed in order before POTENTIAL is evaluated.",
+    "ELEMENT": "Element symbol of the cluster.",
+    "ELEMENT2": "Second element symbol. Non-empty enables fixed-composition alloy clusters.",
+    "TOTAL_ATOM": "Total atom count of an alloy cluster. Must be larger than MAX_ATOM.",
+    "LATTICE_CONST": "Initial bond-length scale for random clusters, in Angstrom.",
+    "CELL": "Cell [a, b, c, alpha, beta, gamma] attached while a calculator runs. null disables it.",
+    "PBC": "Periodic boundary flags used with CELL. A single boolean applies to all axes. Ignored without CELL.",
+    "MIN_ATOM": "Smallest ELEMENT atom count to optimize, inclusive.",
+    "MAX_ATOM": "Largest ELEMENT atom count to optimize, inclusive.",
+    "ROUND": "Number of optimization rounds. Later rounds start from the previous best.",
+    "INIT_DIR": "Directory with {element}{atom}*.xyz initial structures. Empty disables loading.",
+    "INIT_POP_DIR": "Directory with population snapshots. Takes precedence over INIT_DIR.",
+    "BEST_DIR": "Output directory for best structures.",
+    "BETTER_DIR": "Output directory for structures that improved the search.",
+    "KEEP_SNAPSHOTS": "Number of population snapshots kept per size.",
+    "POP_DIR": "Output directory for population snapshots.",
+    "POP_SIZE": "Population size.",
+    "GROW_PREV": "Initial structures grown from the previous-size best by adding one atom. 0 disables it; must be < POP_SIZE - 1.",
+    "MAX_GEN": "Maximum number of generations.",
+    "CONV_STEPS": "Stagnant generations before stopping. 0 disables the early stop.",
+    "EDIFF": "Energy tolerance for stagnation.",
+    "SELECT_TOLE": "Energy tolerance for selection. null falls back to EDIFF.",
+    "S_STRICT": "Similarity threshold for a clear structure change.",
+    "S_LOOSE": "Similarity threshold used together with EDIFF.",
+    "CAND_SIZE": "Number of best structures kept per size.",
+    "FP_ADAPTIVE": "Adapt fp together with p. false keeps fp at 0.5.",
+    "LEARNING_PERIOD": "Generations between p and fp updates. 0 disables the update.",
+    "CR_PERIOD": "Generations between CR resampling. 0 disables resampling.",
+    "CRM_PERIOD": "Generations between CRm updates. 0 disables the update.",
+    "CONTINUE": "Import the whole population from INIT_POP_DIR. false imports only the best structure and resets the adaptive state.",
+    "POTENTIAL": "ASE calculator expression evaluated after SCRIPTS.",
+    "USE_ZBL": "Add the built-in ZBL short-range repulsion on top of POTENTIAL.",
+    "ZBL_CUTOFF": "ZBL cutoff in Angstrom.",
+    "ZBL_SMOOTH": "Smooth switch at the ZBL cutoff.",
+    "RELAX_FMAX": "BFGS force tolerance for local relaxation, in eV/Angstrom.",
+    "RELAX_STEPS": "Maximum BFGS steps for local relaxation.",
+}
+
+_RUN_TYPES: dict[str, str] = {
+    "EXPORT": "dict",
+    "SCRIPTS": "list[str]",
+    "CELL": "6 numbers or null",
+    "PBC": "bool, 3 booleans or null",
+    "SELECT_TOLE": "float or null",
+}
+
+_EXPORT_PARAMETERS: tuple[tuple[str, str, str, str], ...] = (
+    ("input", "str or list[str]", '"best"', "xyz files or directories to merge."),
+    ("template", "str", '"input"', "VASP template directory with INCAR, KPOINTS and optionally POTCAR."),
+    ("frame", "int", "3", "Number of frames read from the end of each xyz file."),
+    ("similarity", "list[float]", "[0.99, 0.98]", "Deduplication thresholds [s, s_c1]."),
+    ("cell", "6 numbers or null", "null", "Cell [a, b, c, alpha, beta, gamma] for small clusters."),
+    ("large_cluster_cell", "6 numbers", "[20.0, 20.0, 20.0, 90.0, 90.0, 90.0]", "Cell for clusters with at least large_cluster_atom_count atoms."),
+    ("large_cluster_atom_count", "int", "40", "Atom-count threshold for large_cluster_cell and large_cluster_unique."),
+    ("large_cluster_unique", "bool", "true", "Keep only the lowest-energy structure per formula for large clusters."),
+    ("output", "str or null", "null", "Output directory name. null means relax.<elements>."),
+    ("compress", "bool", "false", "Pack the output directory into a tgz archive."),
+)
+
+
+def _run_parameter_type(name: str, default: object) -> str:
+    """Return the JSON type name of one run parameter."""
+    try:
+        return _RUN_TYPES[name]
+    except KeyError:
+        pass
+    if isinstance(default, bool):
+        return "bool"
+    if isinstance(default, int):
+        return "int"
+    if isinstance(default, float):
+        return "float"
+    if isinstance(default, dict):
+        return "dict"
+    if isinstance(default, list):
+        return "list"
+    return "str"
+
+
+def _print_run_manual() -> None:
+    """Print the params.json parameter manual."""
+    print("params.json parameter manual")
+    print()
+    for name, default in DEFAULT_RUN_PARAMS.items():
+        print(f"{name} ({_run_parameter_type(name, default)}, default {json.dumps(default)}):")
+        print(
+            textwrap.fill(
+                _RUN_DESCRIPTIONS.get(name, ""),
+                width=88,
+                initial_indent="    ",
+                subsequent_indent="    ",
+            )
+        )
+        print()
+
+
+def _print_export_manual() -> None:
+    """Print the xyz2vasp parameter manual."""
+    print("xyz2vasp parameter manual")
+    print()
+    for name, kind, default, description in _EXPORT_PARAMETERS:
+        print(f"{name} ({kind}, default {default}):")
+        print(
+            textwrap.fill(
+                description,
+                width=88,
+                initial_indent="    ",
+                subsequent_indent="    ",
+            )
+        )
+        print()
 
 def main(argv: list[str] | None = None) -> None:
     """Parse command line arguments and dispatch the requested task."""
     parser = argparse.ArgumentParser(prog="sansde")
     subparsers = parser.add_subparsers(dest="command")
 
-    subparsers.add_parser(
+    initializer = subparsers.add_parser(
         "init",
         help="write params.json with default values",
+        add_help=False,
+    )
+    initializer.add_argument(
+        "-h",
+        "--help",
+        dest="manual",
+        action="store_true",
+        help="show the params.json parameter manual",
     )
 
     analyser = subparsers.add_parser(
@@ -210,9 +332,18 @@ def main(argv: list[str] | None = None) -> None:
     export = subparsers.add_parser(
         "xyz2vasp",
         help="export xyz directories to VASP task directories using JSON parameters",
+        add_help=False,
+    )
+    export.add_argument(
+        "-h",
+        "--help",
+        dest="manual",
+        action="store_true",
+        help="show the xyz2vasp parameter manual",
     )
     export.add_argument(
         "json",
+        nargs="?",
         type=Path,
         metavar="PARAMS",
         help="JSON parameter file, e.g. sansde xyz2vasp params.json",
@@ -238,6 +369,9 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     if args.command == "init":
+        if args.manual:
+            _print_run_manual()
+            return
         output = Path("params.json")
         output.write_text(
             json.dumps(DEFAULT_RUN_PARAMS, indent=4) + "\n",
@@ -308,6 +442,11 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     if args.command == "xyz2vasp":
+        if args.manual:
+            _print_export_manual()
+            return
+        if args.json is None:
+            parser.error("xyz2vasp requires a JSON parameter file")
         write_vasp_tasks(args.json)
         return
 
