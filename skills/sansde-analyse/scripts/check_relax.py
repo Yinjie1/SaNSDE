@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import signal
 import sys
 from itertools import combinations
 from pathlib import Path
@@ -39,6 +40,8 @@ except ImportError:  # pragma: no cover
     PointGroupAnalyzer = None
 
 PG_TOL = 0.3
+PG_MATRIX_TOL = 0.1
+PG_TIMEOUT = 5.0
 UL = 1.0
 
 STRUCT_CONV_MARKER = (
@@ -322,7 +325,13 @@ def similarity_s2(pos_a: np.ndarray | None, pos_b: np.ndarray | None) -> float |
 
 
 def point_group_symbol(atoms: Atoms | None) -> str | None:
-    """Return the Schoenflies symbol from pymatgen, or ``None``."""
+    """Return the Schoenflies symbol, retrying once after a timeout.
+
+    ``PointGroupAnalyzer`` can spend a long time enumerating symmetry
+    operations for nearly degenerate structures. Each attempt is limited to
+    ``PG_TIMEOUT`` seconds; after a timeout both tolerances are doubled and
+    the analysis is retried once. A second timeout returns ``None``.
+    """
     if (
         PointGroupAnalyzer is None
         or Molecule is None
@@ -331,13 +340,46 @@ def point_group_symbol(atoms: Atoms | None) -> str | None:
     ):
         return None
     try:
-        analyzer = PointGroupAnalyzer(
-            Molecule(atoms.get_chemical_symbols(), atoms.get_positions()),
-            tolerance=PG_TOL,
-        )
-        return analyzer.get_pointgroup().sch_symbol
+        molecule = Molecule(atoms.get_chemical_symbols(), atoms.get_positions())
     except Exception:  # noqa: BLE001
         return None
+
+    def handle_timeout(signum: int, frame: object) -> None:
+        raise TimeoutError
+
+    previous_handler = signal.signal(signal.SIGALRM, handle_timeout)
+    try:
+        attempts = (
+            (PG_TOL, PG_MATRIX_TOL),
+            (PG_TOL * 2, PG_MATRIX_TOL * 2),
+        )
+        for attempt, (tolerance, matrix_tolerance) in enumerate(attempts, 1):
+            signal.setitimer(signal.ITIMER_REAL, PG_TIMEOUT)
+            try:
+                return str(
+                    PointGroupAnalyzer(
+                        molecule,
+                        tolerance=tolerance,
+                        matrix_tolerance=matrix_tolerance,
+                    )
+                    .get_pointgroup()
+                    .sch_symbol
+                )
+            except TimeoutError:
+                outcome = "point group set to None." if attempt == 2 else "retrying..."
+                print(
+                    f"Warning: PointGroupAnalyzer timed out after {PG_TIMEOUT}s "
+                    f"with tolerance {tolerance} and "
+                    f"matrix_tolerance {matrix_tolerance}; {outcome}"
+                )
+                if attempt == 2:
+                    return None
+            except Exception:  # noqa: BLE001
+                return None
+            finally:
+                signal.setitimer(signal.ITIMER_REAL, 0)
+    finally:
+        signal.signal(signal.SIGALRM, previous_handler)
 
 
 def make_plot(rows: list[dict[str, object]], outfile: Path) -> None:
