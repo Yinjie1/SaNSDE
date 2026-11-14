@@ -55,6 +55,7 @@ DEFAULT_RUN_PARAMS: dict[str, Any] = {
     'MAX_GEN': 500,
     'CONV_STEPS': 250,
     'EDIFF': 1e-5,
+    'SELECT_TOLE': None,
     'S_STRICT': 0.95,
     'S_LOOSE': 0.98,
     'CAND_SIZE': 10,

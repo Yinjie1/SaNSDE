@@ -60,6 +60,7 @@ This writes `params.json` in the current directory. Use strict JSON.
   "MAX_GEN": 500,
   "CONV_STEPS": 100,
   "EDIFF": 1e-5,
+  "SELECT_TOLE": null,
   "CAND_SIZE": 10,
   "POTENTIAL": "DP(model=Path('/path/to/model.pth'))",
   "USE_ZBL": true,
@@ -87,6 +88,7 @@ Key parameters:
 - `MAX_GEN`: maximum generations.
 - `CONV_STEPS`: stagnant generations before early stop; 0 disables early stopping.
 - `EDIFF`: energy tolerance for stagnation.
+- `SELECT_TOLE`: energy tolerance used when selecting the next generation. Empty or `null` falls back to `EDIFF`.
 - `CAND_SIZE`: candidate archive size.
 - `BEST_DIR`, `BETTER_DIR`, `POP_DIR`: output directories.
 - `USE_ZBL`: add the built-in ZBL short-range term on top of `POTENTIAL`.

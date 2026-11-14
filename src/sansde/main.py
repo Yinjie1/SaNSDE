@@ -218,13 +218,17 @@ def run(
         pop_splice = sphere_cut_splice(pop, pop_cross, relax=relax)
         pop_trans = local_transformation(pop_splice, r=0.25, relax=relax)
 
+        # Selection tolerance: SELECT_TOLE overrides EDIFF when it is set.
+        select_tole = params['SELECT_TOLE']
+        if select_tole is None or select_tole == '':
+            select_tole = params['EDIFF']
         # 3) 选择下一代并输出每代指标.
         pop_next = select(
             pop,
             pop_trans,
             relax=relax,
             update_crm=int(params['CRM_PERIOD']) > 0 and gen % int(params['CRM_PERIOD']) == 0,
-            ediff=float(params['EDIFF']),
+            ediff=float(select_tole),
         )
         # p and fp are updated only when the learning period ends.
         if int(params['LEARNING_PERIOD']) > 0 and gen % int(params['LEARNING_PERIOD']) == 0:
