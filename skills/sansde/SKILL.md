@@ -129,6 +129,7 @@ sansde check
 
 `check` is read-only. It reports:
 
+- parameter types in the JSON files, one error per wrong value; prints `parameter types ok` when every value has the expected type;
 - merged optimization systems from the JSON files in the current directory;
 - overlapping systems between different JSON files;
 - existing output files that may be overwritten;
@@ -138,7 +139,7 @@ sansde check
 
 Act on these results:
 
-- Potential errors and ZBL errors must be fixed before starting a run.
+- Type errors, potential errors and ZBL errors must be fixed before starting a run.
 - Missing initial structures are warnings. Random initialization will be used.
 - Existing output files may be modified. Use a new working directory or back up important results.
 - Overlapping JSON files in the same directory can produce conflicting output names.

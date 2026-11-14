@@ -37,6 +37,106 @@ def _paint(text: str, color: str, enabled: bool) -> str:
     return f"\033[{color}m{text}\033[0m"
 
 
+_INT_PARAMETERS = (
+    "TOTAL_ATOM",
+    "MIN_ATOM",
+    "MAX_ATOM",
+    "ROUND",
+    "KEEP_SNAPSHOTS",
+    "POP_SIZE",
+    "GROW_PREV",
+    "MAX_GEN",
+    "CONV_STEPS",
+    "CAND_SIZE",
+    "LEARNING_PERIOD",
+    "CR_PERIOD",
+    "CRM_PERIOD",
+    "RELAX_STEPS",
+)
+_FLOAT_PARAMETERS = (
+    "LATTICE_CONST",
+    "EDIFF",
+    "S_STRICT",
+    "S_LOOSE",
+    "ZBL_CUTOFF",
+    "RELAX_FMAX",
+)
+_BOOL_PARAMETERS = ("FP_ADAPTIVE", "CONTINUE", "USE_ZBL", "ZBL_SMOOTH")
+_STR_PARAMETERS = (
+    "ELEMENT",
+    "ELEMENT2",
+    "INIT_DIR",
+    "INIT_POP_DIR",
+    "BEST_DIR",
+    "BETTER_DIR",
+    "POP_DIR",
+    "POTENTIAL",
+)
+
+
+def _is_int(value: object) -> bool:
+    """Return whether a value is an int but not a bool."""
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _is_number(value: object) -> bool:
+    """Return whether a value is a number but not a bool."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _parameter_type_errors(data: dict[str, object]) -> list[str]:
+    """Return one message for every parameter with a wrong JSON type."""
+    errors: list[str] = []
+
+    for key in _INT_PARAMETERS:
+        if key in data and not _is_int(data[key]):
+            errors.append(f"{key} expects int, got {type(data[key]).__name__}")
+    for key in _FLOAT_PARAMETERS:
+        if key in data and not _is_number(data[key]):
+            errors.append(f"{key} expects float, got {type(data[key]).__name__}")
+    for key in _BOOL_PARAMETERS:
+        if key in data and not isinstance(data[key], bool):
+            errors.append(f"{key} expects bool, got {type(data[key]).__name__}")
+    for key in _STR_PARAMETERS:
+        if key in data and not isinstance(data[key], str):
+            errors.append(f"{key} expects str, got {type(data[key]).__name__}")
+
+    if "EXPORT" in data and not isinstance(data["EXPORT"], dict):
+        errors.append(f"EXPORT expects dict, got {type(data['EXPORT']).__name__}")
+    if "SCRIPTS" in data:
+        value = data["SCRIPTS"]
+        if not (
+            isinstance(value, list)
+            and all(isinstance(item, str) for item in value)
+        ):
+            errors.append(f"SCRIPTS expects list[str], got {type(value).__name__}")
+    if "CELL" in data:
+        value = data["CELL"]
+        if value is not None and not (
+            isinstance(value, (list, tuple))
+            and len(value) == 6
+            and all(_is_number(item) for item in value)
+        ):
+            errors.append(f"CELL expects six numbers or null, got {type(value).__name__}")
+    if "PBC" in data:
+        value = data["PBC"]
+        if not (
+            value is None
+            or isinstance(value, bool)
+            or (
+                isinstance(value, (list, tuple))
+                and len(value) == 3
+                and all(isinstance(item, bool) for item in value)
+            )
+        ):
+            errors.append(f"PBC expects bool, [bool, bool, bool] or null, got {type(value).__name__}")
+    if "SELECT_TOLE" in data:
+        value = data["SELECT_TOLE"]
+        if value is not None and not _is_number(value):
+            errors.append(f"SELECT_TOLE expects float or null, got {type(value).__name__}")
+    return errors
+
+
 @dataclass(frozen=True)
 class _RunConfig:
     """Run parameters needed by the checks."""
@@ -82,13 +182,17 @@ def _int_setting(data: dict[str, object], key: str, default: int) -> int:
         return default
 
 
-def _read_run_configs(directory: Path, color: bool) -> list[_RunConfig]:
-    """Read run parameter JSON files and return the parsed configurations.
+def _read_run_configs(
+    directory: Path, color: bool
+) -> tuple[list[_RunConfig], int]:
+    """Read run parameter JSON files and return configurations plus type errors.
 
     Files that are not run parameter files, cannot be parsed, or contain
-    invalid values are reported and skipped.
+    invalid values are reported and skipped. Type errors in the raw JSON are
+    printed as they are found and counted in the returned total.
     """
     configs: list[_RunConfig] = []
+    type_errors = 0
     for path in sorted(directory.glob("*.json")):
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
@@ -101,6 +205,9 @@ def _read_run_configs(directory: Path, color: bool) -> list[_RunConfig]:
         if "MIN_ATOM" not in data or "MAX_ATOM" not in data:
             print(_paint(f"skip {path.name}: not a run parameter file", _YELLOW, color))
             continue
+        for message in _parameter_type_errors(data):
+            print(_paint(f"error: {path.name}: {message}", _RED, color))
+            type_errors += 1
         try:
             min_atom = int(data["MIN_ATOM"])
             max_atom = int(data["MAX_ATOM"])
@@ -156,7 +263,7 @@ def _read_run_configs(directory: Path, color: bool) -> list[_RunConfig]:
                 rounds=rounds,
             )
         )
-    return configs
+    return configs, type_errors
 
 
 def _merge_ranges(ranges: list[tuple[int, int]]) -> list[tuple[int, int]]:
@@ -582,7 +689,7 @@ def run_check(
         print(f"directory not found: {params_dir}")
         return
     color = _supports_color()
-    configs = _read_run_configs(params_dir, color)
+    configs, type_errors = _read_run_configs(params_dir, color)
     if not configs:
         print(f"no run parameter files found in {params_dir.resolve()}")
         return
@@ -602,6 +709,8 @@ def run_check(
         representatives.setdefault(key, config)
 
     print(f"read {len(configs)} run parameter file(s)")
+    if type_errors == 0:
+        print(_paint("parameter types ok", _GREEN, color))
     parts: list[str] = []
     for key in sorted(ranges_by_composition):
         merged = _merge_ranges(ranges_by_composition[key])
