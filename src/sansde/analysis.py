@@ -19,7 +19,6 @@ from sansde.operators import compute_point_group, similarity_function
 from sansde.pop import Clusters
 
 SHAPE_RATIO = 0.8
-UL = 1.0
 
 AnalysisRow: TypeAlias = dict[str, object]
 CoordinationRow: TypeAlias = dict[str, object]
@@ -42,6 +41,7 @@ __all__ = [
     "format_coordination_csv",
     "format_radial_csv",
     "radial_distances",
+    "second_moment_matrix",
     "shape_indicator",
     "shape_label",
     "similarity_add_atom",
@@ -151,6 +151,20 @@ def eval_fit(coefficients: np.ndarray, natoms: int) -> float:
     )
 
 
+def second_moment_matrix(coords: np.ndarray, ul: float = 1.0) -> np.ndarray:
+    """Return the coordinate second-moment matrix about the geometric center.
+
+    ``ul`` is the length unit in Angstrom that normalizes the matrix.
+    """
+    centered = np.asarray(coords, dtype=float)
+    if centered.ndim != 2 or centered.shape[1] != 3:
+        raise ValueError("coords must have shape (natoms, 3)")
+    if len(centered) < 2:
+        raise ValueError("coords must contain at least two atoms")
+    centered = centered - centered.mean(axis=0)
+    return (centered.T @ centered) / (len(centered) * ul**2)
+
+
 def shape_indicator(coords: np.ndarray | None) -> np.ndarray | None:
     """Compute normalized second-moment eigenvalues.
 
@@ -167,14 +181,10 @@ def shape_indicator(coords: np.ndarray | None) -> np.ndarray | None:
     """
     if coords is None or len(coords) < 2:
         return None
-    count = len(coords)
-    centered = np.asarray(coords, dtype=float) - np.asarray(coords, dtype=float).mean(
-        axis=0
-    )
-    matrix = (centered.T @ centered) / (count * UL**2)
+    matrix = second_moment_matrix(coords)
     eigenvalues = np.linalg.eigvalsh(matrix)[::-1]
     eigenvalues = np.clip(eigenvalues, 0.0, None)
-    return eigenvalues / (count ** (2.0 / 3.0))
+    return eigenvalues / (len(coords) ** (2.0 / 3.0))
 
 
 def shape_label(

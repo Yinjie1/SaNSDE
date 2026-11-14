@@ -586,6 +586,7 @@ class Population(MultiAtoms):
         name: str | None = None,
         candidate: bool = False,
         dir: str | Path = "./Trajectories",
+        align: bool = True,
     ) -> Path:
         """Export clusters to an extxyz file (.xyz).
 
@@ -594,6 +595,12 @@ class Population(MultiAtoms):
         of the best cluster. With ``candidate=True`` the whole ``candidate``
         list is written in candidate order (worst first, best last) and the
         file with the same name is overwritten.
+
+        With ``align=True`` every cluster is rotated so that the three principal
+        axes of its coordinate second-moment matrix point along x, y and z, the
+        widest spread running along x, and translated so the geometric center
+        sits at the origin. Pass ``align=False`` to write the stored
+        orientation.
 
         Only the energies and forces already present in ``info``/``arrays`` are
         used; the calculator is neither read nor recomputed.
@@ -607,6 +614,9 @@ class Population(MultiAtoms):
             best cluster. Default False.
         dir : str | pathlib.Path, optional
             Output directory. Default "./Trajectories".
+        align : bool, optional
+            Whether to rotate each cluster onto its principal axes before
+            writing. Default True.
 
         Returns
         -------
@@ -631,6 +641,30 @@ class Population(MultiAtoms):
         else:
             mode = 'a'
             clusters = [self.best_cluster]
+
+        if align:
+            # analysis imports pop, so this import has to stay inside the method.
+            from sansde.analysis import second_moment_matrix
+
+            aligned: list[Atoms] = []
+            for cluster in clusters:
+                positions = np.asarray(cluster.get_positions(), dtype=float)
+                if len(cluster) < 2:
+                    aligned.append(cluster)
+                    continue
+                axes = np.linalg.eigh(second_moment_matrix(positions))[1][:, ::-1].copy()
+                # Pin the axis directions and keep the frame right-handed.
+                for column in (0, 1):
+                    if axes[np.argmax(np.abs(axes[:, column])), column] < 0.0:
+                        axes[:, column] *= -1.0
+                axes[:, 2] = np.cross(axes[:, 0], axes[:, 1])
+                rotated = cluster.copy()
+                rotated.set_positions((positions - positions.mean(axis=0)) @ axes)
+                forces = rotated.arrays.get('forces')
+                if forces is not None:
+                    rotated.arrays['forces'] = np.asarray(forces, dtype=float) @ axes
+                aligned.append(rotated)
+            clusters = aligned
 
         with xyz_path.open(mode, encoding='utf-8') as f:
             write_extxyz(f, clusters, write_results=False)
