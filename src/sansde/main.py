@@ -41,6 +41,7 @@ def run(
     stats_path: Path,
     run_start: float,
     cell: list[float] | None = None,
+    pbc: list[bool] | bool | None = None,
 ) -> None:
     """Optimize one cluster size.
 
@@ -65,6 +66,9 @@ def run(
     cell : list[float] or None, optional
         Six-element cell ``[a, b, c, alpha, beta, gamma]`` attached to every
         structure while a calculator is called. Default None, no cell.
+    pbc : list[bool] or bool or None, optional
+        Periodic boundary flags used together with ``cell``. A single boolean
+        is applied to all three axes. Default None, equivalent to ``False``.
     """
     system_start = time.perf_counter()
 
@@ -132,7 +136,7 @@ def run(
             for cluster in [*pop.clusters, *pop.candidate]:
                 if cell:
                     cluster.set_cell(cell)
-                    cluster.set_pbc(False)
+                    cluster.set_pbc(False if pbc is None else pbc)
                 cluster.calc = potential
                 try:
                     energy_value = float(cluster.get_potential_energy())
@@ -140,6 +144,7 @@ def run(
                 finally:
                     cluster.calc = None
                     cluster.set_cell([0.0, 0.0, 0.0])
+                    cluster.set_pbc(False)
                 if np.isfinite(energy_value):
                     cluster.info['energy'] = energy_value
                     cluster.arrays['forces'] = force_value
@@ -173,7 +178,7 @@ def run(
                 for cluster in [*pop.clusters, *pop.candidate]:
                     if cell:
                         cluster.set_cell(cell)
-                        cluster.set_pbc(False)
+                        cluster.set_pbc(False if pbc is None else pbc)
                     cluster.calc = potential
                     try:
                         energy_value = float(cluster.get_potential_energy())
@@ -181,6 +186,7 @@ def run(
                     finally:
                         cluster.calc = None
                         cluster.set_cell([0.0, 0.0, 0.0])
+                        cluster.set_pbc(False)
                     if np.isfinite(energy_value):
                         cluster.info['energy'] = energy_value
                         cluster.arrays['forces'] = force_value
@@ -428,6 +434,25 @@ def main(params_path: Path) -> None:
         if any(not 0.0 < angle < 180.0 for angle in cell[3:]):
             raise ValueError("CELL angles must be between 0 and 180 degrees")
 
+    # Periodic boundary flags only matter together with CELL.
+    pbc: list[bool] | bool | None = None
+    if cell is not None:
+        pbc_spec = params['PBC']
+        if isinstance(pbc_spec, bool):
+            pbc = pbc_spec
+        elif pbc_spec is None or pbc_spec == []:
+            pbc = False
+        else:
+            if not isinstance(pbc_spec, (list, tuple)) or len(pbc_spec) != 3:
+                raise ValueError(
+                    "PBC must be a boolean or a list of three booleans"
+                )
+            if any(not isinstance(value, (bool, int)) for value in pbc_spec):
+                raise ValueError(
+                    "PBC must be a boolean or a list of three booleans"
+                )
+            pbc = [bool(value) for value in pbc_spec]
+
     # Number of initial structures grown on the previous-size best cluster.
     grow_prev = int(params['GROW_PREV'])
     if grow_prev < 0 or grow_prev >= int(params['POP_SIZE']) - 1:
@@ -471,6 +496,7 @@ def main(params_path: Path) -> None:
     relax = functools.partial(
         local_optimize,
         cell=cell,
+        pbc=pbc,
         potential=potential,  # type: ignore
         optimizer=BFGS,
         fmax=float(params['RELAX_FMAX']),
@@ -512,6 +538,7 @@ def main(params_path: Path) -> None:
                 stats_path=stats_path,
                 run_start=program_start,
                 cell=cell,
+                pbc=pbc,
             )
     total_elapsed = time.perf_counter() - program_start
     print(f"program total_time_s={total_elapsed:.4f}")

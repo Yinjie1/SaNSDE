@@ -48,6 +48,7 @@ This writes `params.json` in the current directory. Use strict JSON.
   "TOTAL_ATOM": 0,
   "LATTICE_CONST": 2.88,
   "CELL": null,
+  "PBC": null,
   "MIN_ATOM": 2,
   "MAX_ATOM": 20,
   "ROUND": 1,
@@ -82,6 +83,7 @@ Key parameters:
 - `TOTAL_ATOM`: total atom count of the binary cluster; must be larger than `MAX_ATOM`.
 - `LATTICE_CONST`: initial bond-length scale for random clusters.
 - `CELL`: optional six-number list `[a, b, c, alpha, beta, gamma]` (Angstrom and degrees) attached to each structure while a calculator is called, for potentials that require a cell. `null` (default) adds no cell.
+- `PBC`: optional boolean or three-element list of booleans enabling periodic boundaries along a, b and c; a single boolean applies to all axes. Only used together with `CELL`; without `CELL` it has no effect. `null` (default) means `false`.
 - `MIN_ATOM`, `MAX_ATOM`: inclusive size range.
 - `ROUND`: number of optimization rounds.
 - `INIT_DIR`: directory containing initial `{element}{atom}*.xyz` files.

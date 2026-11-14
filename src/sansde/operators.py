@@ -180,6 +180,7 @@ def similarity_function(atoms_a: Atoms, atoms_b: Atoms) -> float:
 def local_optimize(
     pop: Population | Atoms, 
     cell: list[float] | np.ndarray | None = None, 
+    pbc: list[bool] | bool | None = None,
     potential: Calculator | None = None,
     optimizer: type[Optimizer] = BFGS,
     fmax: float = 0.05, 
@@ -197,6 +198,9 @@ def local_optimize(
         待优化的对象, 可以是整个种群对象(Population)或单个团簇(Atoms).
     cell : list or np.ndarray or None, optional
         用于计算的模拟盒子大小, default None.
+    pbc : list[bool] or bool or None, optional
+        三个方向是否启用周期性边界, 可以是单个布尔值或三元列表, 仅在给定
+        cell 时生效. Default None, 等价于 False.
     potential : Calculator, optional
         ASE计算器对象(e.g., LJ, EMT, DeepMD等).
         不允许为 None; 若为 None 直接报错.
@@ -236,13 +240,14 @@ def local_optimize(
         # cell 自动添加到团簇对象上
         if cell:
             atoms.set_cell(cell)
-            atoms.set_pbc(False)
+            atoms.set_pbc(False if pbc is None else pbc)
 
         # 重合几何会让势函数返回 NaN, 直接判为无效个体, 不调用计算器.
         if min_pair_distance(atoms.get_positions()) < MIN_ATOM_DISTANCE:
             atoms.info['energy'] = float('inf')
             atoms.arrays['forces'] = np.zeros((len(atoms), 3))
             atoms.set_cell([0.0, 0.0, 0.0])
+            atoms.set_pbc(False)
             atoms.calc = None
             continue
 
@@ -286,6 +291,7 @@ def local_optimize(
         # 计算后清除 cell
         # del atoms.cell # cell attribute deletion is not supported
         atoms.set_cell([0.0, 0.0, 0.0]) # Effectively clear cell dimensions
+        atoms.set_pbc(False)
         atoms.calc = None
 
     if is_single:
