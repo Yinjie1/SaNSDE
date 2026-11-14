@@ -419,20 +419,9 @@ def main(params_path: Path) -> None:
     for script in SCRIPTS:
         exec(script, globals())  # noqa: S102, user-provided calculator setup
 
-    # Optional simulation cell: [a, b, c, alpha, beta, gamma].
+    # Optional simulation cell: [a, b, c, alpha, beta, gamma]
     cell_spec = params['CELL']
-    if cell_spec is None or cell_spec == [] or cell_spec == '':
-        cell = None
-    else:
-        if not isinstance(cell_spec, (list, tuple)) or len(cell_spec) != 6:
-            raise ValueError(
-                "CELL must be a list of six numbers: a, b, c, alpha, beta, gamma"
-            )
-        cell = [float(value) for value in cell_spec]
-        if any(length <= 0.0 for length in cell[:3]):
-            raise ValueError("CELL edge lengths must be positive")
-        if any(not 0.0 < angle < 180.0 for angle in cell[3:]):
-            raise ValueError("CELL angles must be between 0 and 180 degrees")
+    cell = None if cell_spec is None or cell_spec == [] else cell_spec
 
     # Periodic boundary flags only matter together with CELL.
     pbc: list[bool] | bool | None = None
@@ -442,16 +431,10 @@ def main(params_path: Path) -> None:
             pbc = pbc_spec
         elif pbc_spec is None or pbc_spec == []:
             pbc = False
+        elif isinstance(pbc_spec, (list, tuple)) and len(pbc_spec) == 3:
+            pbc = pbc_spec
         else:
-            if not isinstance(pbc_spec, (list, tuple)) or len(pbc_spec) != 3:
-                raise ValueError(
-                    "PBC must be a boolean or a list of three booleans"
-                )
-            if any(not isinstance(value, (bool, int)) for value in pbc_spec):
-                raise ValueError(
-                    "PBC must be a boolean or a list of three booleans"
-                )
-            pbc = [bool(value) for value in pbc_spec]
+            raise ValueError("PBC must be a boolean or a list of three booleans")
 
     # Number of initial structures grown on the previous-size best cluster.
     grow_prev = int(params['GROW_PREV'])
