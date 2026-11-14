@@ -12,6 +12,7 @@ import numpy as np
 from ase import Atoms
 from ase.calculators.calculator import BaseCalculator
 from ase.calculators.mixing import SumCalculator
+from ase.io import read
 from ase.optimize import BFGS
 
 from sansde.calc import ZBLCalculator
@@ -182,8 +183,35 @@ def run(
                 del pop.candidate[:max(len(pop.candidate) - int(params['CAND_SIZE']), 0)]
                 break
 
+    # Seeds grown on the previous-size best structure.
+    grow_prev = int(params['GROW_PREV'])
+    grow_parent: Atoms | None = None
+    if grow_prev > 0 and atom > 1:
+        if element2:
+            second_count = int(params['TOTAL_ATOM']) - (atom - 1)
+            previous_symbol = Atoms(
+                f"{element}{atom - 1}{element2}{second_count}"
+            ).get_chemical_formula()
+        else:
+            previous_symbol = f"{element}{atom - 1}"
+        previous_best = best_dir / f"{previous_symbol}_best.xyz"
+        if previous_best.is_file():
+            grow_parent = read(previous_best, index=-1)
+        else:
+            print(f"warning: {previous_best} not found, GROW_PREV seeds are skipped")
+
     if len(pop) < int(params['POP_SIZE']):
         remaining = int(params['POP_SIZE']) - len(pop)
+        if grow_parent is not None:
+            for _ in range(min(grow_prev, remaining)):
+                random_cluster(
+                    pop,
+                    a=float(params['LATTICE_CONST']),
+                    delta=0.5,
+                    relax=relax,
+                    parent=grow_parent,
+                )
+            remaining = int(params['POP_SIZE']) - len(pop)
         if atom <= 20:
             for i in range(remaining):
                 if i < int(params['POP_SIZE']) / 2:
@@ -372,6 +400,11 @@ def main(params_path: Path) -> None:
         raise TypeError("SCRIPTS must be a list of Python code strings")
     for script in SCRIPTS:
         exec(script, globals())  # noqa: S102, user-provided calculator setup
+
+    # Number of initial structures grown on the previous-size best cluster.
+    grow_prev = int(params['GROW_PREV'])
+    if grow_prev < 0 or grow_prev >= int(params['POP_SIZE']) - 1:
+        raise ValueError("GROW_PREV must satisfy 0 <= GROW_PREV < POP_SIZE - 1")
 
     # Binary alloy runs: ELEMENT2 non-empty activates them. Each size then
     # holds `atom` atoms of ELEMENT and TOTAL_ATOM - atom atoms of ELEMENT2.

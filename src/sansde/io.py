@@ -52,6 +52,7 @@ DEFAULT_RUN_PARAMS: dict[str, Any] = {
     'KEEP_SNAPSHOTS': 1,
     'POP_DIR': 'Populations',
     'POP_SIZE': 12,
+    'GROW_PREV': 0,
     'MAX_GEN': 500,
     'CONV_STEPS': 250,
     'EDIFF': 1e-5,

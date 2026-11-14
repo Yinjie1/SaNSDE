@@ -7,6 +7,7 @@ instances while keeping the population container free of algorithmic code.
 import contextlib
 import functools
 import signal
+from collections import Counter
 from collections.abc import Callable
 
 import numpy as np
@@ -308,7 +309,8 @@ def random_cluster(
     a: float, 
     delta: float, 
     relax: Callable[[Population | Atoms], Population | Atoms],
-    is_2d: bool = False
+    is_2d: bool = False,
+    parent: Atoms | None = None,
     ) -> None:
     """随机生成一个团簇并添加进种群.
     
@@ -317,6 +319,10 @@ def random_cluster(
     1. 第一个原子置于原点.
     2. 后续原子在已生成原子的附近随机生成 (键长 bond_length, 方向随机).
     3. 检查新原子与已有原子的距离, 若过近(<0.75a)则重新生成.
+
+    给定 ``parent`` 时不再从原点开始, 而是在该结构上按同样的规则生长
+    一个原子; ``parent`` 必须包含 ``n_atoms - 1`` 个原子, 且组成与目标
+    团簇只差一个原子, 生长结束后原子顺序会重排为目标化学式的顺序.
 
     Parameters
     ----------
@@ -332,6 +338,9 @@ def random_cluster(
         Whether to generate a 2D cluster in the xy plane. Default False.
         When True, atoms are generated inside a disk with radius
         R = a * (0.5 + sqrt((sqrt(3) / (2 * pi)) * n_atoms)), and z is fixed to 0.
+    parent : Atoms, optional
+        Existing structure to grow one atom on. Default None, which generates
+        the whole cluster from the origin.
         
     Examples
     --------
@@ -345,26 +354,44 @@ def random_cluster(
             raise ValueError("Population symbol not set, cannot determine cluster size.")
 
     # Radius limit for random growth.
-    if is_2d:
+    if is_2d and parent is None:
         r0 = a * (0.5 + np.sqrt((np.sqrt(3) / (2 * np.pi)) * n_atoms))
     else:
         r0 = 2 * a * (0.5 + (3 * n_atoms / (4 * np.pi * np.sqrt(2)))**(1.0/3.0))
 
-    # Initialize positions
-    dummy = Atoms(pop.symbol)
-    symbols = dummy.get_chemical_symbols()
-    
+    target_symbols = Atoms(pop.symbol).get_chemical_symbols()
     positions = np.zeros((n_atoms, 3))
-    positions[0] = [0.0, 0.0, 0.0]
+    if parent is None:
+        symbols = target_symbols
+        positions[0] = [0.0, 0.0, 0.0]
+        first_new_atom = 1
+    else:
+        if len(parent) != n_atoms - 1:
+            raise ValueError(
+                f"parent has {len(parent)} atoms, expected {n_atoms - 1}"
+            )
+        parent_symbols = parent.get_chemical_symbols()
+        remaining_counts = Counter(target_symbols)
+        remaining_counts.subtract(parent_symbols)
+        additions = [
+            symbol for symbol, count in remaining_counts.items() if count != 0
+        ]
+        if len(additions) != 1 or remaining_counts[additions[0]] != 1:
+            raise ValueError(
+                "parent composition must differ from the target by one atom"
+            )
+        symbols = [*parent_symbols, additions[0]]
+        positions[: n_atoms - 1] = parent.get_positions()
+        first_new_atom = n_atoms - 1
 
-    for i in range(1, n_atoms):
+    for i in range(first_new_atom, n_atoms):
         while True:
             idx_bond_atom = np.random.randint(0, i)
             
             # bond_length = (1+delta*np.random.uniform(-0.25,0.75))*a
             bond_length = (1 + delta * np.random.uniform(-0.25, 0.75)) * a
             
-            if is_2d:
+            if is_2d and parent is None:
                 # 2D mode: random direction in xy plane, z fixed at 0.
                 bond_phi = np.random.rand() * 2 * np.pi
                 x = positions[idx_bond_atom][0] + bond_length * np.cos(bond_phi)
@@ -391,6 +418,18 @@ def random_cluster(
             
             positions[i] = trial_pos
             break
+
+    if parent is not None:
+        ordered_positions = np.empty_like(positions)
+        used = [False] * n_atoms
+        for target_index, symbol in enumerate(target_symbols):
+            for source_index, source_symbol in enumerate(symbols):
+                if not used[source_index] and source_symbol == symbol:
+                    ordered_positions[target_index] = positions[source_index]
+                    used[source_index] = True
+                    break
+        positions = ordered_positions
+        symbols = target_symbols
 
     # Create cluster
     cluster = Atoms(symbols=symbols, positions=positions)

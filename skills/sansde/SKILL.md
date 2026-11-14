@@ -57,6 +57,7 @@ This writes `params.json` in the current directory. Use strict JSON.
   "BETTER_DIR": "better",
   "POP_DIR": "Populations",
   "POP_SIZE": 12,
+  "GROW_PREV": 0,
   "MAX_GEN": 500,
   "CONV_STEPS": 100,
   "EDIFF": 1e-5,
@@ -85,6 +86,7 @@ Key parameters:
 - `INIT_POP_DIR`: directory containing population snapshot `*.json` files.
 - `CONTINUE`: with `INIT_POP_DIR`, import the whole population instead of only the best structure. With `false` the adaptive parameters (`fp`, `p`, `CRm`), success counters and CR records are reset to their defaults; with `true` they are imported as saved.
 - `POP_SIZE`: population size.
+- `GROW_PREV`: number of initial structures grown by adding one atom to the best structure of the previous size. Must satisfy `0 <= GROW_PREV < POP_SIZE - 1`; `0` disables it. Seeds are skipped when the previous size has no best structure yet.
 - `MAX_GEN`: maximum generations.
 - `CONV_STEPS`: stagnant generations before early stop; 0 disables early stopping.
 - `EDIFF`: energy tolerance for stagnation.
