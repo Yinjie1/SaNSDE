@@ -39,7 +39,7 @@ sansde init        # write params.json with all defaults
 sansde init -h     # parameter manual: type, default and meaning of every key
 ```
 
-`params.json` uses strict JSON. Omitted keys keep their defaults. Run `sansde init -h` when you need the type or meaning of a parameter; do not guess.
+`params.json` uses strict JSON. Omitted keys keep their defaults. Run `sansde init -h` when you need the type or meaning of a parameter; do not guess. Every parameter is printed on one line, so a few entries can be found by filtering the output, for example `sansde init -h | grep -E '^(CELL|PBC) '`.
 
 The potential is configured with `SCRIPTS` and `POTENTIAL`. For Lennard-Jones, for example:
 
@@ -89,6 +89,8 @@ Use `sansde check --no-banner` when a clean log is needed.
 
 ## Run optimization
 
+Before running, show the prepared `params.json` to the user and wait for explicit confirmation. Do not start a run on your own.
+
 Background run, default:
 
 ```bash
@@ -126,7 +128,7 @@ sansde xyz2vasp xyz2vasp.json
 sansde xyz2vasp -h            # manual: type, default and meaning of every key
 ```
 
-Run `sansde xyz2vasp -h` when you need the meaning of a setting; do not guess.
+Run `sansde xyz2vasp -h` when you need the meaning of a setting; do not guess. Filter the output to look up a few settings, for example `sansde xyz2vasp -h | grep -E '^(cell|frame) '`.
 
 The export writes `merged.xyz`, `merged_xyz/`, and `merged_json/` before creating task directories.
 This command prepares VASP inputs. It does not run VASP.
@@ -146,5 +148,6 @@ This command prepares VASP inputs. It does not run VASP.
 - Treat `sansde` as a black-box command-line tool.
 - Do not run VASP or relaxation workflows in this skill.
 - Do not modify or delete existing input structures without explicit permission.
+- Prepare the run JSON, show it to the user, and wait for explicit confirmation before `sansde run`.
 - Use `sansde check` before long runs.
 - Do not add analysis commands or extra output files that the user did not request.

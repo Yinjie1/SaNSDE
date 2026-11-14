@@ -15,7 +15,6 @@ import argparse
 import json
 import subprocess
 import sys
-import textwrap
 from pathlib import Path
 
 from sansde.analysis import (
@@ -125,16 +124,9 @@ def _print_run_manual() -> None:
     print("params.json parameter manual")
     print()
     for name, default in DEFAULT_RUN_PARAMS.items():
-        print(f"{name} ({_run_parameter_type(name, default)}, default {json.dumps(default)}):")
-        print(
-            textwrap.fill(
-                _RUN_DESCRIPTIONS.get(name, ""),
-                width=88,
-                initial_indent="    ",
-                subsequent_indent="    ",
-            )
-        )
-        print()
+        kind = _run_parameter_type(name, default)
+        description = _RUN_DESCRIPTIONS.get(name, "")
+        print(f"{name} ({kind}, default {json.dumps(default)}): {description}")
 
 
 def _print_export_manual() -> None:
@@ -142,16 +134,7 @@ def _print_export_manual() -> None:
     print("xyz2vasp parameter manual")
     print()
     for name, kind, default, description in _EXPORT_PARAMETERS:
-        print(f"{name} ({kind}, default {default}):")
-        print(
-            textwrap.fill(
-                description,
-                width=88,
-                initial_indent="    ",
-                subsequent_indent="    ",
-            )
-        )
-        print()
+        print(f"{name} ({kind}, default {default}): {description}")
 
 def main(argv: list[str] | None = None) -> None:
     """Parse command line arguments and dispatch the requested task."""
