@@ -40,6 +40,7 @@ def run(
     relax: Callable[..., Any],
     stats_path: Path,
     run_start: float,
+    cell: list[float] | None = None,
 ) -> None:
     """Optimize one cluster size.
 
@@ -61,6 +62,9 @@ def run(
         Path of the main statistics CSV.
     run_start : float
         Program start time from ``time.perf_counter``.
+    cell : list[float] or None, optional
+        Six-element cell ``[a, b, c, alpha, beta, gamma]`` attached to every
+        structure while a calculator is called. Default None, no cell.
     """
     system_start = time.perf_counter()
 
@@ -126,12 +130,16 @@ def run(
         if init_from_pop:
             # 初始种群可能来自旧势, 用当前势重算团簇和候选团簇的能量与力.
             for cluster in [*pop.clusters, *pop.candidate]:
+                if cell:
+                    cluster.set_cell(cell)
+                    cluster.set_pbc(False)
                 cluster.calc = potential
                 try:
                     energy_value = float(cluster.get_potential_energy())
                     force_value = np.asarray(cluster.get_forces(), dtype=float)
                 finally:
                     cluster.calc = None
+                    cluster.set_cell([0.0, 0.0, 0.0])
                 if np.isfinite(energy_value):
                     cluster.info['energy'] = energy_value
                     cluster.arrays['forces'] = force_value
@@ -163,12 +171,16 @@ def run(
                 # Recompute energies and forces for the imported population and
                 # candidates with the current potential.
                 for cluster in [*pop.clusters, *pop.candidate]:
+                    if cell:
+                        cluster.set_cell(cell)
+                        cluster.set_pbc(False)
                     cluster.calc = potential
                     try:
                         energy_value = float(cluster.get_potential_energy())
                         force_value = np.asarray(cluster.get_forces(), dtype=float)
                     finally:
                         cluster.calc = None
+                        cluster.set_cell([0.0, 0.0, 0.0])
                     if np.isfinite(energy_value):
                         cluster.info['energy'] = energy_value
                         cluster.arrays['forces'] = force_value
@@ -401,6 +413,21 @@ def main(params_path: Path) -> None:
     for script in SCRIPTS:
         exec(script, globals())  # noqa: S102, user-provided calculator setup
 
+    # Optional simulation cell: [a, b, c, alpha, beta, gamma].
+    cell_spec = params['CELL']
+    if cell_spec is None or cell_spec == [] or cell_spec == '':
+        cell = None
+    else:
+        if not isinstance(cell_spec, (list, tuple)) or len(cell_spec) != 6:
+            raise ValueError(
+                "CELL must be a list of six numbers: a, b, c, alpha, beta, gamma"
+            )
+        cell = [float(value) for value in cell_spec]
+        if any(length <= 0.0 for length in cell[:3]):
+            raise ValueError("CELL edge lengths must be positive")
+        if any(not 0.0 < angle < 180.0 for angle in cell[3:]):
+            raise ValueError("CELL angles must be between 0 and 180 degrees")
+
     # Number of initial structures grown on the previous-size best cluster.
     grow_prev = int(params['GROW_PREV'])
     if grow_prev < 0 or grow_prev >= int(params['POP_SIZE']) - 1:
@@ -443,7 +470,7 @@ def main(params_path: Path) -> None:
 
     relax = functools.partial(
         local_optimize,
-        cell=None,
+        cell=cell,
         potential=potential,  # type: ignore
         optimizer=BFGS,
         fmax=float(params['RELAX_FMAX']),
@@ -484,6 +511,7 @@ def main(params_path: Path) -> None:
                 relax=relax,
                 stats_path=stats_path,
                 run_start=program_start,
+                cell=cell,
             )
     total_elapsed = time.perf_counter() - program_start
     print(f"program total_time_s={total_elapsed:.4f}")

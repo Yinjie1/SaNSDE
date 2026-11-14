@@ -42,6 +42,7 @@ DEFAULT_RUN_PARAMS: dict[str, Any] = {
     'ELEMENT2': '',
     'TOTAL_ATOM': 0,
     'LATTICE_CONST': 2.88,
+    'CELL': None,
     'MIN_ATOM': 3,
     'MAX_ATOM': 20,
     'ROUND': 1,

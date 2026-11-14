@@ -47,6 +47,7 @@ This writes `params.json` in the current directory. Use strict JSON.
   "ELEMENT2": "",
   "TOTAL_ATOM": 0,
   "LATTICE_CONST": 2.88,
+  "CELL": null,
   "MIN_ATOM": 2,
   "MAX_ATOM": 20,
   "ROUND": 1,
@@ -80,6 +81,7 @@ Key parameters:
 - `ELEMENT2`: second element symbol; when non-empty, binary alloy clusters are optimized with `TOTAL_ATOM - atom` atoms of `ELEMENT2` and `atom` atoms of `ELEMENT`.
 - `TOTAL_ATOM`: total atom count of the binary cluster; must be larger than `MAX_ATOM`.
 - `LATTICE_CONST`: initial bond-length scale for random clusters.
+- `CELL`: optional six-number list `[a, b, c, alpha, beta, gamma]` (Angstrom and degrees) attached to each structure while a calculator is called, for potentials that require a cell. `null` (default) adds no cell.
 - `MIN_ATOM`, `MAX_ATOM`: inclusive size range.
 - `ROUND`: number of optimization rounds.
 - `INIT_DIR`: directory containing initial `{element}{atom}*.xyz` files.
