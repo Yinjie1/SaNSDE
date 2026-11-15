@@ -61,9 +61,9 @@ _RUN_DESCRIPTIONS: dict[str, str] = {
     "MAX_GEN": "Maximum number of generations.",
     "CONV_STEPS": "Stagnant generations before stopping. 0 disables the early stop.",
     "EDIFF": "Energy tolerance for stagnation.",
-    "SELECT_TOLE": "Energy tolerance for selection. null falls back to EDIFF.",
     "S_STRICT": "Similarity threshold for a clear structure change.",
     "S_LOOSE": "Similarity threshold used together with EDIFF.",
+    "SELECT_STRU": "Require a structure change for a candidate to enter the next generation. false accepts any lower energy.",
     "CAND_SIZE": "Number of best structures kept per size.",
     "FP_ADAPTIVE": "Adapt fp together with p. false keeps fp at 0.5.",
     "LEARNING_PERIOD": "Generations between p and fp updates. 0 disables the update.",
@@ -83,7 +83,6 @@ _RUN_TYPES: dict[str, str] = {
     "SCRIPTS": "list[str]",
     "CELL": "6 numbers or null",
     "PBC": "bool, 3 booleans or null",
-    "SELECT_TOLE": "float or null",
 }
 
 _EXPORT_PARAMETERS: tuple[tuple[str, str, str, str], ...] = (

@@ -925,13 +925,15 @@ def select(
     ediff: float = 1e-5,
     s_strict: float = 0.95,
     s_loose: float = 0.98,
+    structure_criterion: bool = True,
 ) -> Population:
     """Select the next generation and accumulate adaptive statistics.
 
-    候选个体先要比父代低 ``ediff`` 以上, 再按与主循环相同的结构变化判据判断
-    是否进入下一代: 点群不同, 或相似性低于 ``s_strict``, 或相似性低于
-    ``s_loose`` 且能量变化超过 ``10 * ediff``. 只有进入下一代的个体才计入成功
-    统计与 crm 记录; 未进入的个体沿用父代的结构和点群.
+    候选个体先要比父代低 ``ediff`` 以上. 开启 ``structure_criterion`` 时, 再按与
+    主循环相同的结构变化判据判断是否进入下一代: 点群不同, 或相似性低于
+    ``s_strict``, 或相似性低于 ``s_loose`` 且能量变化超过 ``10 * ediff``.
+    关闭该开关时不设能量容差, 能量更低即进入下一代. 只有进入下一代的个体才计入
+    成功统计与 crm 记录; 未进入的个体沿用父代的结构和点群.
 
     被选中的个体在进入下一代时带有点群(PG, 熊夫利符号): 沿用父代时复用父代已存
     的点群, 否则现场计算; 若 pymatgen 不可用或点群分析失败, 对应个体 PG 记为 None.
@@ -950,13 +952,17 @@ def select(
         Whether to update crm from the recorded successful CR values.
         Default False; the caller enables it at the end of a CRm period.
     ediff : float, optional
-        能量容差. 候选个体的能量比父代低超过 ediff 才开始比较结构变化;
+        能量容差. 开启结构判据时, 候选个体的能量比父代低超过 ediff 才继续比较
+        结构变化; 关闭结构判据时不使用该容差, 能量更低即进入下一代.
         ``ediff = 0`` 时退化为 ``energy2 < energy1``. Default 1e-5.
     s_strict : float, optional
         相似性判据的严格阈值, 相似性低于该值时判为结构变化. Default 0.95.
     s_loose : float, optional
         相似性判据的宽松阈值, 与 ``10 * ediff`` 的能量变化一起判为结构变化.
         Default 0.98.
+    structure_criterion : bool, optional
+        是否用结构变化判据决定候选进入下一代. 关闭时能量更低即进入下一代.
+        Default True.
     """
     if pop1.symbol != pop2.symbol:
         raise ValueError("Population symbols must match for selection")
@@ -1053,19 +1059,25 @@ def select(
         parent_pg = pop1_candidate.info.get('PG')
         parent_pg_ready = 'PG' in pop1_candidate.info
         candidate_pg: str | None = None
-        choose_pop2 = False
-        # 先要能量降低, 再按结构变化判据决定是否进入下一代.
-        if energy2 < energy1 - ediff:
-            candidate_pg = compute_point_group(pop2_candidate, tolerance=pg_tolerance)
-            if not parent_pg_ready:
-                parent_pg = compute_point_group(pop1_candidate, tolerance=pg_tolerance)
-                parent_pg_ready = True
-            similarity = similarity_function(pop2_candidate, pop1_candidate)
-            choose_pop2 = (
-                candidate_pg != parent_pg
-                or similarity < s_strict
-                or (similarity < s_loose and abs(energy2 - energy1) > 10.0 * ediff)
-            )
+        if structure_criterion:
+            # 能量降低超过 ediff 后, 再按结构变化判据决定是否进入下一代.
+            choose_pop2 = False
+            if energy2 < energy1 - ediff:
+                candidate_pg = compute_point_group(pop2_candidate, tolerance=pg_tolerance)
+                if not parent_pg_ready:
+                    parent_pg = compute_point_group(pop1_candidate, tolerance=pg_tolerance)
+                    parent_pg_ready = True
+                similarity = similarity_function(pop2_candidate, pop1_candidate)
+                choose_pop2 = (
+                    candidate_pg != parent_pg
+                    or similarity < s_strict
+                    or (similarity < s_loose and abs(energy2 - energy1) > 10.0 * ediff)
+                )
+        else:
+            # 关闭结构判据时不设能量容差: 能量更低即进入下一代.
+            choose_pop2 = energy2 < energy1
+            if choose_pop2:
+                candidate_pg = compute_point_group(pop2_candidate, tolerance=pg_tolerance)
 
         if choose_pop2:
             chosen_pg = candidate_pg

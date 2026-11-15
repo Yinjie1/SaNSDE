@@ -61,7 +61,13 @@ _FLOAT_PARAMETERS = (
     "ZBL_CUTOFF",
     "RELAX_FMAX",
 )
-_BOOL_PARAMETERS = ("FP_ADAPTIVE", "CONTINUE", "USE_ZBL", "ZBL_SMOOTH")
+_BOOL_PARAMETERS = (
+    "FP_ADAPTIVE",
+    "CONTINUE",
+    "SELECT_STRU",
+    "USE_ZBL",
+    "ZBL_SMOOTH",
+)
 _STR_PARAMETERS = (
     "ELEMENT",
     "ELEMENT2",
@@ -130,10 +136,6 @@ def _parameter_type_errors(data: dict[str, object]) -> list[str]:
             )
         ):
             errors.append(f"PBC expects bool, [bool, bool, bool] or null, got {type(value).__name__}")
-    if "SELECT_TOLE" in data:
-        value = data["SELECT_TOLE"]
-        if value is not None and not _is_number(value):
-            errors.append(f"SELECT_TOLE expects float or null, got {type(value).__name__}")
     return errors
 
 
