@@ -923,11 +923,18 @@ def select(
     pg_tolerance: float = 0.3,
     update_crm: bool = False,
     ediff: float = 1e-5,
+    s_strict: float = 0.95,
+    s_loose: float = 0.98,
 ) -> Population:
     """Select the next generation and accumulate adaptive statistics.
 
-    被选中的个体在进入下一代时计算点群(PG, 熊夫利符号);
-    若 pymatgen 不可用或点群分析失败, 对应个体 PG 记为 None.
+    候选个体先要比父代低 ``ediff`` 以上, 再按与主循环相同的结构变化判据判断
+    是否进入下一代: 点群不同, 或相似性低于 ``s_strict``, 或相似性低于
+    ``s_loose`` 且能量变化超过 ``10 * ediff``. 只有进入下一代的个体才计入成功
+    统计与 crm 记录; 未进入的个体沿用父代的结构和点群.
+
+    被选中的个体在进入下一代时带有点群(PG, 熊夫利符号): 沿用父代时复用父代已存
+    的点群, 否则现场计算; 若 pymatgen 不可用或点群分析失败, 对应个体 PG 记为 None.
 
     Parameters
     ----------
@@ -943,8 +950,13 @@ def select(
         Whether to update crm from the recorded successful CR values.
         Default False; the caller enables it at the end of a CRm period.
     ediff : float, optional
-        能量容差. 候选个体的能量比父代低超过 ediff 时才算胜出并进入下一代;
+        能量容差. 候选个体的能量比父代低超过 ediff 才开始比较结构变化;
         ``ediff = 0`` 时退化为 ``energy2 < energy1``. Default 1e-5.
+    s_strict : float, optional
+        相似性判据的严格阈值, 相似性低于该值时判为结构变化. Default 0.95.
+    s_loose : float, optional
+        相似性判据的宽松阈值, 与 ``10 * ediff`` 的能量变化一起判为结构变化.
+        Default 0.98.
     """
     if pop1.symbol != pop2.symbol:
         raise ValueError("Population symbols must match for selection")
@@ -1038,10 +1050,25 @@ def select(
         scale_factor_tag = pop2_candidate.info.get('scale_factor_tag')
         strategy_tag = pop2_candidate.info.get('strategy_tag')
 
-        # 候选需要比父代低超过 ediff 才算胜出; ediff=0 时即 energy2 < energy1.
-        choose_pop2 = energy2 < energy1 - ediff
+        parent_pg = pop1_candidate.info.get('PG')
+        parent_pg_ready = 'PG' in pop1_candidate.info
+        candidate_pg: str | None = None
+        choose_pop2 = False
+        # 先要能量降低, 再按结构变化判据决定是否进入下一代.
+        if energy2 < energy1 - ediff:
+            candidate_pg = compute_point_group(pop2_candidate, tolerance=pg_tolerance)
+            if not parent_pg_ready:
+                parent_pg = compute_point_group(pop1_candidate, tolerance=pg_tolerance)
+                parent_pg_ready = True
+            similarity = similarity_function(pop2_candidate, pop1_candidate)
+            choose_pop2 = (
+                candidate_pg != parent_pg
+                or similarity < s_strict
+                or (similarity < s_loose and abs(energy2 - energy1) > 10.0 * ediff)
+            )
 
         if choose_pop2:
+            chosen_pg = candidate_pg
             temp_clusters.add_cluster(pop2_candidate)
             # 成功个体记录 cr 和能量改变量,用于后续更新 crm.
             current_cr = pop2_candidate.info.get('cr')
@@ -1057,6 +1084,10 @@ def select(
             elif scale_factor_tag == 1:
                 nsc += 1
         else:
+            if not parent_pg_ready:
+                parent_pg = compute_point_group(pop1_candidate, tolerance=pg_tolerance)
+                parent_pg_ready = True
+            chosen_pg = parent_pg
             temp_clusters.add_cluster(pop1_candidate)
             if strategy_tag == 0:
                 nf1 += 1
@@ -1067,11 +1098,8 @@ def select(
             elif scale_factor_tag == 1:
                 nfc += 1
 
-        # 个体通过选择后计算点群(熊夫利符号); 失败或超时记为 None.
-        chosen_cluster = temp_clusters[-1]
-        chosen_cluster.info['PG'] = compute_point_group(
-            chosen_cluster, tolerance=pg_tolerance
-        )
+        # 个体通过选择后带上点群(熊夫利符号); 计算失败或超时记为 None.
+        temp_clusters[-1].info['PG'] = chosen_pg
 
     # Record successful CR values and their fitness improvements.
     if cr_rec and sum(delta_rec) > 0:
