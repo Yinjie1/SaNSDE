@@ -43,7 +43,7 @@ sansde init -h     # parameter manual: type, default and meaning of every key
 
 The potential is configured with `SCRIPTS` and `POTENTIAL`. For Lennard-Jones, for example:
 
-```jsonc
+```json
 {
   "SCRIPTS": ["from ase.calculators.lj import LennardJones"],
   "POTENTIAL": "LennardJones(epsilon=0.4443, sigma=2.6367)"
@@ -55,12 +55,33 @@ The potential is configured with `SCRIPTS` and `POTENTIAL`. For Lennard-Jones, f
 Two input modes are available:
 
 - `INIT_DIR`: each matching `{element}{atom}*.xyz` file supplies an initial structure. Only the lowest-energy structure (the last frame) is added to the population; the remaining structures are generated randomly.
-- `INIT_POP_DIR`: matching `{element}{atom}*.json` files supply saved populations. With `CONTINUE=true`, the whole population and its adaptive state are imported; with `false`, only the lowest-energy structure is imported and the adaptive state is reset.
+- `INIT_POP_DIR`: saved population snapshots; see "Continue from a previous run" below.
 
 If both directories are empty or no matching file exists, the population is generated randomly.
 With `ROUND > 1`, round 1 reads `init/`, and later rounds read the previous `best*` directory.
 
 Keep input structures non-periodic and consistent with the element in `params.json`.
+
+### Continue from a previous run
+
+When the user asks to continue from an earlier optimization, copy that run's population directory into the current directory under the name `INIT_POP_DIR`:
+
+```bash
+cp -r <previous run>/Populations ./init_pop
+```
+
+Then set these keys in `params.json`:
+
+```json
+{
+  "INIT_POP_DIR": "init_pop",
+  "CONTINUE": true
+}
+```
+
+`CONTINUE=true` imports the whole population with its adaptive state and resumes the search where it stopped. Use `CONTINUE=false` when the user wants a fresh search seeded only by the previous best structure; the adaptive state is then reset.
+
+`BETTER_DIR` (default `better`) collects the new low-energy structures that the current run finds.
 
 ## Check the setup
 
@@ -109,7 +130,7 @@ The run stops at `MAX_GEN` or after `CONV_STEPS` stagnant generations. Use `CONV
 ## Outputs
 
 - `best*/{element}{atom}_best.xyz`: candidate structures for each size. Frames are ordered from higher to lower energy, with the best structure last.
-- `better/{element}{atom}_better.xyz`: improved structures appended when the structure-change criterion is met.
+- `better/{element}{atom}_better.xyz`: new low-energy structures found by the search, one frame appended each time the best structure changes.
 - `Populations/{element}{atom}_gen*.json`: population snapshots.
 - `Trajectories/`: best-structure trajectories.
 - `<params>.csv`: per-generation statistics.

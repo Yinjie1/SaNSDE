@@ -702,8 +702,7 @@ def sphere_cut_splice(
     shell. Both children are relaxed and the lower-energy one is kept.
 
     Only coordinates are exchanged, so each child keeps the chemical
-    composition of its template. Every individual always produces one
-    offspring, so there is no failure or retry branch.
+    composition of its template.
 
     Parameters
     ----------
