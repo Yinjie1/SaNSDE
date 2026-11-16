@@ -511,28 +511,23 @@ def is_connected_graph(cluster: Atoms, cutoff: float) -> bool:
     return all(visited)
 
 
-def mutate(pop: Population, a: float = 4, n: int = 10, debug: bool = False) -> Population:
+def mutate(pop: Population, cauchy_limit: float = 10.0, clip: bool = True) -> Population:
     """对种群执行突变,返回突变后的暂定种群.
 
     Parameters
     ----------
     pop : Population
         输入种群.
-    a : float, optional
-        元素对应晶格常数(Ang). Default 4.
-        仅在柯西分支用于半径约束阈值计算.
-    n : int, optional
-        柯西分支重采样最大次数. Default 10.
-        超过上限后将停止重采样,并使用最后一次候选坐标.
-    debug : bool, optional
-        是否输出柯西分支重采样过程信息. Default False.
+    cauchy_limit : float, optional
+        柯西分支缩放因子的裁剪边界, 采样值裁到 [-cauchy_limit, cauchy_limit].
+        Default 10.
+    clip : bool, optional
+        是否裁剪柯西分支的缩放因子. Default True.
     """
     if len(pop) < 4:
         raise ValueError("Mutation requires at least 4 clusters in population")
-    if a <= 0:
-        raise ValueError("a must be > 0")
-    if n <= 0:
-        raise ValueError("n must be > 0")
+    if cauchy_limit <= 0:
+        raise ValueError("cauchy_limit must be > 0")
 
     temp_clusters = pop.copy()
 
@@ -542,11 +537,6 @@ def mutate(pop: Population, a: float = 4, n: int = 10, debug: bool = False) -> P
         if energy_value is None:
             raise ValueError(f"All clusters must have energy before mutation. Missing index: {i}")
     index_best = int(np.argmin(np.array(energies, dtype=float)))
-
-    n_atoms = pop.num
-    # WARNING: 系数过小会导致柯西分支重采样次数激增, 甚至表现为长时间循环.
-    # 这里使用 10*a 对应阈值 5*r0, 放宽失败判据以降低卡顿风险.
-    radius_limit = 10 * a * (0.5 + (3 * n_atoms / (4 * np.pi * np.sqrt(2)))**(1.0 / 3.0))
 
     for i in range(len(pop)):
         # 采样缩放因子分支:按 fp 在高斯/柯西之间切换.
@@ -593,29 +583,13 @@ def mutate(pop: Population, a: float = 4, n: int = 10, debug: bool = False) -> P
                 scale_factor, i, index_best, index1, index2, index3, use_rand_strategy
             )
         else:
-            # 柯西分支增加半径约束: 若超出 2*r0 则重采样柯西分布.
-            retry_count = 0
-            last_positions: np.ndarray | None = None
-            while True:
-                scale_factor = float(np.random.standard_cauchy())
-                trial_positions = build_positions(
-                    scale_factor, i, index_best, index1, index2, index3, use_rand_strategy
-                )
-                last_positions = trial_positions
-                max_distance = float(np.linalg.norm(trial_positions, axis=1).max())
-                if max_distance <= radius_limit:
-                    new_positions = trial_positions
-                    break
-                if debug:
-                    print(f"Mutation failed, atom at distance {max_distance:.2f} from origin")
-                retry_count += 1
-                if retry_count >= n:
-                    if last_positions is None:
-                        raise RuntimeError("mutate internal error: last_positions is unavailable")
-                    if debug:
-                        print(f"Warning: Cauchy retry limit reached n={n}, using last candidate positions")
-                    new_positions = last_positions
-                    break
+            scale_factor = float(np.random.standard_cauchy())
+            if clip:
+                # 采样值裁到固定边界内.
+                scale_factor = float(np.clip(scale_factor, -cauchy_limit, cauchy_limit))
+            new_positions = build_positions(
+                scale_factor, i, index_best, index1, index2, index3, use_rand_strategy
+            )
 
         # 突变产生重合几何时退回父代坐标, 避免把非法个体送入优化.
         if min_pair_distance(new_positions) < MIN_ATOM_DISTANCE:

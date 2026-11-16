@@ -259,7 +259,8 @@ def run(
                 )
 
         # 2) 变异 + 交叉 + 球切交叉 + 局部变换.
-        pop_mut = mutate(pop, a=20 * float(params['LATTICE_CONST']), debug=True)
+        debug = bool(params['DEBUG'])
+        pop_mut = mutate(pop, cauchy_limit=10, clip=not debug)
         pop_cross = crossover(pop, pop_mut)
         pop_splice = sphere_cut_splice(pop, pop_cross, relax=relax)
         pop_trans = local_transformation(pop_splice, r=0.25, relax=relax)
@@ -277,7 +278,6 @@ def run(
         )
         # p and fp are updated only when the learning period ends.
         if int(params['LEARNING_PERIOD']) > 0 and gen % int(params['LEARNING_PERIOD']) == 0:
-            debug = bool(params['DEBUG'])
             pop_next.update_adaptive(adapt_fp=not debug, clip=not debug)
 
         energy_values = [float(e) for e in pop_next.energies if e is not None]
