@@ -65,7 +65,7 @@ _RUN_DESCRIPTIONS: dict[str, str] = {
     "S_LOOSE": "Similarity threshold used together with EDIFF.",
     "SELECT_STRU": "Require a structure change for a candidate to enter the next generation. false accepts any lower energy.",
     "CAND_SIZE": "Number of best structures kept per size.",
-    "FP_ADAPTIVE": "Adapt fp together with p. false keeps fp at 0.5.",
+    "DEBUG": "Debug mode: keep fp fixed and leave p/fp unclipped. false adapts fp with p and clips both to 0.05-0.95.",
     "LEARNING_PERIOD": "Generations between p and fp updates. 0 disables the update.",
     "CR_PERIOD": "Generations between CR resampling. 0 disables resampling.",
     "CRM_PERIOD": "Generations between CRm updates. 0 disables the update.",

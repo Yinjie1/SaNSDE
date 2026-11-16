@@ -62,7 +62,7 @@ DEFAULT_RUN_PARAMS: dict[str, Any] = {
     'S_LOOSE': 0.98,
     'SELECT_STRU': True,
     'CAND_SIZE': 10,
-    'FP_ADAPTIVE': True,
+    'DEBUG': False,
     'LEARNING_PERIOD': 50,
     'CR_PERIOD': 5,
     'CRM_PERIOD': 25,

@@ -62,7 +62,7 @@ _FLOAT_PARAMETERS = (
     "RELAX_FMAX",
 )
 _BOOL_PARAMETERS = (
-    "FP_ADAPTIVE",
+    "DEBUG",
     "CONTINUE",
     "SELECT_STRU",
     "USE_ZBL",

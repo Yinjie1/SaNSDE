@@ -306,8 +306,18 @@ class Population(MultiAtoms):
     def crm(self) -> float:
         return float(self.info['crm'])
 
-    def update_adaptive(self, adapt_fp: bool = True) -> tuple[float, float]:
-        """Update p and fp from the accumulated success counts."""
+    def update_adaptive(
+        self, adapt_fp: bool = True, clip: bool = False
+    ) -> tuple[float, float]:
+        """Update p and fp from the accumulated success counts.
+
+        Parameters
+        ----------
+        adapt_fp : bool, optional
+            Adapt fp together with p. Default True; False keeps fp unchanged.
+        clip : bool, optional
+            Clip p and fp to ``[0.05, 0.95]`` after the update. Default False.
+        """
         counts = self.info
         ns1, ns2 = counts['ns1'], counts['ns2']
         nf1, nf2 = counts['nf1'], counts['nf2']
@@ -321,6 +331,10 @@ class Population(MultiAtoms):
             fp_denominator = nsc * (nsg + nfg) + nsg * (nsc + nfc)
             if fp_denominator > 0:
                 self.info['fp'] = float((nsg * (nsc + nfc)) / fp_denominator)
+
+        if clip:
+            self.info['p'] = float(np.clip(self.info['p'], 0.05, 0.95))
+            self.info['fp'] = float(np.clip(self.info['fp'], 0.05, 0.95))
 
         for key in ('ns1', 'ns2', 'nf1', 'nf2', 'nsg', 'nsc', 'nfg', 'nfc'):
             self.info[key] = 0

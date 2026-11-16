@@ -277,7 +277,8 @@ def run(
         )
         # p and fp are updated only when the learning period ends.
         if int(params['LEARNING_PERIOD']) > 0 and gen % int(params['LEARNING_PERIOD']) == 0:
-            pop_next.update_adaptive(adapt_fp=bool(params['FP_ADAPTIVE']))
+            debug = bool(params['DEBUG'])
+            pop_next.update_adaptive(adapt_fp=not debug, clip=not debug)
 
         energy_values = [float(e) for e in pop_next.energies if e is not None]
         if not energy_values:
