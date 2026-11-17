@@ -201,17 +201,12 @@ def run(
                 del pop.candidate[:max(len(pop.candidate) - int(params['CAND_SIZE']), 0)]
                 break
 
-    # Seeds grown on the previous-size best structure.
+    # Seeds grown on the previous-size best structure. 二元合金的原子总数固定,
+    # 上一尺寸的原子数不是"当前少一个", 所以这个参数只用于单元素团簇.
     grow_prev = int(params['GROW_PREV'])
     grow_parent: Atoms | None = None
-    if grow_prev > 0 and atom > 1:
-        if element2:
-            second_count = int(params['TOTAL_ATOM']) - (atom - 1)
-            previous_symbol = Atoms(
-                f"{element}{atom - 1}{element2}{second_count}"
-            ).get_chemical_formula()
-        else:
-            previous_symbol = f"{element}{atom - 1}"
+    if grow_prev > 0 and atom > 1 and not element2:
+        previous_symbol = f"{element}{atom - 1}"
         previous_best = best_dir / f"{previous_symbol}_best.xyz"
         if previous_best.is_file():
             grow_parent = read(previous_best, index=-1)
@@ -437,7 +432,8 @@ def main(params_path: Path) -> None:
             raise ValueError("PBC must be a boolean or a list of three booleans")
 
     # Number of initial structures grown on the previous-size best cluster.
-    grow_prev = int(params['GROW_PREV'])
+    # 二元合金固定原子总数, 该参数不适用.
+    grow_prev = 0 if str(params['ELEMENT2'] or '') else int(params['GROW_PREV'])
     if grow_prev < 0 or grow_prev >= int(params['POP_SIZE']) - 1:
         raise ValueError("GROW_PREV must satisfy 0 <= GROW_PREV < POP_SIZE - 1")
 

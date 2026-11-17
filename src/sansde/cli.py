@@ -57,7 +57,7 @@ _RUN_DESCRIPTIONS: dict[str, str] = {
     "KEEP_SNAPSHOTS": "Number of population snapshots kept per size.",
     "POP_DIR": "Output directory for population snapshots.",
     "POP_SIZE": "Population size.",
-    "GROW_PREV": "Initial structures grown from the previous-size best by adding one atom. 0 disables it; must be < POP_SIZE - 1.",
+    "GROW_PREV": "Initial structures grown from the previous-size best by adding one atom; single-element clusters only. 0 disables it; must be < POP_SIZE - 1.",
     "MAX_GEN": "Maximum number of generations.",
     "CONV_STEPS": "Stagnant generations before stopping. 0 disables the early stop.",
     "EDIFF": "Energy tolerance for stagnation.",

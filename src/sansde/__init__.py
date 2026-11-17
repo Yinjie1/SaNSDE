@@ -44,7 +44,7 @@ from sansde.operators import (
 )
 from sansde.pop import Clusters, Population
 
-__version__ = "0.3.19"
+__version__ = "0.3.20"
 
 __all__ = [
     'Clusters',
