@@ -260,12 +260,7 @@ def run(
 
         # 2) 变异 + 交叉 + 球切交叉 + 局部变换.
         debug = bool(params['DEBUG'])
-        pop_mut = mutate(
-            pop,
-            cauchy_limit=10,
-            clip=not debug,
-            box_edge=getattr(potential, 'cell', None),
-        )
+        pop_mut = mutate(pop, cauchy_limit=10, clip=not debug, cell=cell)
         pop_cross = crossover(pop, pop_mut)
         pop_splice = sphere_cut_splice(pop, pop_cross, relax=relax)
         pop_trans = local_transformation(pop_splice, r=0.25, relax=relax)

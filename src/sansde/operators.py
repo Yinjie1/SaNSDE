@@ -14,6 +14,7 @@ import numpy as np
 from ase import Atoms
 from ase.calculators.calculator import Calculator
 from ase.calculators.lj import LennardJones
+from ase.geometry import cellpar_to_cell
 from ase.optimize import BFGS
 from ase.optimize.optimize import Optimizer
 
@@ -515,7 +516,7 @@ def mutate(
     pop: Population,
     cauchy_limit: float = 10.0,
     clip: bool = True,
-    box_edge: float | None = None,
+    cell: list[float] | None = None,
 ) -> Population:
     """对种群执行突变,返回突变后的暂定种群.
 
@@ -528,18 +529,17 @@ def mutate(
         Default 10.
     clip : bool, optional
         是否裁剪柯西分支的缩放因子. Default True.
-    box_edge : float, optional
-        计算器实际使用的立方盒边长(Ang), 与结构上的六元组 cell 无关. 盒子的范围是
-        以原点为中心、边长 box_edge 的立方体; 柯西分支任一坐标分量的绝对值超过
-        box_edge/2 时重新采样, 最多重采 10 次, 仍然超出时退回父代坐标.
-        Default None, 不检查.
+    cell : list[float], optional
+        CELL 参数的六元组 (a, b, c, alpha, beta, gamma). 突变坐标换算成这个盒子的
+        分数坐标后, 任一分量的绝对值超过 0.5(盒子以原点为中心)时重新采样, 最多重采
+        10 次, 仍然超出时退回父代坐标. Default None, 不检查.
     """
     if len(pop) < 4:
         raise ValueError("Mutation requires at least 4 clusters in population")
     if cauchy_limit <= 0:
         raise ValueError("cauchy_limit must be > 0")
-    if box_edge is not None and box_edge <= 0:
-        raise ValueError("box_edge must be > 0")
+    if cell is not None and len(cell) != 6:
+        raise ValueError("cell must contain six numbers")
 
     temp_clusters = pop.copy()
 
@@ -550,8 +550,8 @@ def mutate(
             raise ValueError(f"All clusters must have energy before mutation. Missing index: {i}")
     index_best = int(np.argmin(np.array(energies, dtype=float)))
 
-    # 以原点为中心的立方盒, 三个方向的上限相同.
-    box_limit = None if box_edge is None else 0.5 * float(box_edge)
+    # 分数坐标用的逆矩阵; 盒子以原点为中心.
+    cell_inverse = None if cell is None else np.linalg.inv(cellpar_to_cell(cell))
 
     for i in range(len(pop)):
         # 采样缩放因子分支:按 fp 在高斯/柯西之间切换.
@@ -606,9 +606,9 @@ def mutate(
                 new_positions = build_positions(
                     scale_factor, i, index_best, index1, index2, index3, use_rand_strategy
                 )
-                if box_limit is None:
+                if cell_inverse is None:
                     break
-                if float(np.abs(new_positions).max()) <= box_limit:
+                if float(np.abs(new_positions @ cell_inverse).max()) <= 0.5:
                     break
             else:
                 # 10 次采样都落在晶胞外, 退回父代坐标.
