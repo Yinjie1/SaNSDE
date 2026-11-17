@@ -113,7 +113,7 @@ def min_pair_distance(positions: np.ndarray) -> float:
     -------
     float
         最小两两间距. 原子数少于 2 时返回 ``inf``;
-        坐标含非有限值时返回 ``-inf``, 以便调用方判为非法几何.
+        坐标含非有限值时返回 ``-inf``, 以便调用方视为非法几何.
     """
     coords = np.asarray(positions, dtype=float)
     if coords.ndim != 2 or coords.shape[1] != 3:
@@ -242,7 +242,7 @@ def local_optimize(
             atoms.set_cell(cell)
             atoms.set_pbc(False if pbc is None else pbc)
 
-        # 重合几何会让势函数返回 NaN, 直接判为无效个体, 不调用计算器.
+        # 重合几何会让势函数返回 NaN, 直接视为无效个体, 不调用计算器.
         if min_pair_distance(atoms.get_positions()) < MIN_ATOM_DISTANCE:
             atoms.info['energy'] = float('inf')
             atoms.arrays['forces'] = np.zeros((len(atoms), 3))
@@ -511,7 +511,12 @@ def is_connected_graph(cluster: Atoms, cutoff: float) -> bool:
     return all(visited)
 
 
-def mutate(pop: Population, cauchy_limit: float = 10.0, clip: bool = True) -> Population:
+def mutate(
+    pop: Population,
+    cauchy_limit: float = 10.0,
+    clip: bool = True,
+    box_edge: float | None = None,
+) -> Population:
     """对种群执行突变,返回突变后的暂定种群.
 
     Parameters
@@ -523,11 +528,18 @@ def mutate(pop: Population, cauchy_limit: float = 10.0, clip: bool = True) -> Po
         Default 10.
     clip : bool, optional
         是否裁剪柯西分支的缩放因子. Default True.
+    box_edge : float, optional
+        计算器实际使用的立方盒边长(Ang), 与结构上的六元组 cell 无关. 盒子的范围是
+        以原点为中心、边长 box_edge 的立方体; 柯西分支任一坐标分量的绝对值超过
+        box_edge/2 时重新采样, 最多重采 10 次, 仍然超出时退回父代坐标.
+        Default None, 不检查.
     """
     if len(pop) < 4:
         raise ValueError("Mutation requires at least 4 clusters in population")
     if cauchy_limit <= 0:
         raise ValueError("cauchy_limit must be > 0")
+    if box_edge is not None and box_edge <= 0:
+        raise ValueError("box_edge must be > 0")
 
     temp_clusters = pop.copy()
 
@@ -537,6 +549,9 @@ def mutate(pop: Population, cauchy_limit: float = 10.0, clip: bool = True) -> Po
         if energy_value is None:
             raise ValueError(f"All clusters must have energy before mutation. Missing index: {i}")
     index_best = int(np.argmin(np.array(energies, dtype=float)))
+
+    # 以原点为中心的立方盒, 三个方向的上限相同.
+    box_limit = None if box_edge is None else 0.5 * float(box_edge)
 
     for i in range(len(pop)):
         # 采样缩放因子分支:按 fp 在高斯/柯西之间切换.
@@ -583,13 +598,21 @@ def mutate(pop: Population, cauchy_limit: float = 10.0, clip: bool = True) -> Po
                 scale_factor, i, index_best, index1, index2, index3, use_rand_strategy
             )
         else:
-            scale_factor = float(np.random.standard_cauchy())
-            if clip:
-                # 采样值裁到固定边界内.
-                scale_factor = float(np.clip(scale_factor, -cauchy_limit, cauchy_limit))
-            new_positions = build_positions(
-                scale_factor, i, index_best, index1, index2, index3, use_rand_strategy
-            )
+            for _attempt in range(10):
+                scale_factor = float(np.random.standard_cauchy())
+                if clip:
+                    # 采样值裁到固定边界内.
+                    scale_factor = float(np.clip(scale_factor, -cauchy_limit, cauchy_limit))
+                new_positions = build_positions(
+                    scale_factor, i, index_best, index1, index2, index3, use_rand_strategy
+                )
+                if box_limit is None:
+                    break
+                if float(np.abs(new_positions).max()) <= box_limit:
+                    break
+            else:
+                # 10 次采样都落在晶胞外, 退回父代坐标.
+                new_positions = pop[i].get_positions()
 
         # 突变产生重合几何时退回父代坐标, 避免把非法个体送入优化.
         if min_pair_distance(new_positions) < MIN_ATOM_DISTANCE:
@@ -930,9 +953,9 @@ def select(
         结构变化; 关闭结构判据时不使用该容差, 能量更低即进入下一代.
         ``ediff = 0`` 时退化为 ``energy2 < energy1``. Default 1e-5.
     s_strict : float, optional
-        相似性判据的严格阈值, 相似性低于该值时判为结构变化. Default 0.95.
+        相似性判据的严格阈值, 相似性低于该值时视为结构变化. Default 0.95.
     s_loose : float, optional
-        相似性判据的宽松阈值, 与 ``10 * ediff`` 的能量变化一起判为结构变化.
+        相似性判据的宽松阈值, 与 ``10 * ediff`` 的能量变化一起视为结构变化.
         Default 0.98.
     structure_criterion : bool, optional
         是否用结构变化判据决定候选进入下一代. 关闭时能量更低即进入下一代.
