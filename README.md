@@ -53,9 +53,10 @@ Anything you leave out keeps its default. `sansde check` lists the systems that 
 "SCRIPTS": ["from deepmd.calculator import DP"],
 "POTENTIAL": "DP(model=Path('/path/to/model.pth'))"
 
-// Gupta (requires asap3)
+// Gupta (requires asap3; asap3 needs a cell, so set CELL as well)
 "SCRIPTS": ["from sansde.calc import GuptaCalculator"],
-"POTENTIAL": "GuptaCalculator({'Au': [10.229, 4.036, 0.2061, 1.790, 2.884]})"
+"POTENTIAL": "GuptaCalculator({'Au': [10.229, 4.036, 0.2061, 1.790, 2.884]})",
+"CELL": [60.0, 60.0, 60.0, 90.0, 90.0, 90.0]
 ```
 
 `USE_ZBL` is on by default. It adds a short-range repulsion wall so atoms cannot collapse onto each other when the potential is evaluated outside the region it was trained for. Usually only some machine-learning potentials need it; turn it off for potentials that already handle close contacts.

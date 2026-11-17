@@ -160,6 +160,7 @@ class _RunConfig:
     zbl_cutoff: float
     zbl_smooth: bool
     rounds: int
+    cell: list[float] | None
 
 
 def _dir_setting(data: dict[str, object], key: str, default: str) -> str:
@@ -263,6 +264,7 @@ def _read_run_configs(
                 zbl_cutoff=_float_setting(data, "ZBL_CUTOFF", 1.5),
                 zbl_smooth=bool(data.get("ZBL_SMOOTH", False)),
                 rounds=rounds,
+                cell=None if data.get("CELL") in (None, []) else list(data["CELL"]),  # type: ignore[arg-type]
             )
         )
     return configs, type_errors
@@ -540,6 +542,8 @@ def _potential_probe(payload_text: str) -> None:
                 [0.0, 0.0, 1.0],
             ],
         )
+        if payload.get("cell"):
+            atoms.set_cell(payload["cell"])
         atoms.calc = potential
         energy = float(atoms.get_potential_energy())
         forces = np.asarray(atoms.get_forces(), dtype=float)
@@ -584,6 +588,7 @@ def _check_potential(config: _RunConfig, color: bool) -> str | None:
         "scripts": config.scripts,
         "potential": config.potential,
         "element": config.element,
+        "cell": config.cell,
     }
     probe_code = (
         "import sys; "

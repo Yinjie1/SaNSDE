@@ -419,9 +419,8 @@ class GuptaCalculator(Calculator):
     """ASE calculator for the Gupta potential, backed by asap3.
 
     The energy and forces are computed by ``asap3.Gupta``. asap3 requires a
-    valid unit cell even for isolated clusters, so non-periodic inputs are
-    evaluated inside a cubic cell of ``cell`` Angstrom with ``pbc`` false.
-    Periodic inputs are passed through unchanged.
+    valid unit cell even for isolated clusters, so the structure must carry a
+    cell; ``calculate`` raises ``ValueError`` when the cell has zero volume.
 
     asap3 expects to be attached through ``atoms.calc``, so the underlying
     potential is bound to one persistent Atoms object and only its positions
@@ -432,22 +431,20 @@ class GuptaCalculator(Calculator):
             ``[p, q, A, xi, r0]``, the parameter order of
             ``asap3.Internal.BuiltinPotentials.RGL``. Mixed pairs need an
             explicit ``(symbol_i, symbol_j)`` entry.
-        cell: Edge length of the cubic cell used for non-periodic inputs in
-            Angstrom. Default 60.0.
         **kwargs: Forwarded to :class:`ase.calculators.calculator.Calculator`.
 
     Attributes:
-        cell: Edge length of the cubic cell used for non-periodic inputs.
         potential: The underlying ``asap3.Gupta`` instance.
 
     Raises:
         ImportError: If asap3 is not installed.
-        ValueError: If ``cell`` is not positive.
+        ValueError: If the evaluated structure has no cell.
 
     Examples:
         >>> from ase import Atoms
         >>> from sansde.calc import GuptaCalculator
         >>> atoms = Atoms("Au2", positions=[[0.0, 0.0, 0.0], [2.6, 0.0, 0.0]])
+        >>> atoms.set_cell([60.0, 60.0, 60.0])
         >>> atoms.calc = GuptaCalculator({"Au": [10.229, 4.036, 0.2061, 1.790, 2.884]})
         >>> bool(atoms.get_potential_energy() < 0.0)
         True
@@ -458,7 +455,6 @@ class GuptaCalculator(Calculator):
     def __init__(
         self,
         parameters: dict[object, list[float] | tuple[float, ...]],
-        cell: float = 60.0,
         **kwargs: Any,
     ) -> None:
         """Create the asap3 potential and prepare the evaluation system."""
@@ -466,10 +462,7 @@ class GuptaCalculator(Calculator):
             from asap3 import Gupta
         except ImportError as e:
             raise ImportError("GuptaCalculator requires the asap3 package") from e
-        if cell <= 0:
-            raise ValueError(f"cell must be positive, got {cell}")
         super().__init__(**kwargs)
-        self.cell = float(cell)
         self.potential = Gupta(parameters)
         self._system: Atoms | None = None
 
@@ -494,6 +487,9 @@ class GuptaCalculator(Calculator):
             return
 
         atoms = self.atoms
+        cell = np.asarray(atoms.cell, dtype=float)
+        if abs(float(np.linalg.det(cell))) < 1e-8:
+            raise ValueError("GuptaCalculator requires a cell; set CELL in params.json")
         rebuild = (
             self._system is None
             or len(self._system) != len(atoms)
@@ -502,13 +498,11 @@ class GuptaCalculator(Calculator):
         )
         if rebuild:
             self._system = atoms.copy()
-            if not atoms.pbc.any():
-                self._system.set_cell([self.cell, self.cell, self.cell])
+            self._system.set_cell(cell)
             self._system.calc = self.potential
         else:
             self._system.positions = atoms.positions
-            if atoms.pbc.any():
-                self._system.set_cell(atoms.cell)
+            self._system.set_cell(cell)
 
         self.results["energy"] = float(self._system.get_potential_energy())
         self.results["forces"] = np.asarray(
