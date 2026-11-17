@@ -532,7 +532,8 @@ def mutate(
     cell : list[float], optional
         CELL 参数的六元组 (a, b, c, alpha, beta, gamma). 突变坐标换算成这个盒子的
         分数坐标后, 任一分量的绝对值超过 0.5(盒子以原点为中心)时重新采样, 最多重采
-        10 次, 仍然超出时退回父代坐标. Default None, 不检查.
+        10 次, 仍然超出时改用高斯分布采样, 对应的 scale_factor_tag 记为高斯分支.
+        Default None, 不检查.
     """
     if len(pop) < 4:
         raise ValueError("Mutation requires at least 4 clusters in population")
@@ -611,8 +612,12 @@ def mutate(
                 if float(np.abs(new_positions @ cell_inverse).max()) <= 0.5:
                     break
             else:
-                # 10 次采样都落在晶胞外, 退回父代坐标.
-                new_positions = pop[i].get_positions()
+                # 10 次采样都落在晶胞外, 改用高斯分布采样.
+                scale_factor_tag = 0
+                scale_factor = float(np.random.normal(0.5, 0.3))
+                new_positions = build_positions(
+                    scale_factor, i, index_best, index1, index2, index3, use_rand_strategy
+                )
 
         # 突变产生重合几何时退回父代坐标, 避免把非法个体送入优化.
         if min_pair_distance(new_positions) < MIN_ATOM_DISTANCE:
